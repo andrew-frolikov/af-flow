@@ -554,8 +554,6 @@ final class GhostPepperTests: XCTestCase {
                 cleanupSettingsDefaults: defaults,
                 modelManager: manager
             )
-            appState.pepperChatEnabled = true
-            appState.pepperChatApiKey = "test-key"
             appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
             appState.preferredLanguage = "en"
             await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
@@ -1279,7 +1277,12 @@ final class GhostPepperTests: XCTestCase {
         XCTAssertEqual(appState.cleanupBackend, .localModels)
     }
 
-    func testAppStateDefaultsPepperChatToEnabledWhenZoTokenAlreadyStored() throws {
+    /// AF Flow inverts the upstream behaviour this test used to assert. Upstream
+    /// enabled Context Bundler when a Zo token was already stored. AF Flow must
+    /// never enable it, because there is no way to enter a key and no working
+    /// backend, so a token persisted from an earlier install must not revive the
+    /// feature. Hard rule 1.
+    func testAppStateNeverEnablesPepperChatEvenWhenZoTokenAlreadyStored() throws {
         try withClearedPepperChatAppStorage {
             UserDefaults.standard.set("zo_sk_existing", forKey: "pepperChatApiKey")
 
@@ -1291,7 +1294,8 @@ final class GhostPepperTests: XCTestCase {
                 cleanupSettingsDefaults: defaults
             )
 
-            XCTAssertTrue(appState.pepperChatEnabled)
+            XCTAssertFalse(appState.pepperChatEnabled)
+            XCTAssertTrue(appState.pepperChatApiKey.isEmpty)
         }
     }
 

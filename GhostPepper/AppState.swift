@@ -188,12 +188,10 @@ class AppState: ObservableObject {
     @AppStorage("speechModel") var speechModel: String = SpeechModelCatalog.defaultModelID
     @AppStorage("preferredLanguage") var preferredLanguage: String = "auto"
     @AppStorage("pepperChatHost") var pepperChatHost: String = "https://api.zo.computer"
-    @Published var pepperChatApiKey: String = "" {
-        didSet {
-            guard !isLoadingStoredIntegrationKeys else { return }
-            _ = KeychainHelper.set(pepperChatApiKey, for: Self.pepperChatApiKeychainKey)
-        }
-    }
+    /// Always empty, and deliberately has no keychain write. AF Flow never
+    /// stores a credential (hard rule 1), so persisting this value is a
+    /// capability the app must not have, latent or otherwise.
+    @Published var pepperChatApiKey: String = ""
     /// Context Bundler's only working backend was Zo (a cloud AI service).
     /// AF Flow never stores or accepts an API key (CLAUDE.md hard rule 1),
     /// so the feature has no way to work and its Settings toggle and menu
@@ -202,18 +200,9 @@ class AppState: ObservableObject {
     /// re-enable a feature with no working backend.
     var pepperChatEnabled: Bool { false }
     @AppStorage("pepperChatIncludeScreenContext") var pepperChatIncludeScreenContext: Bool = true
-    @Published var trelloApiKey: String = "" {
-        didSet {
-            guard !isLoadingStoredIntegrationKeys else { return }
-            _ = KeychainHelper.set(trelloApiKey, for: Self.trelloApiKeyKeychainKey)
-        }
-    }
-    @Published var trelloToken: String = "" {
-        didSet {
-            guard !isLoadingStoredIntegrationKeys else { return }
-            _ = KeychainHelper.set(trelloToken, for: Self.trelloTokenKeychainKey)
-        }
-    }
+    /// Always empty, no keychain write. See `pepperChatApiKey` above.
+    @Published var trelloApiKey: String = ""
+    @Published var trelloToken: String = ""
     @AppStorage("trelloDefaultListId") var trelloDefaultListId: String = ""
     @Published var trelloBoards: [TrelloBoard] = []
     @AppStorage("meetingTranscriptEnabled") var meetingTranscriptEnabled: Bool = false

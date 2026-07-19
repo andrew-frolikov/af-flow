@@ -84,8 +84,10 @@ check "no credential migration in live code" 'migrateUserDefaultsString' swift \
 # Layer 3: UI that invites a pasted secret, or tells the user to go set one up.
 # Both matter: a text field is an invitation, and instructional copy is worse
 # because it sends Andrew hunting for a field that no longer exists.
+# Checks both SecureField and TextField: a plain TextField holding a key is
+# still key entry, and is the obvious way to defeat a SecureField-only check.
 check "no key or token entry fields" \
-  'SecureField\(.*([Aa]pi[ _]?[Kk]ey|[Tt]oken|sk-ant|zo_sk)' swift
+  '(SecureField|TextField)\(.*([Aa]pi[ _]?[Kk]ey|[Tt]oken|sk-ant|zo_sk|[Cc]redential)' swift
 check "no user-facing text instructing key setup" \
   '"[^"]*([Aa]dd your .*[Kk]ey|API key .*(required|in Settings)|[Kk]ey in Settings)' swift
 
@@ -94,6 +96,10 @@ check "no user-facing text instructing key setup" \
 # 2026-07-18 while the sweep reported clean.
 check "no live credential reads outside deferred files" \
   'KeychainHelper\.get\(' swift "$INERT_BY_DECISION|$DEFINITION_AND_FIXTURES"
+# Writing a credential matters as much as reading one: storing a key is how a
+# key comes to exist at all. Checking only reads let a store path pass.
+check "no live credential writes outside deferred files" \
+  'KeychainHelper\.set\(' swift "$INERT_BY_DECISION|$DEFINITION_AND_FIXTURES"
 
 # Layer 1: entitlement dropped with the Calendar loopback server.
 check "no network.server entitlement" 'network\.server' config
