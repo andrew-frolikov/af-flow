@@ -8,7 +8,13 @@ protocol WindowCaptureServing {
 }
 
 final class WindowCaptureService: WindowCaptureServing {
+    /// AF Flow hard rule: never request Screen Recording. This is a stub that
+    /// returns nil before touching any ScreenCaptureKit API (SCShareableContent,
+    /// SCScreenshotManager) so macOS never auto-prompts for the permission.
+    /// Frontmost-window-OCR context capture is disabled in this build.
     func captureFrontmostWindowImage() async throws -> CGImage? {
+        return nil
+
         guard let frontmostApplication = NSWorkspace.shared.frontmostApplication,
               let windowID = frontmostWindowID(for: frontmostApplication.processIdentifier) else {
             return nil

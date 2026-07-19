@@ -790,8 +790,14 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         activeLoadedModelKind == modelKind ? activeLLM : nil
     }
 
+    /// Looks up the descriptor for a model kind. Falls back to `compactModel`
+    /// (the smallest/safest default) instead of force-unwrapping when the
+    /// kind isn't in `cleanupModels` — e.g. a stale stored selection like
+    /// `.gemma4_12b_it_optiq_4bit_mlx` that predates its descriptor removal
+    /// and reaches this function through a path that bypasses the migration
+    /// in `AppState.init`.
     private func descriptor(for modelKind: LocalCleanupModelKind) -> CleanupModelDescriptor {
-        Self.cleanupModels.first(where: { $0.kind == modelKind })!
+        Self.cleanupModels.first(where: { $0.kind == modelKind }) ?? Self.compactModel
     }
 
     private func availabilityOverride(for modelKind: LocalCleanupModelKind) -> Bool? {

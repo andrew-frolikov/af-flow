@@ -2737,7 +2737,7 @@ struct MeetingRootView: View {
                     }
                 )
             } else {
-                MissingAPIKeyView(onClose: { state.showBuildIndexSheet = false }, onOpenSettings: { state.onOpenSettings?() })
+                MissingAPIKeyView(onClose: { state.showBuildIndexSheet = false })
             }
         }
         .sheet(isPresented: $state.showNewWikiSheet) {
@@ -10112,28 +10112,23 @@ struct MeetingSidebarView: View {
 
 private struct MissingAPIKeyView: View {
     let onClose: () -> Void
-    let onOpenSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "key")
                     .font(.system(size: 16))
-                Text("Claude API key required")
+                Text("Cloud indexing not available")
                     .font(.system(size: 16, weight: .semibold))
             }
-            Text("Index building uses Claude (Anthropic API). Add your API key in Settings → Meeting Transcript → Cloud API.")
+            Text("Index building uses a cloud AI provider, which isn't available in AF Flow.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             HStack {
                 Spacer()
-                Button("Cancel", action: onClose)
-                Button("Open Settings") {
-                    onOpenSettings()
-                    onClose()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                Button("Close", action: onClose)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
             }
         }
         .padding(20)

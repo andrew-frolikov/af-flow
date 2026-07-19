@@ -1309,7 +1309,7 @@ struct SettingsView: View {
                     .frame(maxWidth: 420, alignment: .leading)
                 }
 
-                Text("2nd Brain generation can use a larger downloaded local model than live dictation cleanup. Gemma 4 12B MLX is the recommended target, but MLX inference support is still being wired in.")
+                Text("2nd Brain generation can use a larger downloaded local model than live dictation cleanup.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

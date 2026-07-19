@@ -20,7 +20,15 @@ final class SystemAudioRecorder: NSObject {
 
     /// Starts capturing system audio output via ScreenCaptureKit.
     /// Requires Screen Recording permission.
+    ///
+    /// AF Flow hard rule: never request Screen Recording. This is a stub that
+    /// throws before touching any ScreenCaptureKit API (SCShareableContent,
+    /// SCStream) so macOS never auto-prompts for the permission. System-audio
+    /// capture for meeting transcription is disabled in this build; callers
+    /// fall back to microphone-only capture.
     func startRecording() async throws {
+        throw SystemAudioRecorderError.screenRecordingDisabledForThisBuild
+
         guard !isRecording else { return }
 
         resetBuffer()
@@ -163,6 +171,10 @@ extension SystemAudioRecorder: SCStreamDelegate {
 enum SystemAudioRecorderError: Error, LocalizedError {
     case noDisplayAvailable
     case screenRecordingPermissionDenied
+    /// AF Flow never requests Screen Recording (hard rule 1). System audio
+    /// capture is structurally disabled in this build regardless of any
+    /// toggle state; this error is thrown before ScreenCaptureKit is touched.
+    case screenRecordingDisabledForThisBuild
 
     var errorDescription: String? {
         switch self {
@@ -170,6 +182,8 @@ enum SystemAudioRecorderError: Error, LocalizedError {
             return "No display available for system audio capture."
         case .screenRecordingPermissionDenied:
             return "Screen Recording permission is required to capture system audio."
+        case .screenRecordingDisabledForThisBuild:
+            return "System audio capture is not available in AF Flow. Meeting transcription will use the microphone only."
         }
     }
 }

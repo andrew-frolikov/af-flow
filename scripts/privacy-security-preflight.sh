@@ -43,7 +43,7 @@ check_no_output \
 
 check_no_output \
   "Likely credentials or private keys found in tracked files." \
-  "git grep -n -I -E '(sk-ant-[A-Za-z0-9_-]{20,}|zo_sk_[A-Za-z0-9_-]{16,}|\\bpat[A-Za-z0-9]{14,}\\b|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|Bearer [A-Za-z0-9._~+/=-]{20,}|-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----)' -- . ':!GhostPepper/Secrets.example'"
+  "git grep -n -I -E '(sk-ant-[A-Za-z0-9_-]{20,}|zo_sk_[A-Za-z0-9_-]{16,}|\\bpat[A-Za-z0-9]{14,}\\b|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|Bearer [A-Za-z0-9._~+/=-]{20,}|-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----)' -- ."
 
 warn_on_output \
   "Sensitive debug/export affordances found. Confirm each one is local-only, intentional, and acceptable for this release." \

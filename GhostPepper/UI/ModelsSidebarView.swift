@@ -241,13 +241,6 @@ struct ModelsSidebarView: View {
                     isActive: hasClaudeKey && agentBackend == .claude(model)
                 )
             }
-
-            if !hasClaudeKey {
-                Text("Add a key in Settings → Meeting Transcript → Cloud API.")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                    .padding(.top, 2)
-            }
         }
     }
 
