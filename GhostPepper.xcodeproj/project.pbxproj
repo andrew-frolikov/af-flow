@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -223,7 +223,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		00A17B837D4D401A8E89F14A /* AirtableImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirtableImporter.swift; sourceTree = "<group>"; };
+		0065F99395EEC3EB77997C2C /* CleanupSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupSettings.swift; sourceTree = "<group>"; };
 		00A000000000000000000001 /* IndexBuilding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexBuilding.swift; sourceTree = "<group>"; };
 		00A000000000000000000002 /* WikiKindStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStore.swift; sourceTree = "<group>"; };
 		00A000000000000000000003 /* QMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QMDService.swift; sourceTree = "<group>"; };
@@ -238,7 +238,7 @@
 		00A000000000000000000015 /* GeneratedWikiEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedWikiEngine.swift; sourceTree = "<group>"; };
 		00A000000000000000000016 /* WikiSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiSearchService.swift; sourceTree = "<group>"; };
 		00A000000000000000000017 /* GhostPepperHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhostPepperHistoryStore.swift; sourceTree = "<group>"; };
-		0065F99395EEC3EB77997C2C /* CleanupSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupSettings.swift; sourceTree = "<group>"; };
+		00A17B837D4D401A8E89F14A /* AirtableImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirtableImporter.swift; sourceTree = "<group>"; };
 		016C38149DDDAA03B88E35C0 /* PerformanceTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceTrace.swift; sourceTree = "<group>"; };
 		01A8B88DFD046F1EC74E5CD6 /* TranscriptionLabStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLabStore.swift; sourceTree = "<group>"; };
 		0267B716FEB381C08F172EE6 /* UsageReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageReportView.swift; sourceTree = "<group>"; };
@@ -306,10 +306,10 @@
 		53B62D588B7637FC35F1EC0B /* IndexBuilderHelpersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexBuilderHelpersTests.swift; sourceTree = "<group>"; };
 		5588D5D8742520186BBD4970 /* IndexManifestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexManifestTests.swift; sourceTree = "<group>"; };
 		589AC554EEF132B519736D92 /* HotkeyMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyMonitorTests.swift; sourceTree = "<group>"; };
-		59666FBC728BF70A61983188 /* PerformanceTraceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceTraceTests.swift; sourceTree = "<group>"; };
-		5D68EDD354F149B2EF3963B7 /* CleanupModelProbe */ = {isa = PBXFileReference; includeInIndex = 0; path = CleanupModelProbe; sourceTree = BUILT_PRODUCTS_DIR; };
-		5DCEBF68EFD590E3779D72D5 /* DiarizationSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiarizationSummary.swift; sourceTree = "<group>"; };
 		58A000000000000000000000 /* AppleSpeechAnalyzerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeechAnalyzerBackend.swift; sourceTree = "<group>"; };
+		59666FBC728BF70A61983188 /* PerformanceTraceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceTraceTests.swift; sourceTree = "<group>"; };
+		5D68EDD354F149B2EF3963B7 /* CleanupModelProbe */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = CleanupModelProbe; sourceTree = BUILT_PRODUCTS_DIR; };
+		5DCEBF68EFD590E3779D72D5 /* DiarizationSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiarizationSummary.swift; sourceTree = "<group>"; };
 		624731D133FE2A9EB3A12740 /* MeetingTranscriptSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTranscriptSettings.swift; sourceTree = "<group>"; };
 		626F06D7734BB38A033B6F48 /* IndexManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexManifest.swift; sourceTree = "<group>"; };
 		648497BCB18036D3B10EADD2 /* MeetingHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistory.swift; sourceTree = "<group>"; };
@@ -452,6 +452,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		00C000000000000000000001 /* Wiki */ = {
+			isa = PBXGroup;
+			children = (
+				00A000000000000000000007 /* LocalStructuredLLM.swift */,
+				00A000000000000000000015 /* GeneratedWikiEngine.swift */,
+				00A000000000000000000017 /* GhostPepperHistoryStore.swift */,
+				00A000000000000000000008 /* LocalWikiEngine.swift */,
+				00A000000000000000000009 /* LocalWikiPrompts.swift */,
+				00A000000000000000000010 /* MeetingCard.swift */,
+				00A000000000000000000011 /* MeetingChunker.swift */,
+				00A000000000000000000012 /* WikiEntityResolver.swift */,
+				00A000000000000000000013 /* WikiKindProposer.swift */,
+			);
+			path = Wiki;
+			sourceTree = "<group>";
+		};
 		150D99E38C8DFC28C5189B22 /* Cleanup */ = {
 			isa = PBXGroup;
 			children = (
@@ -737,22 +753,6 @@
 			path = Indexing;
 			sourceTree = "<group>";
 		};
-		00C000000000000000000001 /* Wiki */ = {
-			isa = PBXGroup;
-			children = (
-				00A000000000000000000007 /* LocalStructuredLLM.swift */,
-				00A000000000000000000015 /* GeneratedWikiEngine.swift */,
-				00A000000000000000000017 /* GhostPepperHistoryStore.swift */,
-				00A000000000000000000008 /* LocalWikiEngine.swift */,
-				00A000000000000000000009 /* LocalWikiPrompts.swift */,
-				00A000000000000000000010 /* MeetingCard.swift */,
-				00A000000000000000000011 /* MeetingChunker.swift */,
-				00A000000000000000000012 /* WikiEntityResolver.swift */,
-				00A000000000000000000013 /* WikiKindProposer.swift */,
-			);
-			path = Wiki;
-			sourceTree = "<group>";
-		};
 		A02E15F442CE34FDC04742D1 = {
 			isa = PBXGroup;
 			children = (
@@ -956,10 +956,9 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1600;
+				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					5EBC085BD56A3725D371FB1A = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -979,7 +978,6 @@
 				FF5143DA3A0A948A0A7F982D /* XCRemoteSwiftPackageReference "LLM.swift" */,
 				E56E28037799FE95D6CB5F71 /* XCRemoteSwiftPackageReference "WhisperKit" */,
 			);
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -1232,16 +1230,18 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-			1E4BC3C9A2D9995B5339A1F0 /* Release */ = {
-				isa = XCBuildConfiguration;
-				baseConfigurationReference = 112E1B08BAA94CE3D91F2E00 /* Signing.xcconfig */;
-				buildSettings = {
-					ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-					CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
-					CODE_SIGN_ENTITLEMENTS = GhostPepper/GhostPepper.entitlements;
-					COMBINE_HIDPI_IMAGES = YES;
-					ENABLE_APP_SANDBOX = YES;
-				ENABLE_HARDENED_RUNTIME = NO;
+		1E4BC3C9A2D9995B5339A1F0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 112E1B08BAA94CE3D91F2E00 /* Signing.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+				CODE_SIGN_ENTITLEMENTS = GhostPepper/GhostPepper.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = Q4HNX2JLKT;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = GhostPepper/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1257,6 +1257,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1272,13 +1273,19 @@
 		7EA782C40EAAA1B71A1CBB06 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.frolikov.afflow.cleanup-model-probe";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -1288,6 +1295,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1303,13 +1311,19 @@
 		8DF665B7A698999A85133E2C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.frolikov.afflow.cleanup-model-probe";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -1348,9 +1362,11 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -1371,22 +1387,25 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
-			E539A0CB0CD4C3B8D54B2855 /* Debug */ = {
-				isa = XCBuildConfiguration;
-				baseConfigurationReference = 112E1B08BAA94CE3D91F2E00 /* Signing.xcconfig */;
-				buildSettings = {
-					ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-					CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
-					CODE_SIGN_ENTITLEMENTS = GhostPepper/GhostPepper.entitlements;
-					COMBINE_HIDPI_IMAGES = YES;
-					ENABLE_APP_SANDBOX = YES;
-				ENABLE_HARDENED_RUNTIME = NO;
+		E539A0CB0CD4C3B8D54B2855 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 112E1B08BAA94CE3D91F2E00 /* Signing.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+				CODE_SIGN_ENTITLEMENTS = GhostPepper/GhostPepper.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = Q4HNX2JLKT;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = GhostPepper/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1431,9 +1450,11 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -1447,6 +1468,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
