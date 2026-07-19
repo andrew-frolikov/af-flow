@@ -1,6 +1,5 @@
 import Cocoa
 import AVFoundation
-import CoreGraphics
 import IOKit.hidsystem
 
 enum MicrophonePermissionStatus: Equatable {
@@ -70,14 +69,6 @@ class PermissionChecker {
 
     static func openInputMonitoringSettings() {
         openSystemSettingsPane("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
-    }
-
-    static func hasScreenRecordingPermission() -> Bool {
-        CGPreflightScreenCaptureAccess()
-    }
-
-    static func openScreenRecordingSettings() {
-        openSystemSettingsPane("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
     }
 
     private static func openSystemSettingsPane(_ urlString: String) {

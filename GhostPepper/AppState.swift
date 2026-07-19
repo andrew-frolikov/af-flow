@@ -322,7 +322,6 @@ class AppState: ObservableObject {
     private static let ignoreOtherSpeakersDefaultsKey = "ignoreOtherSpeakers"
     private static let selectedWikiModelDefaultsKey = "selectedWikiModelKind"
     private static let playSoundsDefaultsKey = "playSounds"
-    private static let pepperChatEnabledDefaultsKey = "pepperChatEnabled"
     private static let pepperChatApiKeychainKey = "pepperChatApiKey"
     private static let trelloApiKeyKeychainKey = "trelloApiKey"
     private static let trelloTokenKeychainKey = "trelloToken"
@@ -1693,32 +1692,23 @@ class AppState: ObservableObject {
         return ZoBackend(host: host, apiKey: pepperChatApiKey)
     }
 
+    /// AF Flow hard rule 1: never add an API key, token, or Secrets.swift;
+    /// keys and secrets do not exist in this project. This function used to
+    /// migrate stored Zo/Trello credentials out of UserDefaults and into the
+    /// keychain, then assign them to pepperChatApiKey/trelloApiKey/
+    /// trelloToken and potentially flip pepperChatEnabled on. It no longer
+    /// does any of that: it only marks the load as done and leaves every
+    /// integration key permanently empty, so no credential can ever be
+    /// populated here.
     func loadStoredIntegrationKeysIfNeeded() {
         guard !didLoadStoredIntegrationKeys else { return }
         didLoadStoredIntegrationKeys = true
         isLoadingStoredIntegrationKeys = true
         defer { isLoadingStoredIntegrationKeys = false }
 
-        let migratedPepperChatApiKey = KeychainHelper.migrateUserDefaultsString(
-            defaultsKey: Self.pepperChatApiKeychainKey,
-            keychainKey: Self.pepperChatApiKeychainKey
-        ) ?? ""
-        let migratedTrelloApiKey = KeychainHelper.migrateUserDefaultsString(
-            defaultsKey: Self.trelloApiKeyKeychainKey,
-            keychainKey: Self.trelloApiKeyKeychainKey
-        ) ?? ""
-        let migratedTrelloToken = KeychainHelper.migrateUserDefaultsString(
-            defaultsKey: Self.trelloTokenKeychainKey,
-            keychainKey: Self.trelloTokenKeychainKey
-        ) ?? ""
-
-        pepperChatApiKey = migratedPepperChatApiKey
-        trelloApiKey = migratedTrelloApiKey
-        trelloToken = migratedTrelloToken
-
-        if UserDefaults.standard.object(forKey: Self.pepperChatEnabledDefaultsKey) == nil {
-            pepperChatEnabled = !migratedPepperChatApiKey.isEmpty
-        }
+        pepperChatApiKey = ""
+        trelloApiKey = ""
+        trelloToken = ""
     }
 
     // MARK: - Meeting Transcript

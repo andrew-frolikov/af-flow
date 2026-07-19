@@ -197,7 +197,6 @@ struct SettingsView: View {
     @State private var inputDevices: [AudioInputDevice] = []
     @State private var selectedDeviceID: AudioDeviceID = 0
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var hasScreenRecordingPermission = PermissionChecker.hasScreenRecordingPermission()
     @State private var hasAccessibilityPermission = PermissionChecker.checkAccessibility()
     @State private var hasInputMonitoringPermission = PermissionChecker.checkInputMonitoring()
     @State private var permissionPollTimer: Timer?
@@ -389,7 +388,6 @@ struct SettingsView: View {
         .onAppear {
             inputDevices = AudioDeviceManager.listInputDevices()
             selectedDeviceID = AudioDeviceManager.selectedInputDeviceID() ?? AudioDeviceManager.defaultInputDeviceID() ?? 0
-            refreshScreenRecordingPermission()
             refreshRequiredPermissions()
             startPermissionPollingIfNeeded()
             syncTranscriptionLabRerunDefaults()
@@ -397,7 +395,6 @@ struct SettingsView: View {
             reloadRecognizedVoices()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            refreshScreenRecordingPermission()
             refreshRequiredPermissions()
         }
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsSection)) { note in
@@ -426,10 +423,6 @@ struct SettingsView: View {
             permissionPollTimer?.invalidate()
             permissionPollTimer = nil
         }
-    }
-
-    private func refreshScreenRecordingPermission() {
-        hasScreenRecordingPermission = PermissionChecker.hasScreenRecordingPermission()
     }
 
     private func downloadModel(_ row: RuntimeModelRow) {
@@ -2319,7 +2312,7 @@ struct SettingsView: View {
                         appState.setupMeetingDetector()
                     }
 
-                    Text("When enabled, Ghost Pepper can detect video calls and offer to transcribe them locally. Requires Screen Recording permission for system audio capture.")
+                    Text("When enabled, Ghost Pepper can detect video calls and offer to transcribe them locally using your microphone. Capturing other participants' system audio is not available in AF Flow.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

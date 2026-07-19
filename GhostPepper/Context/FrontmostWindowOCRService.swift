@@ -13,7 +13,9 @@ final class FrontmostWindowOCRService {
     var sensitiveDebugLogger: ((DebugLogCategory, String) -> Void)?
 
     init(
-        permissionProvider: @escaping PermissionProvider = PermissionChecker.hasScreenRecordingPermission,
+        // AF Flow never touches system screen-capture APIs, so this is
+        // always false; callers can still inject `true` in tests.
+        permissionProvider: @escaping PermissionProvider = { false },
         windowCaptureService: WindowCaptureServing = WindowCaptureService(),
         requestFactory: OCRRequestFactory = OCRRequestFactory()
     ) {
@@ -47,7 +49,7 @@ final class FrontmostWindowOCRService {
             return OCRContext(windowContents: text)
         } catch {
             if !permissionProvider() {
-                debugLogger?(.ocr, "Frontmost-window OCR failed while Screen Recording permission appears unavailable: \(error.localizedDescription)")
+                debugLogger?(.ocr, "Frontmost-window OCR failed while window capture appears unavailable: \(error.localizedDescription)")
             } else {
                 debugLogger?(.ocr, "Frontmost-window OCR failed: \(error.localizedDescription)")
             }
