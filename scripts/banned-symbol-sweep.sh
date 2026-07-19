@@ -131,7 +131,8 @@ fi
 # therefore describe absences without naming the removed thing. That is a
 # wording constraint, not a safety gap. Do not relax the check to allow
 # negation phrasing; the wording constraint is the cheaper price to pay.
-PRODUCT_DOCS=(README.md PRIVACY_AUDIT.md docs/index.html docs/pre-deploy-privacy-security.md)
+# docs/index.html deleted with Andrew's approval 2026-07-18 (leftover upstream marketing page).
+PRODUCT_DOCS=(README.md PRIVACY_AUDIT.md docs/pre-deploy-privacy-security.md)
 doc_hits=$(grep -rnE 'ScreenCaptureKit|[Ss]parkle|API key|\.dmg' "${PRODUCT_DOCS[@]}" 2>/dev/null || true)
 if [ -n "$doc_hits" ]; then
   echo "FAIL  product docs describe removed capabilities"
