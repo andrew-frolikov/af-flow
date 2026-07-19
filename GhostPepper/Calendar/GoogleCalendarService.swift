@@ -94,6 +94,9 @@ final class GoogleCalendarService: ObservableObject {
     private func loadStoredTokensIfNeeded(allowUserInteraction: Bool = false) {
         guard !didLoadStoredTokens else { return }
         didLoadStoredTokens = true
+        // AF Flow: Calendar OAuth is permanently disabled (hard rule 1). Never
+        // load or migrate a stored token, even one left behind by an upstream install.
+        guard Self.isConfigured else { return }
         cachedAccessToken = KeychainHelper.migrateUserDefaultsString(
             defaultsKey: Self.tokenKey,
             keychainKey: Self.tokenKey,

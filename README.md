@@ -103,7 +103,7 @@ Every core feature runs 100% on your Mac — verified by AI code review. No trus
 
 ## Acknowledgments
 
-Built with [WhisperKit](https://github.com/argmaxinc/WhisperKit), [LLM.swift](https://github.com/eastriverlee/LLM.swift), [Hugging Face](https://huggingface.co/), and [Sparkle](https://sparkle-project.org/).
+Built with [WhisperKit](https://github.com/argmaxinc/WhisperKit), [LLM.swift](https://github.com/eastriverlee/LLM.swift), and [Hugging Face](https://huggingface.co/).
 
 ## License
 

@@ -50,7 +50,6 @@ These features require explicit user action and API keys. They are **disabled by
 | Trello integration | User configures API key + token in Settings | Yes (`trelloApiKey`, `trelloToken`) |
 | Granola meeting import | User clicks Import and enters API key | Yes (`granolaApiKey`) |
 | Model downloads | User selects a model to download | No (public Hugging Face URLs) |
-| Sparkle update check | Automatic, checks GitHub appcast.xml 1x/24h | No |
 
 ### Verdict
 

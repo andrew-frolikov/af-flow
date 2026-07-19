@@ -1184,14 +1184,6 @@ struct SettingsView: View {
                         )
                     )
 
-                    if appState.frontmostWindowContextEnabled && !hasScreenRecordingPermission {
-                        ScreenRecordingRecoveryView {
-                            _ = PermissionChecker.requestScreenRecordingPermission()
-                            PermissionChecker.openScreenRecordingSettings()
-                            refreshScreenRecordingPermission()
-                        }
-                    }
-
                     Toggle(
                         "Learn from manual corrections after paste",
                         isOn: Binding(
@@ -1199,14 +1191,6 @@ struct SettingsView: View {
                             set: { appState.postPasteLearningEnabled = $0 }
                         )
                     )
-
-                    if appState.postPasteLearningEnabled && !hasScreenRecordingPermission {
-                        ScreenRecordingRecoveryView {
-                            _ = PermissionChecker.requestScreenRecordingPermission()
-                            PermissionChecker.openScreenRecordingSettings()
-                            refreshScreenRecordingPermission()
-                        }
-                    }
 
                     Text("Ghost Pepper uses high-quality OCR on the frontmost window and adds the result to the cleanup prompt. When learning is enabled, Ghost Pepper does a high-quality OCR check about 15 seconds after paste and only keeps narrow, high-confidence corrections.")
                         .font(.caption)
@@ -2279,8 +2263,6 @@ struct SettingsView: View {
         }
     }
 
-    @State private var pepperChatTestResult: String?
-
     private var pepperChatSection: some View {
         VStack(alignment: .leading, spacing: 24) {
             SettingsCard("Availability") {
@@ -2305,163 +2287,6 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            SettingsCard("Zo API") {
-                VStack(alignment: .leading, spacing: 18) {
-                    SettingsField("API Key") {
-                        SecureField("Zo API key (zo_sk_...)", text: $appState.pepperChatApiKey)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 320)
-                    }
-
-                    Text("Get your API key from [Zo Settings > Advanced > Access Tokens](https://zo.computer).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Toggle(
-                        "Include screen context",
-                        isOn: $appState.pepperChatIncludeScreenContext
-                    )
-
-                    Text("When enabled, text from your frontmost window is sent as context with your voice prompt.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    HStack {
-                        Button("Test Connection") {
-                            pepperChatTestResult = nil
-                            Task {
-                                do {
-                                    let backend = appState.makePepperChatBackend()
-                                    guard let backend else {
-                                        pepperChatTestResult = "Add your Zo API key above."
-                                        return
-                                    }
-                                    var response = ""
-                                    try await backend.send(prompt: "Say hello in one short sentence.", screenContext: nil) { chunk in
-                                        response += chunk
-                                    }
-                                    pepperChatTestResult = response.isEmpty ? "Connected but got empty response." : "Connected! Response: \(String(response.prefix(100)))"
-                                } catch {
-                                    pepperChatTestResult = "Failed: \(error.localizedDescription)"
-                                }
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.orange)
-
-                        if let result = pepperChatTestResult {
-                            Text(result)
-                                .font(.caption)
-                                .foregroundStyle(result.hasPrefix("Connected") ? .green : .red)
-                                .lineLimit(2)
-                        }
-                    }
-                }
-            }
-
-            SettingsCard("Trello (optional)") {
-                VStack(alignment: .leading, spacing: 18) {
-                    if appState.trelloToken.isEmpty {
-                        // Not connected
-                        Text("Connect your Trello account to add cards directly from the Context Bundler. Get your API key from [trello.com/power-ups/admin](https://trello.com/power-ups/admin) → click **New** → copy the API key.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        SettingsField("App Key") {
-                            TextField("Paste your Trello API key", text: $appState.trelloApiKey)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 320)
-                        }
-
-                        Button(action: {
-                            let authURL = "https://trello.com/1/authorize?key=\(appState.trelloApiKey)&name=Ghost%20Pepper&scope=read,write&response_type=token&expiration=never"
-                            if let url = URL(string: authURL) {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "link")
-                                Text("Connect Trello")
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
-                        .disabled(appState.trelloApiKey.isEmpty)
-
-                        Text("After clicking Allow on Trello's page, paste the token below:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        SettingsField("Token") {
-                            SecureField("Paste your Trello token here", text: $appState.trelloToken)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 320)
-                        }
-                    } else {
-                        // Connected
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.callout)
-                            Text("Trello connected")
-                                .font(.callout.weight(.medium))
-                            Spacer()
-                            Button("Refresh boards") {
-                                Task { await appState.fetchTrelloBoards() }
-                            }
-                            .buttonStyle(.bordered)
-                            .font(.caption)
-                            Button("Disconnect") {
-                                appState.trelloToken = ""
-                                appState.trelloDefaultListId = ""
-                                appState.trelloBoards = []
-                            }
-                            .buttonStyle(.bordered)
-                            .font(.caption)
-                        }
-
-                        // Default list picker
-                        if !appState.trelloBoards.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Default list (used when you don't specify a board/list name):")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-
-                                Picker("Default list", selection: $appState.trelloDefaultListId) {
-                                    Text("Auto (first list)").tag("")
-                                    ForEach(appState.trelloBoards) { board in
-                                        ForEach(board.lists) { list in
-                                            Text("\(board.name) → \(list.name)").tag(list.id)
-                                        }
-                                    }
-                                }
-                                .labelsHidden()
-                                .frame(maxWidth: 400)
-                            }
-
-                            Text("You can also say a board or list name when speaking — Ghost Pepper will match it automatically. \(appState.trelloBoards.count) boards, \(appState.trelloBoards.flatMap(\.lists).count) lists loaded.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Button("Fetch boards & lists") {
-                                Task { await appState.fetchTrelloBoards() }
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-
-                    if !appState.trelloToken.isEmpty {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.caption)
-                            Text("\"Add to Trello\" will appear in the Context Bundler")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
         }
         .onAppear {
             appState.loadStoredIntegrationKeysIfNeeded()
@@ -2473,49 +2298,6 @@ struct SettingsView: View {
     @State private var meetingDirectoryBookmark: URL? = {
         MeetingTranscriptSettings.loadSaveDirectory()
     }()
-    @State private var claudeAPIKeyInput: String = ""
-    @State private var claudeAPIKeySaved: Bool = false
-    @State private var didLoadClaudeAPIKey = false
-
-    private var crossMeetingQACard: some View {
-        SettingsCard("Cloud API (optional)") {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("2nd Brain Q&A now runs locally. This Claude key is kept for optional cloud-backed legacy indexing and experiments.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Picker("Model", selection: $appState.claudeAPIModel) {
-                    ForEach(ClaudeAPIModel.allCases) { model in
-                        Text(model.displayName).tag(model.rawValue)
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    SecureField("sk-ant-...", text: $claudeAPIKeyInput)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: claudeAPIKeyInput) { _, _ in
-                            claudeAPIKeySaved = false
-                        }
-                    Button(claudeAPIKeySaved ? "Saved" : "Save") {
-                        _ = KeychainHelper.set(claudeAPIKeyInput, for: AnthropicProvider.keychainKey)
-                        claudeAPIKeySaved = true
-                    }
-                    .disabled(claudeAPIKeyInput.isEmpty)
-                    Button("Clear") {
-                        KeychainHelper.delete(AnthropicProvider.keychainKey)
-                        claudeAPIKeyInput = ""
-                        claudeAPIKeySaved = false
-                    }
-                    .disabled(claudeAPIKeyInput.isEmpty && !claudeAPIKeySaved)
-                }
-
-                Text("API key is stored in your macOS Keychain. Get one at [console.anthropic.com](https://console.anthropic.com/settings/keys).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
     private var meetingTranscriptSection: some View {
         VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 8) {
@@ -2679,31 +2461,7 @@ struct SettingsView: View {
                     }
                 }
 
-                crossMeetingQACard
-
-                if !PermissionChecker.hasScreenRecordingPermission() {
-                    SettingsCard("Permissions") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Screen Recording permission is required to capture system audio (what other call participants say).")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-
-                            Button("Grant Screen Recording Permission") {
-                                PermissionChecker.requestScreenRecordingPermission()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.orange)
-                        }
-                    }
-                }
             }
-        }
-        .onAppear {
-            guard !didLoadClaudeAPIKey else { return }
-            didLoadClaudeAPIKey = true
-            let storedKey = KeychainHelper.get(AnthropicProvider.keychainKey) ?? ""
-            claudeAPIKeyInput = storedKey
-            claudeAPIKeySaved = !storedKey.isEmpty
         }
     }
 
@@ -3067,21 +2825,6 @@ private struct RecognizedVoiceLinkedSpeakerProfileRow: View {
 private extension TranscriptionLabSpeakerProfile {
     var recognizedVoiceLinkID: String {
         "\(entryID.uuidString)-\(speakerID)"
-    }
-}
-
-private struct ScreenRecordingRecoveryView: View {
-    let onOpenSettings: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Ghost Pepper needs Screen Recording access. Grant it in System Settings, then return to Ghost Pepper.")
-                .font(.caption)
-                .foregroundStyle(.red)
-
-            Button("Open Screen Recording Settings", action: onOpenSettings)
-            .controlSize(.small)
-        }
     }
 }
 

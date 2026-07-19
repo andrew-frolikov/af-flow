@@ -76,11 +76,6 @@ class PermissionChecker {
         CGPreflightScreenCaptureAccess()
     }
 
-    @discardableResult
-    static func requestScreenRecordingPermission() -> Bool {
-        CGRequestScreenCaptureAccess()
-    }
-
     static func openScreenRecordingSettings() {
         openSystemSettingsPane("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
     }

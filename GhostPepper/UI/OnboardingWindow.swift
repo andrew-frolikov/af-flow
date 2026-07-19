@@ -240,7 +240,6 @@ struct SetupStep: View {
     @State private var inputDevices: [AudioInputDevice] = []
     @State private var selectedDeviceID: AudioDeviceID = 0
     @StateObject private var micLevel = MicLevelMonitor()
-    @StateObject private var screenRecordingPermission = ScreenRecordingPermissionController()
 
     private var allComplete: Bool {
         micGranted && accessibilityGranted && requiredModelsReady
@@ -404,29 +403,6 @@ struct SetupStep: View {
                     }
                 }
 
-                SetupRow(
-                    icon: "rectangle.on.rectangle",
-                    title: "Screen Recording (optional)",
-                    subtitle: "Enhances cleanup by reading on-screen text (never leaves your computer)",
-                    isComplete: screenRecordingPermission.isGranted
-                ) {
-                    if !screenRecordingPermission.isGranted {
-                        Button("Enable") {
-                            screenRecordingPermission.requestAccess()
-                            PermissionChecker.openScreenRecordingSettings()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-                }
-
-                if !screenRecordingPermission.isGranted {
-                    Text("You can enable this later in Settings.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-                }
-
                 VStack(spacing: 8) {
                     SetupRow(
                         icon: "waveform",
@@ -522,9 +498,7 @@ struct SetupStep: View {
                 accessibilityGranted = true
             }
 
-            screenRecordingPermission.refresh()
-
-            if accessibilityGrantedNow && screenRecordingPermission.isGranted {
+            if accessibilityGrantedNow {
                 stopPermissionPolling()
             }
         }

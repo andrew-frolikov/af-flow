@@ -216,25 +216,11 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         recommendation: nil
     )
 
-    static let gemma4WikiModel = CleanupModelDescriptor(
-        kind: .gemma4_12b_it_optiq_4bit_mlx,
-        displayName: "Gemma 4 12B Instruct OptiQ 4-bit MLX (Wiki)",
-        sizeDescription: "~9 GB",
-        fileName: "mlx-community--gemma-4-12B-it-OptiQ-4bit",
-        url: "https://huggingface.co/mlx-community/gemma-4-12B-it-OptiQ-4bit",
-        expectedSHA256: "",
-        expectedByteCount: 0,
-        maxTokenCount: 16_384,
-        recommendation: nil,
-        runtime: .mlxRepository(repoID: "mlx-community/gemma-4-12B-it-OptiQ-4bit")
-    )
-
     static let cleanupModels = [
         compactModel,
         recommendedFastModel,
         recommendedFullModel,
         deepseekR1Qwen7BModel,
-        gemma4WikiModel,
     ]
     static let cleanupGenerationModels = cleanupModels.filter { $0.runtime == .gguf }
     static let wikiGenerationModels = cleanupModels

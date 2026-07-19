@@ -51,7 +51,7 @@ warn_on_output \
 
 echo ""
 echo "Network-capable code paths to review against the release allowlist:"
-git grep -n -I -E 'URLSession|URLRequest|https?://' -- GhostPepper scripts project.yml appcast.xml README.md PRIVACY_AUDIT.md | sed -n '1,120p' || true
+git grep -n -I -E 'URLSession|URLRequest|https?://' -- GhostPepper scripts project.yml README.md PRIVACY_AUDIT.md | sed -n '1,120p' || true
 
 if [ "$failures" -ne 0 ]; then
   echo ""
