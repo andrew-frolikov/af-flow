@@ -21,8 +21,11 @@ final class GoogleCalendarService: ObservableObject {
     @Published var userName: String?
     @Published var authError: String?
 
-    private static let clientID = Secrets.googleClientID
-    private static let clientSecret = Secrets.googleClientSecret
+    // AF Flow: Google Calendar OAuth is permanently disabled. No Secrets.swift
+    // may ever exist in this project (hard rule 1). Empty credentials keep
+    // isConfigured == false, so the whole integration stays inert.
+    private static let clientID = ""
+    private static let clientSecret = ""
     static var isConfigured: Bool {
         !clientID.isEmpty
             && !clientID.contains("YOUR_CLIENT_ID")

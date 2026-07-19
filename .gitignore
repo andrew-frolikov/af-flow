@@ -13,7 +13,8 @@ GhostPepper/Resources/models/
 .env
 .env.*
 Config/LocalSigning.xcconfig
-GhostPepper/Secrets.swift
+# AF Flow: Secrets.swift is intentionally NOT ignored. It must never exist
+# (hard rule 1); un-ignoring it makes any accidental creation visible in git status.
 
 # macOS
 .DS_Store
