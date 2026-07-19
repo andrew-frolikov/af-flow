@@ -41,7 +41,11 @@ INERT_BY_DECISION='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableI
 # clean. The gate had no cloud-wiring check at all. This is the widening, not an
 # exclusion: it encodes a decision Andrew already made and it makes the live
 # layer checkable for the first time.
-INERT_CLOUD_SOURCES='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider|Reader/[A-Za-z]+)\.swift'
+# Exact files only. Codex round 7, MEDIUM: a Reader/[A-Za-z]+ directory pattern
+# allowlisted the live ReaderCaptureSheet.swift UI file too. Neither Reader file
+# constructs a cloud client, so the entry is deleted rather than narrowed. Every
+# entry below names one file, never a directory shape.
+INERT_CLOUD_SOURCES='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider)\.swift'
 # The keychain helper defines the migration function and names the upstream
 # service in a comment explaining why AF Flow does not use it. Test fixtures and
 # the dev-only probe tool carry the upstream bundle id as literal strings.
@@ -58,8 +62,12 @@ check() {
   else
     hits=$(grep -rnE "$pattern" "${CONFIG_PATHS[@]}" 2>/dev/null || true)
   fi
+  # Anchor the allowlist to the start of the line, which is the FILE PATH.
+  # Codex round 7, HIGH: filtering the whole grep hit meant a live file could
+  # suppress itself by mentioning an allowlisted path anywhere in its content,
+  # e.g. TrelloBackend(...) // see GhostPepper/PepperChat/TrelloBackend.swift.
   if [ -n "$allow" ] && [ -n "$hits" ]; then
-    hits=$(printf '%s\n' "$hits" | grep -vE "$allow" || true)
+    hits=$(printf '%s\n' "$hits" | grep -vE "^($allow)" || true)
   fi
 
   if [ -n "$hits" ]; then
@@ -165,7 +173,42 @@ literal_check "no em dash in user-facing strings" '\u2014'
 # bug in this check that buried the three real USD sites under 60 false
 # positives. Every real shape (a `$%` format specifier, a literal price, the
 # standalone word USD) is still caught, and the canary test proves it.
-literal_check "no non-CAD currency in user-facing strings" '[$]%|[$][0-9]+[.,][0-9]|\bUSD\b'
+# Two or more digits after the $ catches whole-dollar prices ($10, $50) while
+# still skipping Swift's single-digit closure shorthand ($0, $1). Codex round 7,
+# HIGH: the previous pattern required a decimal point and so missed exactly the
+# shape that was sitting unlabelled in PROGRESS.md.
+literal_check "no non-CAD currency in user-facing strings" '[$]%|[$][0-9]{2,}|[$][0-9]+[.,][0-9]|\bUSD\b'
+
+# Rule 9 applies to helper-script output too. Codex round 7, MEDIUM: the sweep
+# only looked at Swift, so scripts/extract_granola.py printed an em dash to the
+# terminal while the gate reported clean. Scripts are small and their strings
+# are almost all output, so this checks the raw character rather than parsing
+# Python and shell quoting. No exclusions: the verifier scripts write the
+# characters they allowlist as \u escapes precisely so this can stay absolute.
+# macOS ships bash 3.2, whose $'...' does not expand \u escapes, so a grep
+# pattern written that way silently searches for the literal text instead of
+# the character. Done in python for the same reason the Swift checks are.
+script_hits=$(python3 -c "
+import os
+bad = (chr(0x2014), chr(0x2013))
+for dirpath, _dirs, files in os.walk('scripts'):
+    for name in sorted(files):
+        path = os.path.join(dirpath, name)
+        try:
+            lines = open(path, encoding='utf-8').readlines()
+        except Exception:
+            continue
+        for num, line in enumerate(lines, 1):
+            if any(c in line for c in bad):
+                print('%s:%d:%s' % (path, num, line.strip()))
+" 2>/dev/null || true)
+if [ -n "$script_hits" ]; then
+  echo "FAIL  no em dash in helper scripts"
+  echo "$script_hits" | sed 's/^/        /'
+  fail=1
+else
+  echo "ok    no em dash in helper scripts"
+fi
 
 BIN="build/run-derived/Build/Products/Debug/GhostPepper.app/Contents/MacOS"
 if [ -d "$BIN" ]; then

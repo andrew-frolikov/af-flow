@@ -5,7 +5,7 @@ Extract Granola meeting notes from the local cache into markdown files.
 Reads: ~/Library/Application Support/Granola/cache-v6.json
 Writes: ~/Documents/Ghost Pepper Meetings/{date}/{slug}.md
 
-No API key needed — works entirely from the local cache.
+No API key needed. Works entirely from the local cache.
 """
 
 import json
@@ -230,7 +230,7 @@ def main():
             f.write(markdown)
 
         written += 1
-        print(f'  ✓ {date_folder}/{slug}.md — {title}')
+        print(f'  ✓ {date_folder}/{slug}.md: {title}')
 
     print(f'\nDone! {written} files written, {skipped} skipped')
     print(f'Output: {output_base}')
