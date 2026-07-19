@@ -1267,7 +1267,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.github.matthartman.ghostpepper;
+				PRODUCT_BUNDLE_IDENTIFIER = com.frolikov.afflow;
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -1283,7 +1283,7 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.github.matthartman.GhostPepperTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.frolikov.afflow.tests;
 				SDKROOT = macosx;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GhostPepper.app/Contents/MacOS/GhostPepper";
 			};
@@ -1298,7 +1298,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.github.matthartman.ghostpepper.cleanup-model-probe";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.frolikov.afflow.cleanup-model-probe";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -1314,7 +1314,7 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.github.matthartman.GhostPepperTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.frolikov.afflow.tests;
 				SDKROOT = macosx;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GhostPepper.app/Contents/MacOS/GhostPepper";
 			};
@@ -1329,7 +1329,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.github.matthartman.ghostpepper.cleanup-model-probe";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.frolikov.afflow.cleanup-model-probe";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -1412,7 +1412,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.github.matthartman.ghostpepper;
+				PRODUCT_BUNDLE_IDENTIFIER = com.frolikov.afflow;
 				SDKROOT = macosx;
 			};
 			name = Debug;
