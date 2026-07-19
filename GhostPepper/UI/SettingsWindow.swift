@@ -2250,8 +2250,6 @@ struct SettingsView: View {
         }
     }
 
-    @ObservedObject private var calendarService = GoogleCalendarService.shared
-    @State private var googleAuthCode = ""
     @State private var meetingDirectoryBookmark: URL? = {
         MeetingTranscriptSettings.loadSaveDirectory()
     }()
@@ -2309,58 +2307,6 @@ struct SettingsView: View {
             }
 
             if appState.meetingTranscriptEnabled {
-                SettingsCard("Google Calendar") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        if calendarService.isSignedIn {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                Text("Connected to Google Calendar")
-                                    .font(.body)
-                                Spacer()
-                                Button("Disconnect") {
-                                    calendarService.signOut()
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundColor(.red)
-                                .font(.caption)
-                            }
-                            Text("Meeting titles and attendees will be auto-populated from your calendar when you start a recording.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else if calendarService.isLoading {
-                            HStack(spacing: 8) {
-                                ProgressView().scaleEffect(0.7)
-                                Text("Connecting...")
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else {
-                            Text("Connect Google Calendar to automatically populate meeting titles and attendees when recording.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-
-                            if !GoogleCalendarService.isConfigured {
-                                Text("Google Calendar OAuth is not configured in this build.")
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
-                            }
-                            if let authError = calendarService.authError {
-                                Text(authError)
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
-                            }
-
-                            Button("Connect Google Calendar") {
-                                calendarService.signIn()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.orange)
-                            .disabled(!GoogleCalendarService.isConfigured)
-                        }
-                    }
-                }
-
                 SettingsCard("Transcript Storage") {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {

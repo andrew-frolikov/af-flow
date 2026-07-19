@@ -2,12 +2,18 @@ import SwiftUI
 
 /// Modal sheet that estimates the cost of building an index, then streams
 /// progress while the agent builds it. Closes on completion or cancel.
+///
+/// AF Flow never stores an Anthropic API key (CLAUDE.md hard rule 1), so the
+/// builder `fetchBuilder()` resolves is always the on-device `LocalWikiEngine`
+/// (see `AppState.indexBuilder(for:)`), which reports a $0 cost. The cost
+/// estimate is still surfaced generically below in case a future
+/// `IndexBuilding` implementation reports a non-zero cost, but this sheet no
+/// longer names any specific cloud provider or offers a model picker for one.
 struct BuildIndexSheet: View {
     let kind: IndexKind
     let fetchBuilder: () -> (any IndexBuilding)?
     let onClose: () -> Void
 
-    @AppStorage("claudeAPIModel") private var storedModel: String = ClaudeAPIModel.sonnet.rawValue
     @State private var phase: Phase = .estimating
     @State private var estimate: IndexBuildEstimate?
     @State private var statusLine: String = ""
@@ -17,10 +23,6 @@ struct BuildIndexSheet: View {
     @State private var runningCost: Double = 0
     @State private var errorMessage: String?
     @State private var buildTask: Task<Void, Never>?
-
-    private var selectedModel: ClaudeAPIModel {
-        ClaudeAPIModel(rawValue: storedModel) ?? .sonnet
-    }
 
     enum Phase {
         case estimating
@@ -104,22 +106,14 @@ struct BuildIndexSheet: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     } else {
-                        HStack(spacing: 8) {
-                            Text("**\(estimate.unprocessedCount)** meetings to process using")
-                                .font(.system(size: 13))
-                            Picker("", selection: $storedModel) {
-                                ForEach(ClaudeAPIModel.allCases) { model in
-                                    Text(model.shortDisplayName).tag(model.rawValue)
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(maxWidth: 160)
-                        }
-
-                        let range = ClaudePricing.estimateBuildCostRange(model: selectedModel, meetingCount: estimate.unprocessedCount)
-                        Text("Likely cost: \(formatCost(range.low)) – \(formatCost(range.high))")
+                        // Not reachable today: `fetchBuilder()` always resolves to the
+                        // free, on-device `LocalWikiEngine`, which reports $0. Kept as a
+                        // generic (non-cloud-provider-naming) fallback for a future
+                        // `IndexBuilding` implementation that reports a real cost.
+                        Text("**\(estimate.unprocessedCount)** meetings to process with \(estimate.modelDisplayName).")
+                            .font(.system(size: 13))
+                        Text("Likely cost: \(formatCost(estimate.likelyLowUSD)) – \(formatCost(estimate.likelyHighUSD))")
                             .font(.system(size: 13, weight: .medium))
-
                         Text("Estimate is order-of-magnitude; running cost is shown during the build, and you can hit Stop at any time.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -244,7 +238,7 @@ struct BuildIndexSheet: View {
 
     private func runEstimate() async {
         guard let builder = fetchBuilder() else {
-            self.errorMessage = "Couldn't construct an index builder. Check your backend settings (Claude API key, or local model download)."
+            self.errorMessage = "Couldn't construct an index builder. Check that a local cleanup model is downloaded in Settings."
             self.phase = .failed
             return
         }
@@ -265,7 +259,7 @@ struct BuildIndexSheet: View {
         // honored — AppState's builder cache invalidates when the model
         // setting changes.
         guard let activeBuilder = fetchBuilder() else {
-            errorMessage = "Couldn't construct an index builder. Check your backend settings (Claude API key, or local model download)."
+            errorMessage = "Couldn't construct an index builder. Check that a local cleanup model is downloaded in Settings."
             phase = .failed
             return
         }

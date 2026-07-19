@@ -2724,21 +2724,19 @@ struct MeetingRootView: View {
             )
         }
         .sheet(isPresented: $state.showBuildIndexSheet) {
-            // Check at sheet-present time that an API key exists; the actual
-            // builder is fetched on demand inside the sheet so the model
-            // picker can swap mid-flight.
-            if state.onMakeIndexBuilder?(state.pendingBuildIndexKind) != nil {
-                BuildIndexSheet(
-                    kind: state.pendingBuildIndexKind,
-                    fetchBuilder: { state.onMakeIndexBuilder?(state.pendingBuildIndexKind) },
-                    onClose: {
-                        state.showBuildIndexSheet = false
-                        state.loadIndexes()
-                    }
-                )
-            } else {
-                MissingAPIKeyView(onClose: { state.showBuildIndexSheet = false })
-            }
+            // The builder is fetched on demand inside the sheet. AF Flow
+            // never stores an Anthropic API key (CLAUDE.md hard rule 1), so
+            // `onMakeIndexBuilder` always resolves to the on-device
+            // `LocalWikiEngine` (see `AppState.indexBuilder(for:)`) rather
+            // than the Claude-driven `IndexBuilder` path.
+            BuildIndexSheet(
+                kind: state.pendingBuildIndexKind,
+                fetchBuilder: { state.onMakeIndexBuilder?(state.pendingBuildIndexKind) },
+                onClose: {
+                    state.showBuildIndexSheet = false
+                    state.loadIndexes()
+                }
+            )
         }
         .sheet(isPresented: $state.showNewWikiSheet) {
             NewWikiSheet(state: state)
@@ -4003,16 +4001,7 @@ struct MeetingRootView: View {
 
     // MARK: - Empty State
 
-    @StateObject private var granolaImporter = GranolaImporter()
-    @StateObject private var airtableImporter = AirtableImporter()
-    @State private var showGranolaImport = false
-    @State private var showAirtableImport = false
     @State private var showReaderCapture = false
-    @State private var todayEvents: [CalendarEvent] = []
-    @State private var todayEventsLoaded = false
-    @State private var todayEventsError: String?
-    @State private var whitelistEmail: String = ""
-    @State private var granolaPendingCount: Int? = nil
     @State private var brainBuildStatus: BrainBuildStatus? = nil
 
     enum BrainBuildStatus: Equatable {
@@ -4038,42 +4027,22 @@ struct MeetingRootView: View {
                 homeBrandHeader
                     .padding(.top, 16)
 
-                if !GoogleCalendarService.shared.isSignedIn {
-                    disconnectedQuickActions
-                }
-
-                granolaSyncRow
-                    .padding(.top, GoogleCalendarService.shared.isSignedIn ? 8 : 0)
+                quickActions
 
                 brainBuildRow
                     .padding(.top, 4)
-
-                todayCalendarSection
-                    .padding(.top, GoogleCalendarService.shared.isSignedIn ? 8 : 0)
             }
             .frame(maxWidth: .infinity)
             .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(isPresented: $showGranolaImport, onDismiss: { refreshGranolaPendingCount() }) {
-            GranolaImportView(importer: granolaImporter, state: state)
-        }
-        .sheet(isPresented: $showAirtableImport) {
-            AirtableImportView(importer: airtableImporter)
-        }
         .task {
-            await loadTodayEvents()
-            refreshGranolaPendingCount()
             refreshBrainBuildStatus()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { await loadTodayEvents() }
-            refreshGranolaPendingCount()
             refreshBrainBuildStatus()
         }
         .onReceive(NotificationCenter.default.publisher(for: .meetingRecordingStopped)) { _ in
-            GoogleCalendarService.shared.invalidateTodayCache()
-            Task { await loadTodayEvents() }
             refreshBrainBuildStatus()
         }
         .onReceive(NotificationCenter.default.publisher(for: .indexUpdated)) { _ in
@@ -4180,95 +4149,7 @@ struct MeetingRootView: View {
         return count
     }
 
-    private var granolaSyncRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "tray.and.arrow.down")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-            if let pending = granolaPendingCount, pending > 0 {
-                Button {
-                    showGranolaImport = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Text("Sync \(pending) new from Granola")
-                            .font(.system(size: 12, weight: .medium))
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 10, weight: .semibold))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(Color.orange))
-                    .foregroundColor(.white)
-                }
-                .buttonStyle(.plain)
-            } else if granolaPendingCount == 0 {
-                Text("Granola up to date")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                Button {
-                    showGranolaImport = true
-                } label: {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Sync with Granola")
-            } else {
-                // Pending count is nil — either we haven't parsed yet, or
-                // Granola's cache schema changed under us. Either way, just
-                // expose the sync sheet directly and let the user trigger it.
-                Button {
-                    showGranolaImport = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(GranolaImporter.isInstalled ? "Connect Granola" : "Import from Granola")
-                            .font(.system(size: 12, weight: .medium))
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 10, weight: .semibold))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(Color.orange.opacity(0.85)))
-                    .foregroundColor(.white)
-                }
-                .buttonStyle(.plain)
-                .help("Open the Granola import sheet")
-            }
-
-            Button {
-                showAirtableImport = true
-            } label: {
-                HStack(spacing: 6) {
-                    Text(airtableImporter.isConfigured ? "Sync Airtable CSVs" : "Connect Airtable")
-                        .font(.system(size: 12, weight: .medium))
-                    Image(systemName: "tablecells")
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(Color.orange.opacity(0.85)))
-                .foregroundColor(.white)
-            }
-            .buttonStyle(.plain)
-            .help("Export Airtable tables as CSV files")
-            Spacer()
-        }
-        .frame(maxWidth: 560)
-        .padding(.horizontal, 24)
-    }
-
-    private func refreshGranolaPendingCount() {
-        let dir = MeetingTranscriptSettings.effectiveSaveDirectory()
-        Task.detached(priority: .background) {
-            let count = await GranolaImporter.pendingImportCount(savedTo: dir)
-            await MainActor.run {
-                self.granolaPendingCount = count
-            }
-        }
-    }
-
-    private var disconnectedQuickActions: some View {
+    private var quickActions: some View {
         HStack(spacing: 12) {
             Button("New Personal Note") {
                 state.startNewNote()
@@ -4283,437 +4164,6 @@ struct MeetingRootView: View {
         }
     }
 
-    @ViewBuilder
-    private var todayCalendarSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                Text("Today")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .textCase(.uppercase)
-                Rectangle()
-                    .fill(Color(nsColor: .separatorColor))
-                    .frame(height: 1)
-                if GoogleCalendarService.shared.isSignedIn {
-                    Button {
-                        GoogleCalendarService.shared.invalidateTodayCache()
-                        Task { await loadTodayEvents(userInitiated: true) }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Refresh calendar")
-                }
-            }
-            .padding(.horizontal, 4)
-
-            if !GoogleCalendarService.shared.isSignedIn {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        Button("Connect to Calendar") {
-                            GoogleCalendarService.shared.signIn()
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(!GoogleCalendarService.isConfigured)
-                        Text("BETA")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(Color.orange))
-                        Spacer()
-                    }
-
-                    Divider()
-
-                    Text("Calendar access is invite-only while in beta. Send your email and it can be allow-listed.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if !GoogleCalendarService.isConfigured {
-                        Text("Google Calendar OAuth is not configured in this build.")
-                            .font(.system(size: 11))
-                            .foregroundColor(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if let authError = GoogleCalendarService.shared.authError {
-                        Text(authError)
-                            .font(.system(size: 11))
-                            .foregroundColor(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    HStack(spacing: 8) {
-                        TextField("you@example.com", text: $whitelistEmail)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 12))
-                        Button(primaryWhitelistButtonLabel) {
-                            sendWhitelistRequest(via: hasReliableMailClient ? .defaultMail : .gmail)
-                        }
-                        .disabled(!isLikelyEmail(whitelistEmail))
-                    }
-                    HStack(spacing: 4) {
-                        Text(secondaryWhitelistPrompt)
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                        Button(secondaryWhitelistButtonLabel) {
-                            sendWhitelistRequest(via: hasReliableMailClient ? .gmail : .defaultMail)
-                        }
-                        .buttonStyle(.link)
-                        .font(.system(size: 10))
-                        .disabled(!isLikelyEmail(whitelistEmail))
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
-            } else if !todayEventsLoaded {
-                HStack {
-                    ProgressView().scaleEffect(0.6)
-                    Text("Loading today's events…")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
-            } else if todayEvents.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(todayEventsError == nil ? "No events today" : "No events to show")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                    if let err = todayEventsError {
-                        Text(err)
-                            .font(.system(size: 11))
-                            .foregroundColor(.red)
-                            .textSelection(.enabled)
-                    }
-                    HStack(spacing: 8) {
-                        Button("Refresh") {
-                            GoogleCalendarService.shared.invalidateTodayCache()
-                            Task { await loadTodayEvents(userInitiated: true) }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        Button("Disconnect") {
-                            GoogleCalendarService.shared.signOut()
-                            todayEventsLoaded = false
-                            todayEvents = []
-                            todayEventsError = nil
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
-            } else {
-                if let err = todayEventsError {
-                    HStack(spacing: 6) {
-                        Image(systemName: "wifi.slash")
-                            .font(.system(size: 10))
-                            .foregroundColor(.orange)
-                        Text(err)
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                }
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    eventsList(now: context.date)
-                }
-            }
-        }
-        .frame(maxWidth: 560)
-        .padding(.horizontal, 24)
-    }
-
-    @ViewBuilder
-    private func eventsList(now: Date) -> some View {
-        let timed = todayEvents.filter { !$0.isAllDay && $0.startDate != nil }
-        let allDay = todayEvents.filter { $0.isAllDay }
-
-        // Find the "current" event (start ≤ now ≤ end) and the "next-up" event (first future).
-        let current = timed.first { e in
-            guard let s = e.startDate, let end = e.endDate else { return false }
-            return now >= s && now <= end
-        }
-        let nextUp = timed.first { ($0.startDate ?? .distantFuture) > now }
-
-        // Decide where to insert the now line. Insert it just before the first event whose
-        // start is >= now; if all events are in the past, append it at the end.
-        let nowLineInsertIndex: Int? = {
-            for (i, e) in timed.enumerated() {
-                if (e.startDate ?? .distantFuture) >= now { return i }
-            }
-            return nil // all in past — append at end
-        }()
-
-        VStack(spacing: 0) {
-            ForEach(allDay) { event in
-                CalendarEventRow(event: event, countdownText: nil) {
-                    state.startCalendarMeeting(event)
-                }
-                Divider()
-            }
-
-            ForEach(Array(timed.enumerated()), id: \.element.id) { idx, event in
-                if nowLineInsertIndex == idx {
-                    NowLineView(time: now)
-                    Divider()
-                }
-                let countdown: String? = {
-                    if event.id == current?.id { return countdownText(prefix: "ends in", until: event.endDate, now: now) }
-                    if event.id == nextUp?.id, current == nil { return countdownText(prefix: "in", until: event.startDate, now: now) }
-                    return nil
-                }()
-                CalendarEventRow(event: event, countdownText: countdown) {
-                    state.startCalendarMeeting(event)
-                }
-                if idx != timed.count - 1 {
-                    Divider()
-                }
-            }
-
-            if nowLineInsertIndex == nil && !timed.isEmpty {
-                Divider()
-                NowLineView(time: now)
-            }
-        }
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
-        .cornerRadius(8)
-    }
-
-    private func countdownText(prefix: String, until date: Date?, now: Date) -> String? {
-        guard let date else { return nil }
-        let seconds = Int(date.timeIntervalSince(now))
-        guard seconds > 0 else { return nil }
-        let formatted: String
-        if seconds < 60 {
-            formatted = "<1m"
-        } else if seconds < 3600 {
-            formatted = "\(seconds / 60)m"
-        } else {
-            let h = seconds / 3600
-            let m = (seconds % 3600) / 60
-            formatted = m == 0 ? "\(h)h" : "\(h)h \(m)m"
-        }
-        return "\(prefix) \(formatted)"
-    }
-
-    private func isLikelyEmail(_ s: String) -> Bool {
-        let trimmed = s.trimmingCharacters(in: .whitespaces)
-        guard let at = trimmed.firstIndex(of: "@") else { return false }
-        let domain = trimmed[trimmed.index(after: at)...]
-        return !domain.isEmpty && domain.contains(".") && trimmed.startIndex < at
-    }
-
-    private enum WhitelistTransport {
-        case defaultMail
-        case gmail
-    }
-
-    /// Bundle IDs we trust to actually handle mailto URLs reliably (i.e. real mail
-    /// clients with configured accounts in the common case). Apple Mail is intentionally
-    /// excluded — it's the system default whether or not the user has ever set up
-    /// an account, and we have no way to detect configuration without Full Disk Access.
-    /// Browsers are also excluded — they often "handle" mailto by falling back to the
-    /// system default mail app, which loops us right back to the Apple Mail problem.
-    private static let knownReliableMailClients: Set<String> = [
-        "com.readdle.smartemail-Mac",  // Spark
-        "it.bloop.airmail",             // Airmail
-        "it.bloop.airmail3",
-        "com.mimestream.Mimestream",
-        "com.microsoft.Outlook",
-        "com.flashlightsoft.flashemail", // Newton
-        "com.freron.MailMate",
-        "com.postbox-inc.postbox",
-        "org.mozilla.thunderbird",
-        "com.canarymail.macos",         // Canary
-        "com.proton.mail",              // Proton Mail desktop
-    ]
-
-    /// True iff the system's default mailto handler is in the allow-list.
-    /// If false, we route to Gmail web compose instead — which always works and
-    /// avoids prompting the user to set up Apple Mail or some browser fallback chain.
-    private var hasReliableMailClient: Bool {
-        guard let url = URL(string: "mailto:test@example.com"),
-              let handler = NSWorkspace.shared.urlForApplication(toOpen: url),
-              let bundleID = Bundle(url: handler)?.bundleIdentifier else {
-            return false
-        }
-        return Self.knownReliableMailClients.contains(bundleID)
-    }
-
-    private var primaryWhitelistButtonLabel: String {
-        hasReliableMailClient ? "Request whitelist" : "Send via Gmail"
-    }
-
-    private var secondaryWhitelistPrompt: String {
-        hasReliableMailClient ? "Prefer Gmail?" : "Want to use your mail app instead?"
-    }
-
-    private var secondaryWhitelistButtonLabel: String {
-        hasReliableMailClient ? "Send via Gmail in browser" : "Try default mail app"
-    }
-
-    private func sendWhitelistRequest(via transport: WhitelistTransport) {
-        let email = whitelistEmail.trimmingCharacters(in: .whitespaces)
-        guard isLikelyEmail(email) else { return }
-        let to = "support@example.invalid"
-        let subject = "Whitelist request for Ghost Pepper"
-        let body = "Please allow-list this email address for Ghost Pepper calendar integration: \(email)"
-        let allowed = CharacterSet.urlQueryAllowed
-        guard let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: allowed),
-              let encodedBody = body.addingPercentEncoding(withAllowedCharacters: allowed) else {
-            return
-        }
-        let urlString: String
-        switch transport {
-        case .defaultMail:
-            urlString = "mailto:\(to)?subject=\(encodedSubject)&body=\(encodedBody)"
-        case .gmail:
-            urlString = "https://mail.google.com/mail/?view=cm&fs=1&to=\(to)&su=\(encodedSubject)&body=\(encodedBody)"
-        }
-        guard let url = URL(string: urlString) else { return }
-        NSWorkspace.shared.open(url)
-    }
-
-    private func loadTodayEvents(userInitiated: Bool = false) async {
-        guard GoogleCalendarService.shared.isSignedIn else {
-            todayEvents = []
-            todayEventsError = nil
-            todayEventsLoaded = false
-            return
-        }
-        if !GoogleCalendarService.shared.hasLoadedStoredTokens {
-            if userInitiated {
-                GoogleCalendarService.shared.loadStoredConnectionForUserAction()
-            } else {
-                GoogleCalendarService.shared.loadStoredConnectionSilently()
-            }
-            guard GoogleCalendarService.shared.isSignedIn else {
-                todayEvents = []
-                todayEventsError = "Ghost Pepper couldn't access the stored Calendar connection. Reconnect Google Calendar."
-                todayEventsLoaded = true
-                return
-            }
-        }
-        let result = await GoogleCalendarService.shared.eventsForToday()
-        todayEvents = result.events
-        todayEventsError = result.errorMessage
-        todayEventsLoaded = true
-    }
-}
-
-private struct NowLineView: View {
-    let time: Date
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(timeLabel)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(.orange)
-                .frame(width: 70, alignment: .leading)
-            Circle()
-                .fill(Color.orange)
-                .frame(width: 6, height: 6)
-            Rectangle()
-                .fill(Color.orange)
-                .frame(height: 1)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
-    }
-
-    private var timeLabel: String {
-        let f = DateFormatter()
-        f.timeStyle = .short
-        return f.string(from: time)
-    }
-}
-
-private struct CalendarEventRow: View {
-    let event: CalendarEvent
-    let countdownText: String?
-    let onStart: () -> Void
-
-    private var timeText: String {
-        if event.isAllDay { return "All day" }
-        guard let start = event.startDate else { return "" }
-        let f = DateFormatter()
-        f.timeStyle = .short
-        return f.string(from: start)
-    }
-
-    private var attendeeText: String? {
-        guard event.attendeeCount > 0 else { return nil }
-        if event.attendeeCount == 1 { return "1 person" }
-        return "\(event.attendeeCount) people"
-    }
-
-    private var isPast: Bool {
-        guard let end = event.endDate else { return false }
-        return end < Date()
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(timeText)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(.secondary)
-                .frame(width: 70, alignment: .leading)
-
-            Text(event.title)
-                .font(.system(size: 13))
-                .foregroundColor(isPast ? .secondary : .primary)
-                .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            if let attendeeText = attendeeText {
-                Text(attendeeText)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-
-            if let countdownText {
-                Text(countdownText)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.orange)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .overlay(
-                        Capsule().stroke(Color.orange.opacity(0.4), lineWidth: 1)
-                    )
-            }
-
-            if !event.isAllDay {
-                Button(action: onStart) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 9))
-                        Text(event.meetLink != nil ? "Start & Join" : "Start")
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .foregroundColor(.orange)
-                    .overlay(
-                        Capsule().stroke(Color.orange, lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
 }
 
 // MARK: - Content View for a Single Tab
@@ -10105,34 +9555,6 @@ struct MeetingSidebarView: View {
         }
         .buttonStyle(.plain)
         .padding(.top, 4)
-    }
-}
-
-// MARK: - Missing API Key
-
-private struct MissingAPIKeyView: View {
-    let onClose: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: "key")
-                    .font(.system(size: 16))
-                Text("Cloud indexing not available")
-                    .font(.system(size: 16, weight: .semibold))
-            }
-            Text("Index building uses a cloud AI provider, which isn't available in AF Flow.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            HStack {
-                Spacer()
-                Button("Close", action: onClose)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
-            }
-        }
-        .padding(20)
-        .frame(width: 400)
     }
 }
 

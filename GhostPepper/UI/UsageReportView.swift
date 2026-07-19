@@ -76,7 +76,7 @@ struct UsageReportView: View {
                 .foregroundColor(.secondary)
                 .textCase(.uppercase)
             if snapshot.totalWindowed == 0 && snapshot.totalLifetime == 0 {
-                Text("No usage tracked yet. Run dictation, record a meeting, import from Granola, build a People index, or ask a Q&A question — counts show up here.")
+                Text("No usage tracked yet. Run dictation, record a meeting, build a People index, or ask a Q&A question — counts show up here.")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .padding(.vertical, 8)

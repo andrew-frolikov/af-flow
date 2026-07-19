@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		00A17B847D4D401A8E89F14A /* AirtableImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A17B837D4D401A8E89F14A /* AirtableImporter.swift */; };
-		00A17B867D4D401A8E89F14A /* AirtableImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A17B857D4D401A8E89F14A /* AirtableImportView.swift */; };
 		00B000000000000000000001 /* IndexBuilding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000001 /* IndexBuilding.swift */; };
 		00B000000000000000000002 /* WikiKindStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000002 /* WikiKindStore.swift */; };
 		00B000000000000000000003 /* QMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000003 /* QMDService.swift */; };
@@ -123,7 +122,6 @@
 		80C9E55FF57A1A03033DDDAE /* SettingsWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207AAC1CBC60052D1493D13D /* SettingsWindow.swift */; };
 		814EF252650AB2BAADC12D49 /* QAAnswerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF10422C55DDA1F8B026ADA7 /* QAAnswerView.swift */; };
 		826FB25FE79E25F566EBEA68 /* sprite_frame_2.png in Resources */ = {isa = PBXBuildFile; fileRef = 4204197D6E98623EA69866C9 /* sprite_frame_2.png */; };
-		8323B1A2E48B64B493939727 /* GranolaImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89E71C9D2C08957AB78FA5E /* GranolaImportView.swift */; };
 		8990B2F77435E351A458EDD9 /* DebugLogWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2715D9117D8664700616D95A /* DebugLogWindow.swift */; };
 		8BCB1AE8A984462B0635BA09 /* SystemAudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14BBAF87158BF49AB528B979 /* SystemAudioRecorder.swift */; };
 		8F4C6360C1304C4A145DC34F /* LocalLLMProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5336D97A974B974B025ED4 /* LocalLLMProvider.swift */; };
@@ -226,7 +224,6 @@
 
 /* Begin PBXFileReference section */
 		00A17B837D4D401A8E89F14A /* AirtableImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirtableImporter.swift; sourceTree = "<group>"; };
-		00A17B857D4D401A8E89F14A /* AirtableImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirtableImportView.swift; sourceTree = "<group>"; };
 		00A000000000000000000001 /* IndexBuilding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexBuilding.swift; sourceTree = "<group>"; };
 		00A000000000000000000002 /* WikiKindStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStore.swift; sourceTree = "<group>"; };
 		00A000000000000000000003 /* QMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QMDService.swift; sourceTree = "<group>"; };
@@ -381,7 +378,6 @@
 		B15111386E6EE359ACF9BF66 /* MeetingWindowHeuristicsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingWindowHeuristicsTests.swift; sourceTree = "<group>"; };
 		B219A1BCAC2EBC64DDAE6960 /* UsageStatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStatsStore.swift; sourceTree = "<group>"; };
 		B8760607B80C14BCBD5F9FC0 /* TextPasterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPasterTests.swift; sourceTree = "<group>"; };
-		B89E71C9D2C08957AB78FA5E /* GranolaImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GranolaImportView.swift; sourceTree = "<group>"; };
 		BA57E9C267251FC86A8C8672 /* PhysicalKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalKey.swift; sourceTree = "<group>"; };
 		BB052D817F3005B509E9D479 /* DebugLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogStore.swift; sourceTree = "<group>"; };
 		BC2402355479C57FB26A884B /* IndexKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexKind.swift; sourceTree = "<group>"; };
@@ -648,12 +644,10 @@
 		50C964CA46111D1FD8AFE84B /* UI */ = {
 			isa = PBXGroup;
 			children = (
-				00A17B857D4D401A8E89F14A /* AirtableImportView.swift */,
 				8EC7E1A9685759595E98ABB5 /* BuildIndexSheet.swift */,
 				1AC12AC919C182CDEF77DB11 /* CommandKSearchSheet.swift */,
 				95281DF90A125CA223FCEE7A /* ContextBubbleView.swift */,
 				2715D9117D8664700616D95A /* DebugLogWindow.swift */,
-				B89E71C9D2C08957AB78FA5E /* GranolaImportView.swift */,
 				864660499212282B8ADC1AA7 /* HighlightedTextView.swift */,
 				2F22B92A6ECEE8A19C9A5095 /* IndexEntryView.swift */,
 				7FC3D36DE7AC456246062883 /* IndexListView.swift */,
@@ -1043,7 +1037,6 @@
 				1AB34878C4E7E375F34A1339 /* CleanupModelProbeRunner.swift in Sources */,
 				1D533340C55B7F67AE1B4E94 /* CleanupPromptBuilder.swift in Sources */,
 				17AF31EA19761CA8B7DF5F9A /* CleanupSettings.swift in Sources */,
-				00A17B867D4D401A8E89F14A /* AirtableImportView.swift in Sources */,
 				00A17B847D4D401A8E89F14A /* AirtableImporter.swift in Sources */,
 				9A6A342D232B4D11E8604B89 /* CommandKSearchSheet.swift in Sources */,
 				38CDCD968C2E4EBA2F8C59A5 /* ContextBubbleView.swift in Sources */,
@@ -1057,7 +1050,6 @@
 				2911F1771ED7BA232F973EC1 /* FrontmostWindowOCRService.swift in Sources */,
 				31E37E3EDDB8A0E5011BCA54 /* GhostPepperApp.swift in Sources */,
 				B3DB833B0C853CCB9A2C52ED /* GoogleCalendarService.swift in Sources */,
-				8323B1A2E48B64B493939727 /* GranolaImportView.swift in Sources */,
 				41585ECBAFB5534CB6AE4FC5 /* GranolaImporter.swift in Sources */,
 				44E13DF256A7BE7761A7C540 /* HighlightedTextView.swift in Sources */,
 				BF329CF451CC34A3B74348CC /* HotkeyMonitor.swift in Sources */,

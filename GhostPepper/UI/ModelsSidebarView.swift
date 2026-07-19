@@ -1,24 +1,17 @@
 import SwiftUI
 
 /// Right-side panel showing what Ghost Pepper does, which model is doing it,
-/// and the full toolkit of local + cloud models. Local model rows expose
-/// inline download/delete affordances; keychain edits still live in Settings.
+/// and the toolkit of local models. Local model rows expose inline
+/// download/delete affordances.
 struct ModelsSidebarView: View {
     @AppStorage("speechModel") private var selectedSpeechModelID: String = SpeechModelCatalog.defaultModelID
     @AppStorage("selectedCleanupModelKind") private var selectedCleanupModelKindRaw: String = LocalCleanupModelKind.qwen35_0_8b_q4_k_m.rawValue
-    @AppStorage("claudeAPIModel") private var selectedClaudeModelRaw: String = ClaudeAPIModel.sonnet.rawValue
-    @AppStorage("agentBackend") private var selectedAgentBackendRaw: String = "claude:\(ClaudeAPIModel.sonnet.rawValue)"
 
     @ObservedObject var cleanupManager: TextCleanupManager
     @ObservedObject var modelManager: ModelManager
     let onDownloadSpeechModel: (String) -> Void
 
     @State private var refreshTick = 0
-    /// AF Flow never stores or accepts an Anthropic API key (CLAUDE.md hard
-    /// rule 1), so this is always false. Kept as a constant rather than a
-    /// keychain-backed `@State` so the cloud section is structurally unable
-    /// to report a key as configured.
-    private let hasClaudeKey = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -28,7 +21,6 @@ struct ModelsSidebarView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     functionsSection
                     localModelsSection
-                    cloudModelsSection
                     footer
                 }
                 .padding(.horizontal, 12)
@@ -219,44 +211,13 @@ struct ModelsSidebarView: View {
         }
     }
 
-    // MARK: - Section 3 · Cloud models
-
-    private var cloudModelsSection: some View {
-        section(title: "Cloud models") {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(hasClaudeKey ? Color.green : Color.secondary.opacity(0.4))
-                    .frame(width: 6, height: 6)
-                Text(hasClaudeKey
-                     ? "Anthropic API key configured"
-                     : "Anthropic API key not set")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 4)
-
-            ForEach(ClaudeAPIModel.allCases) { model in
-                LocalModelRow(
-                    title: model.shortDisplayName,
-                    subtitle: model.rawValue,
-                    capabilities: ["optional cloud indexing"],
-                    isDownloaded: hasClaudeKey,
-                    isActive: hasClaudeKey && agentBackend == .claude(model)
-                )
-            }
-        }
-    }
-
     // MARK: - Footer
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 4) {
             Divider()
-            Text("Most of Ghost Pepper runs 100% on-device.")
+            Text("Ghost Pepper runs 100% on-device.")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary)
-            Text("Cloud models are optional and live in your Keychain.")
-                .font(.system(size: 10))
                 .foregroundColor(.secondary)
         }
         .padding(.top, 4)
@@ -281,29 +242,6 @@ struct ModelsSidebarView: View {
         return preferred.compactMap { kind in
             TextCleanupManager.cleanupModels.first { $0.kind == kind && TextCleanupManager.isModelDownloaded(kind) }
         }.first
-    }
-
-    private var claudeModel: ClaudeAPIModel {
-        ClaudeAPIModel(rawValue: selectedClaudeModelRaw) ?? .sonnet
-    }
-
-    /// Resolved agent backend from the persisted setting. Drives both the
-    /// "Agent" function-row icon (cloud/local) and the active-row highlights
-    /// in the Local/Cloud sections below.
-    private var agentBackend: AgentBackend {
-        AgentBackend.decode(selectedAgentBackendRaw) ?? .claude(claudeModel)
-    }
-
-    private var agentBackendIsLocal: Bool { agentBackend.isLocal }
-
-    private func localAgentLabel(for kind: LocalCleanupModelKind) -> String {
-        switch kind {
-        case .qwen35_0_8b_q4_k_m: return "Qwen 3.5 0.8B (local)"
-        case .qwen35_2b_q4_k_m: return "Qwen 3.5 2B (local)"
-        case .qwen35_4b_q4_k_m: return "Qwen 3.5 4B (local)"
-        case .deepseek_r1_qwen_7b_q4_k_m: return "DeepSeek R1 7B (local)"
-        case .gemma4_12b_it_optiq_4bit_mlx: return "Gemma 4 12B MLX (local)"
-        }
     }
 
     private var diarizationLabel: String {
@@ -346,8 +284,7 @@ private enum ModelLocation { case local, cloud }
 
 /// FunctionRow variant that hosts a Picker (or any inline selector view) on
 /// the secondary line. The picker is constrained to choices the user can
-/// actually use — caller filters to downloaded local models or to cloud
-/// models with an API key.
+/// actually use — caller filters to downloaded local models.
 private struct FunctionRowPicker<Picker: View>: View {
     let icon: String
     let title: String
