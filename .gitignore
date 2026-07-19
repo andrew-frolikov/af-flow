@@ -66,3 +66,6 @@ inspo/
 GhostPepper/GhostPepper-Dev.entitlements
 GhostPepper/Meeting/GranolaSessionAuth.swift
 GhostPepper/Meeting/GranolaSessionSync.swift
+
+# AF Flow session handoffs
+.handoff/
