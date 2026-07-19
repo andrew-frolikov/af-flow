@@ -4,7 +4,6 @@ import ServiceManagement
 
 struct MenuBarView: View {
     @ObservedObject var appState: AppState
-    @ObservedObject var updaterController: UpdaterController
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -89,13 +88,6 @@ struct MenuBarView: View {
                     }
                 }
             }
-
-            Divider()
-
-            Button(updaterController.updateAvailable ? "Update Available — Install Now" : "Check for Updates") {
-                updaterController.checkForUpdates()
-            }
-            .foregroundColor(updaterController.updateAvailable ? .orange : nil)
 
             Divider()
 
