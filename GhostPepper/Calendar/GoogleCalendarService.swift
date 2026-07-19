@@ -255,7 +255,7 @@ final class GoogleCalendarService: ObservableObject {
             switch await fetchEvents(calendarID: "primary", timeMin: startOfDay, timeMax: endOfDay) {
             case .success(let events):
                 rememberTodayCache(events)
-                return TodayResult(events: events, errorMessage: "Couldn't list calendars (\(listErr.message)). Showing primary only — try Disconnect & Reconnect.")
+                return TodayResult(events: events, errorMessage: "Couldn't list calendars (\(listErr.message)). Showing primary only. Try Disconnect & Reconnect.")
             case .failure(let primaryErr):
                 return fallbackToDiskCache(reason: "Calendar fetch failed: \(primaryErr.message)")
             }
@@ -610,7 +610,7 @@ final class GoogleCalendarService: ObservableObject {
         }
 
         if let error = json["error"] as? String {
-            print("GoogleCalendar: token error: \(error) — \(json["error_description"] ?? "")")
+            print("GoogleCalendar: token error: \(error) - \(json["error_description"] ?? "")")
             return nil
         }
 

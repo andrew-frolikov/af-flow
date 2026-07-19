@@ -18,10 +18,10 @@ enum LocalWikiPrompts {
     2-4 concrete sentences.
 
     ## Participants
-    - [[Full Name]] — role/title; affiliation
+    - [[Full Name]]: role/title; affiliation
 
     ## Mentioned People
-    - [[Full Name]] — why they came up; possible role: role/title/type; confidence: low|medium|high
+    - [[Full Name]]: why they came up; possible role: role/title/type; confidence: low|medium|high
 
     ## Topics
     - short topic phrase
@@ -128,7 +128,7 @@ enum LocalWikiPrompts {
 
     static let cardExtractionSystem = """
     You convert meeting extraction notes into a strict JSON object. \
-    Reply with ONLY a JSON object — no prose, no markdown fences.
+    Reply with ONLY a JSON object: no prose, no markdown fences.
 
     The JSON shape:
     {
@@ -224,7 +224,7 @@ enum LocalWikiPrompts {
 
     static let adjudicationSystem = """
     You disambiguate a name mention against known entries. Reply with ONLY a \
-    JSON object: {"answer": "A"} — a single capital letter, nothing else.
+    JSON object: {"answer": "A"}, a single capital letter, nothing else.
     """
 
     static func adjudicationUser(name: String, context: String, candidates: [String]) -> String {
@@ -240,7 +240,7 @@ enum LocalWikiPrompts {
             out += "\n\(letters[i]). \(candidate)"
         }
         let newLetter = letters[min(candidates.count, 5)]
-        out += "\n\(newLetter). Someone new / can't tell — do not merge."
+        out += "\n\(newLetter). Someone new / can't tell: do not merge."
         out += "\n\nReply with the JSON object."
         return out
     }
@@ -271,7 +271,7 @@ enum LocalWikiPrompts {
         """
         You write the "\(section.rawValue)" section of a \(spec.entityNoun) dossier, \
         from meeting digests provided by the user. Write 1 short markdown \
-        section body — no heading, no preamble, no code fences.
+        section body: no heading, no preamble, no code fences.
 
         \(section.instruction)
 
@@ -299,7 +299,7 @@ enum LocalWikiPrompts {
 
     static let mergeDossierSystem = """
     You merge new findings into an existing dossier body. Output ONLY the \
-    merged markdown body — no YAML frontmatter, no leading or trailing \
+    merged markdown body: no YAML frontmatter, no leading or trailing \
     `---` separators, no code fences.
 
     Preserve content from the existing body that's still accurate, fold in \
@@ -314,7 +314,7 @@ enum LocalWikiPrompts {
 
         ## Existing dossier body
 
-        \(existingBody.isEmpty ? "(empty — this is the first substantive write)" : existingBody)
+        \(existingBody.isEmpty ? "(empty: this is the first substantive write)" : existingBody)
 
         ## New findings to merge in
 

@@ -62,7 +62,7 @@ final class IndexBuilder: IndexBuilding {
 
         let system = """
         You merge new findings into an existing dossier body. Output ONLY the
-        merged markdown body — no YAML frontmatter, no leading or trailing
+        merged markdown body: no YAML frontmatter, no leading or trailing
         `---` separators. Preserve content from the existing body that's still
         accurate, fold in genuinely new information, and remove redundancy.
 
@@ -77,7 +77,7 @@ final class IndexBuilder: IndexBuilding {
 
         ## Existing dossier body
 
-        \(existingBody.isEmpty ? "(empty — this is the first substantive write)" : existingBody)
+        \(existingBody.isEmpty ? "(empty: this is the first substantive write)" : existingBody)
 
         ## New findings to merge in
 
@@ -184,7 +184,7 @@ final class IndexBuilder: IndexBuilding {
         let totalCount = allMeetings.count
 
         if unprocessedMeetings.isEmpty {
-            continuation.yield(.status("Index is up to date — nothing to process."))
+            continuation.yield(.status("Index is up to date. Nothing to process."))
             continuation.yield(.completed)
             continuation.finish()
             return

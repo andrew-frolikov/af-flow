@@ -10,8 +10,6 @@ final class PepperChatWindowController: NSObject, NSWindowDelegate {
     private var window: NSPanel?
     private var isMinimized = false
     var onOpenInMeetings: ((URL) -> Void)?
-    var onSendToTrello: ((String, String?) -> Void)?
-    var isTrelloConfigured: () -> Bool = { false }
 
     func show(session: PepperChatSession) {
         if let window {
@@ -27,17 +25,6 @@ final class PepperChatWindowController: NSObject, NSWindowDelegate {
         let rootView = ContextBubbleView(
             session: session,
             onMinimize: onMinimize,
-            onSendToZo: { prompt, screenContext in
-                Task {
-                    await session.sendMessage(prompt, screenContext: screenContext)
-                }
-            },
-            onSendToTrello: onSendToTrello,
-            isTrelloConfigured: isTrelloConfigured(),
-            onCopyBundle: { bundle in
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(bundle, forType: .string)
-            },
             onOpenInMeetings: { [weak self] url in
                 self?.onOpenInMeetings?(url)
             }

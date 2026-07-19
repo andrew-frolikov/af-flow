@@ -191,7 +191,7 @@ final class GranolaImporter: ObservableObject {
                 || (apiChapters != nil && !apiChapters!.isEmpty)
 
             guard hasContent else {
-                Self.debugLog("[GranolaImporter] Skipping \(title) — no content from API")
+                Self.debugLog("[GranolaImporter] Skipping \(title): no content from API")
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 continue
             }
@@ -214,7 +214,7 @@ final class GranolaImporter: ObservableObject {
             // back to whatever was already in the file as preformatted body.
             let mergedChaptersMarkdown: String? = (apiChapters?.isEmpty == false) ? nil : existingChapters
 
-            Self.debugLog("[GranolaImporter] Writing \(title) — transcript:\(!mergedTranscript.isEmpty) summary:\(mergedSummary != nil) notes:\(mergedNotes != nil) chapters:\(apiChapters != nil ? "api" : (existingChapters != nil ? "existing" : "none"))")
+            Self.debugLog("[GranolaImporter] Writing \(title): transcript:\(!mergedTranscript.isEmpty) summary:\(mergedSummary != nil) notes:\(mergedNotes != nil) chapters:\(apiChapters != nil ? "api" : (existingChapters != nil ? "existing" : "none"))")
 
             // Build full markdown with all available content
             let markdown = Self.buildMarkdown(

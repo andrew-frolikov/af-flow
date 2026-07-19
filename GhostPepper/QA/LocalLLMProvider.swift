@@ -119,12 +119,12 @@ struct LocalLLMProvider: LLMProvider {
             }
             body += "</tools>\n\n"
             body += """
-            To call a tool, emit a tool_call block exactly like this — JSON inside XML tags:
+            To call a tool, emit a tool_call block exactly like this, JSON inside XML tags:
             <tool_call>
             {"name": "<tool name>", "arguments": {<json arguments>}}
             </tool_call>
 
-            You may emit multiple tool_call blocks in a single turn. After each round of tools, the user message will contain <tool_response> blocks with the results — read them and either continue answering or call more tools. When you've gathered enough information, write your final answer in plain text with no tool_call tags.
+            You may emit multiple tool_call blocks in a single turn. After each round of tools, the user message will contain <tool_response> blocks with the results. Read them and either continue answering or call more tools. When you've gathered enough information, write your final answer in plain text with no tool_call tags.
             """
         }
         body += "\n"

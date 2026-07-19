@@ -30,7 +30,7 @@ struct NewWikiSheet: View {
                 Spacer()
             }
 
-            Text("2nd Brains are folders of dossiers built from your meetings by the local model — like the People index, for any category. Approve a suggestion or define your own.")
+            Text("2nd Brains are folders of dossiers built from your meetings by the local model, like the People index, for any category. Approve a suggestion or define your own.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
 
@@ -82,7 +82,7 @@ struct NewWikiSheet: View {
             }
 
             if state.wikiProposals.isEmpty && !isGenerating {
-                Text("No pending suggestions. The local model proposes 2nd Brains once it has digested enough meetings — or ask it now.")
+                Text("No pending suggestions. The local model proposes 2nd Brains once it has digested enough meetings, or ask it now.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -206,7 +206,7 @@ struct NewWikiSheet: View {
                 let proposals = try await generate()
                 state.loadIndexes()
                 if proposals.isEmpty {
-                    generateMessage = "Nothing new to suggest — either too few meetings are digested yet, or the existing 2nd Brains already cover the archive."
+                    generateMessage = "Nothing new to suggest: either too few meetings are digested yet, or the existing 2nd Brains already cover the archive."
                 }
             } catch {
                 generateMessage = "Suggestion run failed: \(error.localizedDescription)"

@@ -1402,13 +1402,13 @@ final class GhostPepperTests: XCTestCase {
             managerState: .ready,
             managerError: nil,
             currentStatus: .error,
-            currentErrorMessage: "Accessibility access required — grant permission then click Retry"
+            currentErrorMessage: "Accessibility access required: grant permission then click Retry"
         )
 
         XCTAssertEqual(next.status, .error)
         XCTAssertEqual(
             next.errorMessage,
-            "Accessibility access required — grant permission then click Retry"
+            "Accessibility access required: grant permission then click Retry"
         )
     }
 

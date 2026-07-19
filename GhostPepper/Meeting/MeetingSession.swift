@@ -218,7 +218,7 @@ final class MeetingSession: ObservableObject {
         meetingEndCheckTimer = nil
         inactiveMeetingPollCount = 0
 
-        print("MeetingSession: stopped '\(transcript.meetingName)' — \(transcript.segments.count) segments, \(transcript.formattedDuration)")
+        print("MeetingSession: stopped '\(transcript.meetingName)': \(transcript.segments.count) segments, \(transcript.formattedDuration)")
     }
 
     private func recordSavedChunk(url: URL, source: AudioStreamSource) {
@@ -625,7 +625,7 @@ final class MeetingSession: ObservableObject {
                 print("MeetingSession: transcript file created at \(url.path)")
             }
         } catch {
-            print("MeetingSession: failed to save transcript — \(error.localizedDescription)")
+            print("MeetingSession: failed to save transcript: \(error.localizedDescription)")
         }
     }
 
@@ -671,7 +671,7 @@ final class MeetingSession: ObservableObject {
         meetingEndCheckTimer?.invalidate()
         meetingEndCheckTimer = nil
         inactiveMeetingPollCount = 0
-        print("MeetingSession: automatic stop requested — \(reason)")
+        print("MeetingSession: automatic stop requested: \(reason)")
         if let onAutoStopRequested {
             onAutoStopRequested(self)
             return

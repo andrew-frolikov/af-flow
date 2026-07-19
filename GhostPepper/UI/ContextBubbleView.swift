@@ -21,21 +21,16 @@ private struct PepperLogo: View {
 /// The Ghost Pepper Context Bubble — a branded floating panel used to prompt
 /// the user when a meeting is auto-detected in a call app.
 ///
-/// This view previously also hosted a cloud "Context Bundler" chat UI (send a
-/// captured command + screen context to the Zo cloud service, or to Trello).
-/// That UI is out of scope for AF Flow (CLAUDE.md hard rule 1: no cloud
-/// services, keys, or tokens) and has been removed. `onSendToZo`,
-/// `onSendToTrello`, `isTrelloConfigured`, and `onCopyBundle` remain as
-/// accepted-but-unused parameters so the call site in `PepperChatWindow.swift`
-/// (and its `AppState` wiring, which is non-UI and out of this cleanup's
-/// scope) does not need to change; nothing in this view calls them any more.
+/// This view previously also hosted a cloud "Context Bundler" chat UI that sent
+/// a captured command plus screen context to a cloud service. That UI is out of
+/// scope for AF Flow (CLAUDE.md hard rule 1: no cloud services, keys, or
+/// tokens). It is gone, and so are the callbacks that fed it: keeping them as
+/// accepted-but-unused parameters preserved the wiring that made the capability
+/// re-attachable in one line, which is not what "removed" means (LOOP.md
+/// section 3).
 struct ContextBubbleView: View {
     @ObservedObject var session: PepperChatSession
     var onMinimize: () -> Void
-    var onSendToZo: (String, String?) -> Void
-    var onSendToTrello: ((String, String?) -> Void)?
-    var isTrelloConfigured: Bool
-    var onCopyBundle: (String) -> Void
     var onOpenInMeetings: ((URL) -> Void)?
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppThemeID.current.rawValue
 

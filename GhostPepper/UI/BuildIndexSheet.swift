@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// Modal sheet that estimates the cost of building an index, then streams
-/// progress while the agent builds it. Closes on completion or cancel.
+/// Modal sheet that sizes an index build, then streams progress while it runs.
+/// Closes on completion or cancel.
 ///
-/// AF Flow never stores an Anthropic API key (CLAUDE.md hard rule 1), so the
+/// AF Flow never stores a cloud credential (CLAUDE.md hard rule 1), so the
 /// builder `fetchBuilder()` resolves is always the on-device `LocalWikiEngine`
-/// (see `AppState.indexBuilder(for:)`), which reports a $0 cost. The cost
-/// estimate is still surfaced generically below in case a future
-/// `IndexBuilding` implementation reports a non-zero cost, but this sheet no
-/// longer names any specific cloud provider or offers a model picker for one.
+/// (see `AppState.indexBuilder(for:)`), which is free. Cost display is gone
+/// entirely rather than kept as a generic fallback: there is no reachable code
+/// path that can produce a non-zero cost, and a currency-formatted placeholder
+/// for a capability the app must never have is residue, not a feature.
 struct BuildIndexSheet: View {
     let kind: IndexKind
     let fetchBuilder: () -> (any IndexBuilding)?
@@ -20,7 +20,7 @@ struct BuildIndexSheet: View {
     @State private var entriesWritten: Int = 0
     @State private var meetingsProcessed: Int = 0
     @State private var totalMeetings: Int = 0
-    @State private var runningCost: Double = 0
+
     @State private var errorMessage: String?
     @State private var buildTask: Task<Void, Never>?
 
@@ -66,7 +66,7 @@ struct BuildIndexSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 ProgressView().scaleEffect(0.7)
-                Text("Estimating cost…")
+                Text("Checking what needs building…")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
@@ -83,7 +83,7 @@ struct BuildIndexSheet: View {
         if let estimate {
             VStack(alignment: .leading, spacing: 12) {
                 if estimate.nothingToDo {
-                    Text("**Index is up to date** — every meeting is already covered by an existing entry. Nothing to do.")
+                    Text("**Index is up to date**. Every meeting is already covered by an existing entry, so there is nothing to do.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .padding(8)
@@ -99,25 +99,16 @@ struct BuildIndexSheet: View {
                 }
 
                 if !estimate.nothingToDo {
-                    if estimate.likelyHighUSD == 0 {
-                        Text("**\(estimate.unprocessedCount)** meetings to process on-device with \(estimate.modelDisplayName) — free.")
-                            .font(.system(size: 13))
-                        Text("Runs in the background on the local model. You can hit Stop at any time; the build resumes where it left off.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        // Not reachable today: `fetchBuilder()` always resolves to the
-                        // free, on-device `LocalWikiEngine`, which reports $0. Kept as a
-                        // generic (non-cloud-provider-naming) fallback for a future
-                        // `IndexBuilding` implementation that reports a real cost.
-                        Text("**\(estimate.unprocessedCount)** meetings to process with \(estimate.modelDisplayName).")
-                            .font(.system(size: 13))
-                        Text("Likely cost: \(formatCost(estimate.likelyLowUSD)) – \(formatCost(estimate.likelyHighUSD))")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Estimate is order-of-magnitude; running cost is shown during the build, and you can hit Stop at any time.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
+                    // Only one branch is possible: `fetchBuilder()` always resolves
+                    // to the free, on-device `LocalWikiEngine`. The paid branch that
+                    // used to sit here priced a cloud model in USD, which AF Flow
+                    // can never reach (hard rule 1) and which would have been the
+                    // wrong currency anyway (hard rule 9, costs in CAD).
+                    Text("**\(estimate.unprocessedCount)** meetings to process on-device with \(estimate.modelDisplayName). Free, CAD 0.")
+                        .font(.system(size: 13))
+                    Text("Runs in the background on the local model. You can hit Stop at any time; the build resumes where it left off.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
 
                 HStack {
@@ -167,7 +158,7 @@ struct BuildIndexSheet: View {
 
             HStack(spacing: 16) {
                 Label("\(entriesWritten) entries written", systemImage: "doc.text")
-                Label(formatCost(runningCost), systemImage: "dollarsign.circle")
+                Label("On device, CAD 0", systemImage: "bolt.circle")
             }
             .font(.system(size: 11, design: .monospaced))
             .foregroundStyle(.secondary)
@@ -199,7 +190,7 @@ struct BuildIndexSheet: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
-            Text("Total cost: \(formatCost(runningCost))")
+            Text("Ran entirely on this Mac. Total cost CAD 0.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             HStack {
@@ -266,7 +257,6 @@ struct BuildIndexSheet: View {
         phase = .building
         statusLine = "Starting…"
         entriesWritten = 0
-        runningCost = 0
         let task = Task { @MainActor in
             do {
                 for try await event in activeBuilder.buildFullIndex(kind: kind) {
@@ -281,8 +271,10 @@ struct BuildIndexSheet: View {
                     case .meetingsProcessed(let processed, let total):
                         meetingsProcessed = processed
                         totalMeetings = total
-                    case .usage(let u):
-                        runningCost = u.estimatedCostUSD
+                    case .usage:
+                        // Cost tracking dropped with the paid-model UI. The local
+                        // engine always reports zero, so there is nothing to show.
+                        break
                     case .completed:
                         phase = .completed
                         return
@@ -303,7 +295,4 @@ struct BuildIndexSheet: View {
         buildTask = task
     }
 
-    private func formatCost(_ cost: Double) -> String {
-        String(format: "$%.4f", cost)
-    }
 }

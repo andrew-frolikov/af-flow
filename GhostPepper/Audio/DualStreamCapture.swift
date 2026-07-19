@@ -70,7 +70,7 @@ final class DualStreamCapture: MeetingAudioCapturing {
         do {
             try await systemRecorder.startRecording()
         } catch {
-            print("DualStreamCapture: system audio unavailable; continuing with microphone-only capture — \(error.localizedDescription)")
+            print("DualStreamCapture: system audio unavailable; continuing with microphone-only capture: \(error.localizedDescription)")
         }
     }
 

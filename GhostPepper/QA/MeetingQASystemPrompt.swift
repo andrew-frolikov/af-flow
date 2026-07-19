@@ -35,7 +35,7 @@ enum MeetingQASystemPrompt {
            sometimes ## Transcript with **[HH:MM] Speaker:** lines. Transcripts can be \
            4,000+ lines.
 
-        2. Native Ghost Pepper (a smaller fraction — quick notes and window snippets). \
+        2. Native Ghost Pepper (a smaller fraction, quick notes and window snippets). \
            No frontmatter. Starts with an H1 title, then **Date:** line, then ## Notes \
            with free-form content. Generally short.
 
@@ -57,7 +57,7 @@ enum MeetingQASystemPrompt {
         Grep results now include 2 lines of context before and after each match \
         (lines starting with `-` are context; lines with `:` are matches). For \
         most questions, the matched lines plus their context are enough to \
-        answer directly — you do NOT need a follow-up read_file. Read the file \
+        answer directly. You do NOT need a follow-up read_file. Read the file \
         only if the context lines don't cover what you need.
 
         Once you have a relevant hit, **stop searching**. Don't run more grep \
@@ -67,7 +67,7 @@ enum MeetingQASystemPrompt {
         # When your first search comes up empty
 
         The user often types names or company names slightly differently than \
-        what's in the archive — phonetic guesses, unsure spellings, CamelCase \
+        what's in the archive: phonetic guesses, unsure spellings, CamelCase \
         from memory, anglicized last names. **Always relax your query before \
         giving up.**
 
@@ -86,7 +86,7 @@ enum MeetingQASystemPrompt {
         Only conclude "no information found" after 2–3 relaxed variants have \
         all returned nothing. When you find a near-match (e.g. "Marco" \
         instead of "Marco Diaz"), say so explicitly: "I couldn't find \
-        'Marco Diaz' but found 'Marco' at The Gizmo Lab — almost \
+        'Marco Diaz' but found 'Marco' at The Gizmo Lab, almost \
         certainly the same person."
 
         # Voice-to-text reasoning
@@ -99,7 +99,7 @@ enum MeetingQASystemPrompt {
         - "He's not a Quinn Adler for 10 years" almost certainly means \
           "He's known Quinn for 10 years."
         - "Speaker One" addressed in a "Speaker One <> Speaker Two" meeting is most likely Speaker One being \
-          addressed informally — note the discrepancy in your answer.
+          addressed informally. Note the discrepancy in your answer.
         - Names with similar phonemes are often the same person across files.
 
         When you interpret an artifact, say so explicitly: "The transcript reads X, which I \
@@ -138,7 +138,7 @@ enum MeetingQASystemPrompt {
         - **Exact strings** (names, dates, quoted phrases) → `grep` is \
           cheaper and more precise.
         - `search` results carry `path:line` citations exactly like grep \
-          output — cite them directly, or confirm with a small read_file.
+          output: cite them directly, or confirm with a small read_file.
         - If `search` returns nothing useful, fall back to grep with 2-3 \
           distinctive keywords before concluding "not found".
 

@@ -76,7 +76,7 @@ struct UsageReportView: View {
                 .foregroundColor(.secondary)
                 .textCase(.uppercase)
             if snapshot.totalWindowed == 0 && snapshot.totalLifetime == 0 {
-                Text("No usage tracked yet. Run dictation, record a meeting, build a People index, or ask a Q&A question — counts show up here.")
+                Text("No usage tracked yet. Run dictation, record a meeting, build a People index, or ask a Q&A question, and counts show up here.")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .padding(.vertical, 8)
@@ -148,7 +148,7 @@ struct UsageReportView: View {
             }
             .disabled(isGenerating || snapshot.totalLifetime == 0)
             .help(snapshot.totalLifetime == 0
-                  ? "Use the app a bit first — needs at least one tracked event."
+                  ? "Use the app a bit first. Needs at least one tracked event."
                   : "Asks the selected cleanup model to write a short note about what to focus on next.")
 
             Text("Uses the cleanup-model picker (\(cleanupManager.selectedCleanupModelDisplayName)). No cloud calls.")
@@ -212,9 +212,9 @@ struct UsageReportView: View {
     private static let systemPrompt = """
     You are writing a short, casual feature-request note from a Ghost Pepper user to the development team.
 
-    The user message starts with "WINDOW PHRASE: …" — use that phrase VERBATIM in your first sentence so the team knows what time period this covers.
+    The user message starts with "WINDOW PHRASE: …". Use that phrase VERBATIM in your first sentence so the team knows what time period this covers.
 
-    The user message also contains a pre-ranked usage report. The TOP feature line tells you what they use most. The ZERO list tells you what they don't touch. Trust those lines exactly — DO NOT swap or invert them.
+    The user message also contains a pre-ranked usage report. The TOP feature line tells you what they use most. The ZERO list tells you what they don't touch. Trust those lines exactly. DO NOT swap or invert them.
 
     Write 3–5 first-person ("I") sentences:
     - First sentence: open with "Looking at my usage <WINDOW PHRASE>" or similar, then name the top feature (use its label verbatim) and note how heavily it's used.
@@ -222,7 +222,7 @@ struct UsageReportView: View {
     - Acknowledge what they don't use (the ZERO list) only if relevant.
     - End with one concrete request: the team should spend more time on the TOP feature.
 
-    No bullet points. No headers. No markdown. Don't quote raw numbers — say "heavily", "occasionally", "barely". Stay grounded in the ranking; do not invent usage you don't see.
+    No bullet points. No headers. No markdown. Don't quote raw numbers: say "heavily", "occasionally", "barely". Stay grounded in the ranking; do not invent usage you don't see.
     """
 
     private static func windowPhrase(_ window: UsageStatsStore.Window) -> String {
@@ -249,7 +249,7 @@ struct UsageReportView: View {
         if let top = used.first {
             lines.append("TOP feature: \(top.event.promptDescription) (\(top.windowed) uses in this window)")
         } else {
-            lines.append("TOP feature: none — every counter is zero in this window")
+            lines.append("TOP feature: none. Every counter is zero in this window")
         }
 
         if used.count > 1 {

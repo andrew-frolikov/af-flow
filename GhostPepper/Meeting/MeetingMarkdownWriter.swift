@@ -54,7 +54,7 @@ struct MeetingMarkdownWriter {
             let endTimeFormatter = DateFormatter()
             endTimeFormatter.timeStyle = .short
             let endStr = endTimeFormatter.string(from: endDate)
-            lines.append("**Date:** \(startStr) — \(endStr)")
+            lines.append("**Date:** \(startStr) - \(endStr)")
         } else {
             lines.append("**Date:** \(startStr) (in progress)")
         }

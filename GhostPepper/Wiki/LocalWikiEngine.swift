@@ -87,7 +87,7 @@ final class LocalWikiEngine: IndexBuilding {
         let totalCount = allMeetings.count
 
         if unprocessed.isEmpty {
-            continuation.yield(.status("Index is up to date — nothing to process."))
+            continuation.yield(.status("Index is up to date. Nothing to process."))
             continuation.yield(.completed)
             continuation.finish()
             return
@@ -497,7 +497,7 @@ final class LocalWikiEngine: IndexBuilding {
         }
         body += "## Timeline\n\n"
         for card in entityCards {
-            body += "- \(card.date) — **\(card.title)** — \(card.meetingPath)\n"
+            body += "- \(card.date) - **\(card.title)** - \(card.meetingPath)\n"
         }
         body += "\n## Mentions\n\n"
         for card in entityCards {
@@ -534,7 +534,7 @@ final class LocalWikiEngine: IndexBuilding {
         var out = ""
         let subjectNeedle = subjectName.map { WikiEntityResolver.normalize($0) }
         for card in cards {
-            var block = "### \(card.date) — \(card.title) (\(card.meetingPath))\n"
+            var block = "### \(card.date) - \(card.title) (\(card.meetingPath))\n"
             if !card.summary.isEmpty { block += "Summary: \(card.summary)\n" }
             let participantContext = card.participants
                 .filter { participant in

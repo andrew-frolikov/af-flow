@@ -232,7 +232,7 @@ final class QMDService {
     /// like grep results.
     static func formatHits(_ hits: [Hit], query: String) -> String {
         guard !hits.isEmpty else {
-            return "No results for: \(query)\n(Semantic search found nothing relevant — try grep with exact terms, or rephrase.)"
+            return "No results for: \(query)\n(Semantic search found nothing relevant: try grep with exact terms, or rephrase.)"
         }
         var blocks: [String] = []
         for hit in hits {

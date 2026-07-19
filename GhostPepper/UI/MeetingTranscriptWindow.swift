@@ -2131,7 +2131,7 @@ final class MeetingWindowState: ObservableObject {
     private func startWithGeneratedName(prefix: String) {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
-        let name = "\(prefix) — \(formatter.string(from: Date()))"
+        let name = "\(prefix) - \(formatter.string(from: Date()))"
 
         requestRecording(name: name)
     }
@@ -3115,8 +3115,11 @@ struct MeetingRootView: View {
             let fmtWrite = nf.string(from: NSNumber(value: u.cacheWriteTokens)) ?? "\(u.cacheWriteTokens)"
             inputPart += " (+\(fmtWrite) cache write)"
         }
-        let cost = String(format: "$%.4f", u.estimatedCostUSD)
-        return "\(u.modelDisplayName) · \(inputPart) / \(fmtOut) out · ~\(cost)"
+        // AF Flow runs every model on this Mac, so there is no cost to show and
+        // no cloud path that could produce one (hard rule 1). The USD figure
+        // that used to print here was both unreachable and the wrong currency
+        // (hard rule 9, costs in CAD).
+        return "\(u.modelDisplayName) · \(inputPart) / \(fmtOut) out · on device"
     }
 
     private func runningCostText(_ u: QAUsage) -> String {
@@ -3127,7 +3130,7 @@ struct MeetingRootView: View {
             let fmtOut = nf.string(from: NSNumber(value: u.outputTokens)) ?? "\(u.outputTokens)"
             return "~\(fmtIn) in / ~\(fmtOut) out · free"
         }
-        return String(format: "~$%.4f", u.estimatedCostUSD)
+        return "on device, CAD 0"
     }
 
     private var qaPlaceholder: String {
@@ -3210,8 +3213,7 @@ struct MeetingRootView: View {
         case .text:
             return "[text]      (streaming...)"
         case .usage(let u):
-            let cost = String(format: "$%.4f", u.estimatedCostUSD)
-            return "[usage]     \(u.modelDisplayName) · \(u.inputTokens) in / \(u.outputTokens) out · \(cost)"
+            return "[usage]     \(u.modelDisplayName) · \(u.inputTokens) in / \(u.outputTokens) out · on device"
         case .error(let msg):
             return "[error]     \(msg)"
         }
@@ -3807,7 +3809,7 @@ struct MeetingRootView: View {
         } else if !qaAttachments.isEmpty {
             let pathList = qaAttachments.map { "- \($0.relativePath)" }.joined(separator: "\n")
             question = """
-            Context references — please read these as primary sources for the question:
+            Context references. Please read these as primary sources for the question:
             \(pathList)
 
             \(userQuestion)
@@ -3830,7 +3832,7 @@ struct MeetingRootView: View {
 
         guard let stream = state.onAskQuestion?(question, history) else {
             mutateActiveTurn(id: activeTurnID) {
-                $0.answer = "Could not answer — download a wired local model in Settings → Models."
+                $0.answer = "Could not answer. Download a wired local model in Settings → Models."
                 $0.isStreaming = false
             }
             qaIsLoading = false
@@ -8547,7 +8549,7 @@ struct MeetingTabContentView: View {
         if let end = tab.transcript.endDate {
             let endFmt = DateFormatter()
             endFmt.timeStyle = .short
-            return "\(fmt.string(from: tab.transcript.startDate)) — \(endFmt.string(from: end))"
+            return "\(fmt.string(from: tab.transcript.startDate)) - \(endFmt.string(from: end))"
         }
         return fmt.string(from: tab.transcript.startDate)
     }
@@ -8776,7 +8778,7 @@ struct MeetingTabContentView: View {
                 if tab.isRecording {
                     HStack(spacing: 8) {
                         ProgressView().scaleEffect(0.6)
-                        Text("Listening — segments appear every ~30 seconds").font(.callout).foregroundColor(.secondary)
+                        Text("Listening, segments appear every ~30 seconds").font(.callout).foregroundColor(.secondary)
                     }.padding(.vertical, 8)
                 } else {
                     Text("No transcript yet.").font(.callout).foregroundColor(.secondary).padding(.vertical, 8)
@@ -9628,7 +9630,7 @@ private struct ConsentDialogView: View {
             // Buttons
             VStack(spacing: 12) {
                 Button(action: { state.confirmRecording() }) {
-                    Text("I've informed participants — Start recording")
+                    Text("I've informed participants. Start recording")
                         .font(.callout.weight(.medium))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)

@@ -200,11 +200,10 @@ class AppState: ObservableObject {
     /// re-enable a feature with no working backend.
     var pepperChatEnabled: Bool { false }
     @AppStorage("pepperChatIncludeScreenContext") var pepperChatIncludeScreenContext: Bool = true
-    /// Always empty, no keychain write. See `pepperChatApiKey` above.
-    @Published var trelloApiKey: String = ""
-    @Published var trelloToken: String = ""
-    @AppStorage("trelloDefaultListId") var trelloDefaultListId: String = ""
-    @Published var trelloBoards: [TrelloBoard] = []
+    // Trello credentials, board cache and default-list setting are gone. They
+    // were always-empty properties, but AppState still wired a live send path
+    // that built a TrelloBackend from them, so the capability was one populated
+    // string away from working. Removed per CLAUDE.md hard rule 1.
     @AppStorage("meetingTranscriptEnabled") var meetingTranscriptEnabled: Bool = false
     @Published var showWhatsNew = false
     @AppStorage("meetingAutoDetectEnabled") var meetingAutoDetectEnabled: Bool = true
@@ -313,9 +312,9 @@ class AppState: ObservableObject {
     private static let ignoreOtherSpeakersDefaultsKey = "ignoreOtherSpeakers"
     private static let selectedWikiModelDefaultsKey = "selectedWikiModelKind"
     private static let playSoundsDefaultsKey = "playSounds"
-    private static let pepperChatApiKeychainKey = "pepperChatApiKey"
-    private static let trelloApiKeyKeychainKey = "trelloApiKey"
-    private static let trelloTokenKeychainKey = "trelloToken"
+    // The three credential keychain-key constants that sat here are removed.
+    // They had no remaining reference, and a named slot for a stored key is the
+    // first half of storing one.
     private static let archivedRecordingSampleRate = 16_000.0
     private static let speechAnalyzerReloadPollIntervalNanoseconds: UInt64 = 10_000_000
     // History shows one decimal place, so shorter recordings render as 0.0s noise.
@@ -610,7 +609,7 @@ class AppState: ObservableObject {
             Task { @MainActor in
                 let alert = NSAlert()
                 alert.messageText = "What's New in Ghost Pepper"
-                alert.informativeText = "Meeting transcription is here — record calls with notes, transcript, and AI-generated summaries.\n\n100% local. 100% private. Nothing leaves your Mac."
+                alert.informativeText = "Meeting transcription is here: record calls with notes, transcript, and AI-generated summaries.\n\n100% local. 100% private. Nothing leaves your Mac."
                 alert.alertStyle = .informational
                 alert.icon = NSImage(named: "AppIcon")
                 alert.addButton(withTitle: "Open Meetings")
@@ -622,44 +621,8 @@ class AppState: ObservableObject {
             }
         }
 
-        // Wire up Trello
-        pepperChatWindowController.isTrelloConfigured = { [weak self] in
-            guard let self = self else { return false }
-            return !self.trelloApiKey.isEmpty && !self.trelloToken.isEmpty
-        }
-        pepperChatWindowController.onSendToTrello = { [weak self] command, context in
-            guard let self = self else { return }
-            self.loadStoredIntegrationKeysIfNeeded()
-            guard !self.trelloApiKey.isEmpty,
-                  !self.trelloToken.isEmpty else { return }
-
-            // Parse the spoken command into structured Trello action
-            let parsed = TrelloCommandParser.parse(command)
-            self.debugLogStore.record(category: .model, message: "Trello parsed: title=\"\(parsed.cardTitle)\" board=\"\(parsed.boardName ?? "auto")\" list=\"\(parsed.listName ?? "auto")\"")
-
-            let backend = TrelloBackend(apiKey: self.trelloApiKey, token: self.trelloToken)
-            Task {
-                do {
-                    // Find the right list — use parsed board/list names if spoken
-                    let searchTerm = [parsed.boardName, parsed.listName].compactMap { $0 }.joined(separator: " ")
-                    let listId = TrelloBackend.findList(
-                        matching: searchTerm.isEmpty ? command : searchTerm,
-                        in: self.trelloBoards,
-                        defaultListId: self.trelloDefaultListId
-                    )
-                    guard let listId else {
-                        self.debugLogStore.record(category: .model, message: "Trello: no list found. Fetch boards in Settings first.")
-                        return
-                    }
-
-                    let description = context ?? ""
-                    let cardURL = try await backend.createCard(name: parsed.cardTitle, description: description, listId: listId)
-                    self.debugLogStore.record(category: .model, message: "Trello card created: \"\(parsed.cardTitle)\" → \(cardURL ?? "unknown")")
-                } catch {
-                    self.debugLogStore.record(category: .model, message: "Trello error: \(error.localizedDescription)")
-                }
-            }
-        }
+        // The Trello send path used to be wired up here. It is removed, not
+        // disabled: it constructed a live TrelloBackend and made a network call.
 
         // Wire up "save as note" to open in meetings view
         pepperChatWindowController.onOpenInMeetings = { [weak self] url in
@@ -789,7 +752,7 @@ class AppState: ObservableObject {
             debugLogStore.record(category: .hotkey, message: "Hotkey monitor is ready.")
         } else {
             PermissionChecker.promptAccessibility()
-            errorMessage = "Accessibility access required — grant permission then click Retry"
+            errorMessage = "Accessibility access required: grant permission then click Retry"
             status = .error
             debugLogStore.record(category: .hotkey, message: errorMessage ?? "Accessibility access required.")
         }
@@ -1671,21 +1634,21 @@ class AppState: ObservableObject {
         }
     }
 
+    /// AF Flow has no cloud chat backend and cannot acquire one: hard rule 1
+    /// forbids the credential such a backend would need. This used to build a
+    /// cloud client from a stored key. It now returns nil unconditionally, and
+    /// no code path in AppState constructs a cloud backend of any kind.
     func makePepperChatBackend() -> PepperChatBackend? {
-        loadStoredIntegrationKeysIfNeeded()
-        guard !pepperChatApiKey.isEmpty else { return nil }
-        let host = pepperChatHost.isEmpty ? "https://api.zo.computer" : pepperChatHost
-        return ZoBackend(host: host, apiKey: pepperChatApiKey)
+        nil
     }
 
     /// AF Flow hard rule 1: never add an API key, token, or Secrets.swift;
     /// keys and secrets do not exist in this project. This function used to
-    /// migrate stored Zo/Trello credentials out of UserDefaults and into the
-    /// keychain, then assign them to pepperChatApiKey/trelloApiKey/
-    /// trelloToken and potentially flip pepperChatEnabled on. It no longer
-    /// does any of that: it only marks the load as done and leaves every
-    /// integration key permanently empty, so no credential can ever be
-    /// populated here.
+    /// migrate stored credentials out of UserDefaults and into the keychain,
+    /// then assign them to the integration key properties and potentially flip
+    /// pepperChatEnabled on. It no longer does any of that: it only marks the
+    /// load as done and leaves the one remaining key property permanently
+    /// empty, so no credential can ever be populated here.
     func loadStoredIntegrationKeysIfNeeded() {
         guard !didLoadStoredIntegrationKeys else { return }
         didLoadStoredIntegrationKeys = true
@@ -1693,8 +1656,6 @@ class AppState: ObservableObject {
         defer { isLoadingStoredIntegrationKeys = false }
 
         pepperChatApiKey = ""
-        trelloApiKey = ""
-        trelloToken = ""
     }
 
     // MARK: - Meeting Transcript
@@ -1785,18 +1746,6 @@ class AppState: ObservableObject {
 
     func refreshMeetingTranscriptWindowPresentation() {
         meetingTranscriptWindowController.refreshPresentation()
-    }
-
-    func fetchTrelloBoards() async {
-        loadStoredIntegrationKeysIfNeeded()
-        guard !trelloApiKey.isEmpty, !trelloToken.isEmpty else { return }
-        let backend = TrelloBackend(apiKey: trelloApiKey, token: trelloToken)
-        do {
-            trelloBoards = try await backend.fetchBoardsAndLists()
-            debugLogStore.record(category: .model, message: "Trello: fetched \(trelloBoards.count) boards with \(trelloBoards.flatMap(\.lists).count) lists")
-        } catch {
-            debugLogStore.record(category: .model, message: "Trello fetch failed: \(error.localizedDescription)")
-        }
     }
 
     func generateMeetingSummary(for transcript: MeetingTranscript) async {
@@ -2108,7 +2057,7 @@ class AppState: ObservableObject {
                 .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && !$0.hasPrefix("---") }
                 .prefix(4)
                 .joined(separator: " ")
-            lines.append("- \(hit.title) — \(hit.citation)")
+            lines.append("- \(hit.title) - \(hit.citation)")
             if !excerpt.isEmpty {
                 lines.append("  \(excerpt.prefix(280))")
             }
@@ -2340,7 +2289,7 @@ class AppState: ObservableObject {
     private var languageAwareCleanupPrompt: String {
         if preferredLanguage != "auto" && preferredLanguage != "en" {
             let langName = Locale.current.localizedString(forLanguageCode: preferredLanguage) ?? preferredLanguage
-            return cleanupPrompt + "\n\nThe transcription is in \(langName). Preserve the original language — do not translate to English."
+            return cleanupPrompt + "\n\nThe transcription is in \(langName). Preserve the original language. Do not translate to English."
         }
 
         return cleanupPrompt

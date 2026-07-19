@@ -228,7 +228,7 @@ final class PepperChatSession: ObservableObject {
         let title = String(firstCommand.prefix(50))
 
         var lines: [String] = []
-        lines.append("# Zo Chat — \(title)")
+        lines.append("# Zo Chat - \(title)")
         lines.append("")
 
         let formatter = DateFormatter()

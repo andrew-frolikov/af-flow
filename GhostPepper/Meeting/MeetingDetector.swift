@@ -161,7 +161,7 @@ final class MeetingDetector {
 
                 let suggestedName: String
                 if let videoTitle = videoTitle {
-                    suggestedName = "\(siteName) — \(videoTitle)"
+                    suggestedName = "\(siteName) - \(videoTitle)"
                 } else {
                     suggestedName = Self.suggestedMeetingName(appName: siteName)
                 }
@@ -277,6 +277,6 @@ final class MeetingDetector {
     private static func suggestedMeetingName(appName: String) -> String {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
-        return "\(appName) — \(formatter.string(from: Date()))"
+        return "\(appName) - \(formatter.string(from: Date()))"
     }
 }

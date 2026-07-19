@@ -104,7 +104,7 @@ struct ModelsSidebarView: View {
             FunctionRow(
                 icon: "doc.text",
                 title: "Meeting summary",
-                modelLabel: (cleanupModel?.displayName ?? "—") + " (same as Cleanup)",
+                modelLabel: (cleanupModel?.displayName ?? "-") + " (same as Cleanup)",
                 location: .local,
                 available: cleanupModel.map { TextCleanupManager.isModelDownloaded($0.kind) } ?? false
             )

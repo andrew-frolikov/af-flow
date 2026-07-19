@@ -23,7 +23,7 @@ struct SpeechModelDescriptor: Identifiable, Equatable {
     var id: String { name }
 
     var pickerLabel: String {
-        "\(pickerTitle) (\(variantName) — \(sizeDescription))"
+        "\(pickerTitle) (\(variantName) - \(sizeDescription))"
     }
 
     var statusName: String {

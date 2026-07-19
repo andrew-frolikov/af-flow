@@ -194,7 +194,7 @@ final class MeetingQAAgent {
                     let synthesisPrompt = """
                     Now write your final answer to the user's original question, citing source files as path:line. \
                     If your searches did not find enough to answer fully, summarize what you searched, what you found, \
-                    and what the closest match was. Do not call any more tools — just write the answer.
+                    and what the closest match was. Do not call any more tools. Just write the answer.
                     """
                     messages.append(LLMMessage(role: .user, content: [.text(synthesisPrompt)]))
                     continuation.yield(.status("Synthesizing answer from tool results…"))
@@ -279,7 +279,7 @@ final class MeetingQAAgent {
     static func qaToolDefinitions(includeSearch: Bool = false) -> [LLMTool] {
         let grep = LLMTool(
             name: "grep",
-            description: "Search the meeting archive for a regex pattern. Returns each match with 2 lines of context before and after, so you usually have enough to answer without a follow-up read_file. Match groups are separated by `--`. Lines marked with `:` are matches; lines marked with `-` are surrounding context. Prefer this over read_file when looking for names, dates, or specific phrases — it's much cheaper than reading whole files.",
+            description: "Search the meeting archive for a regex pattern. Returns each match with 2 lines of context before and after, so you usually have enough to answer without a follow-up read_file. Match groups are separated by `--`. Lines marked with `:` are matches; lines marked with `-` are surrounding context. Prefer this over read_file when looking for names, dates, or specific phrases. It's much cheaper than reading whole files.",
             inputSchema: [
                 "type": "object",
                 "properties": [
@@ -306,7 +306,7 @@ final class MeetingQAAgent {
         )
         let listDir = LLMTool(
             name: "list_dir",
-            description: "List entries in a directory inside the meeting archive. Use to discover meetings by date — directories are named YYYY-MM-DD.",
+            description: "List entries in a directory inside the meeting archive. Use to discover meetings by date: directories are named YYYY-MM-DD.",
             inputSchema: [
                 "type": "object",
                 "properties": [

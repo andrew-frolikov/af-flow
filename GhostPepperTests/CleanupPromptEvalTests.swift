@@ -175,7 +175,7 @@ final class CleanupPromptEvalTests: XCTestCase {
                 let result = try await manager.clean(text: formattedInput, prompt: TextCleaner.defaultPrompt, modelKind: modelKind)
                 let (isChatbot, reason) = Self.isChatbotResponse(input: input, output: result)
                 if isChatbot {
-                    failures.append((input: input, output: result, reason: "\(description) — \(reason)"))
+                    failures.append((input: input, output: result, reason: "\(description): \(reason)"))
                 }
             } catch {
                 failures.append((input: input, output: "ERROR: \(error)", reason: description))
@@ -227,10 +227,10 @@ final class CleanupPromptEvalTests: XCTestCase {
             do {
                 try await runEvalSuite(modelKind: modelKind)
                 testedCount += 1
-                print("✅ \(modelKind.rawValue) — all \(Self.evalCases.count) eval cases passed")
+                print("✅ \(modelKind.rawValue): all \(Self.evalCases.count) eval cases passed")
             } catch let error as XCTSkip {
                 skippedCount += 1
-                print("⏭️ \(modelKind.rawValue) — skipped (not downloaded)")
+                print("⏭️ \(modelKind.rawValue): skipped (not downloaded)")
                 // Re-throw only if ALL models were skipped
                 if modelKind == LocalCleanupModelKind.allCases.last && testedCount == 0 {
                     throw error

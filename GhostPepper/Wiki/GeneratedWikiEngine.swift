@@ -1506,12 +1506,12 @@ final class GeneratedWikiEngine {
             let topicTitle = connectorTopicNames.contains(WikiEntityResolver.normalize(topic.topic))
                 ? "[[\(topic.topic)]]"
                 : "**\(topic.topic)**"
-            return "- \(topicTitle) — \(topic.description)"
+            return "- \(topicTitle) - \(topic.description)"
         }.joined(separator: "\n") + "\n\n"
         body += "## Entities\n\n"
         body += entities.isEmpty ? "(none)\n\n" : entities.map { entity in
             let roleText = entity.roles.isEmpty ? "" : "; roles: \(entity.roles.joined(separator: ", "))"
-            return "- [[\(entity.name)]] — \(entity.type)\(roleText); \(entity.context)"
+            return "- [[\(entity.name)]] - \(entity.type)\(roleText); \(entity.context)"
         }.joined(separator: "\n") + "\n\n"
         body += "## Claims\n\n"
         body += claims.isEmpty ? "(none)\n" : claims.map { claim in
@@ -1535,14 +1535,14 @@ final class GeneratedWikiEngine {
         let canonicalName = canonicalName(for: entity.name, category: entity.category) ?? entity.name
         let url = GeneratedWikiPaths.pageURL(in: archiveRoot, category: entity.category, name: canonicalName)
         var observations = existingBullets(in: url, section: "Observations")
-        observations.insert("- [[\(meetingOverviewTitle)]] — \(entity.context.isEmpty ? "Discussed in \(meetingTitle)." : entity.context)")
+        observations.insert("- [[\(meetingOverviewTitle)]] - \(entity.context.isEmpty ? "Discussed in \(meetingTitle)." : entity.context)")
         var roles = existingBullets(in: url, section: "Roles")
         for role in entity.roles {
             roles.insert("- \(role)")
         }
         var relationships = existingBullets(in: url, section: "Relationships")
         for relationship in entity.relationships {
-            relationships.insert("- [[\(meetingOverviewTitle)]] — \(relationship)")
+            relationships.insert("- [[\(meetingOverviewTitle)]] - \(relationship)")
         }
         var discussed = existingBullets(in: url, section: "Discussed In")
         discussed.insert("- [[\(meetingOverviewTitle)]]")
@@ -1622,7 +1622,7 @@ final class GeneratedWikiEngine {
         let canonicalClaim = canonicalName(for: claim.text, category: "claims") ?? claim.text
         let url = GeneratedWikiPaths.pageURL(in: archiveRoot, category: "claims", name: canonicalClaim)
         var contexts = existingBullets(in: url, section: "Source Context")
-        contexts.insert("- [[\(meetingOverviewTitle)]] — \(claim.sourceContext.isEmpty ? "Claim discussed in \(meetingTitle)." : claim.sourceContext)")
+        contexts.insert("- [[\(meetingOverviewTitle)]] - \(claim.sourceContext.isEmpty ? "Claim discussed in \(meetingTitle)." : claim.sourceContext)")
         var topics = existingBullets(in: url, section: "Related Topics")
         for topic in claim.relatedTopics where !topic.isEmpty {
             topics.insert("- [[\(topic)]]")

@@ -78,7 +78,7 @@ final class LocalStructuredLLM {
 
 
         IMPORTANT: your previous reply was not valid JSON. Reply again with \
-        ONLY a single JSON object — no prose, no markdown fences, no \
+        ONLY a single JSON object: no prose, no markdown fences, no \
         explanation before or after it.
         """
         let second = try await complete(system: system, user: retryUser)
@@ -109,7 +109,7 @@ final class LocalStructuredLLM {
 
 
         IMPORTANT: your previous reply was not valid JSON. Reply again with \
-        ONLY a single JSON object — no prose, no markdown fences, no \
+        ONLY a single JSON object: no prose, no markdown fences, no \
         explanation before or after it.
         """
         let second = try await completeWithTrace(system: system, user: retryUser, phase: "JSON retry prompt context", onToken: onToken, onStatus: onStatus)
@@ -141,7 +141,7 @@ final class LocalStructuredLLM {
 
 
         IMPORTANT: your previous reply was not valid JSON. Reply again with \
-        ONLY a single JSON array — no prose, no markdown fences, no \
+        ONLY a single JSON array: no prose, no markdown fences, no \
         explanation before or after it.
         """
         let second = try await complete(system: system, user: retryUser)
@@ -172,7 +172,7 @@ final class LocalStructuredLLM {
 
 
         IMPORTANT: your previous reply was not valid JSON. Reply again with \
-        ONLY a single JSON array — no prose, no markdown fences, no \
+        ONLY a single JSON array: no prose, no markdown fences, no \
         explanation before or after it.
         """
         let second = try await completeWithTrace(system: system, user: retryUser, phase: "JSON retry prompt context", onToken: onToken, onStatus: onStatus)

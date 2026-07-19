@@ -22,13 +22,13 @@ final class MeetingSummaryGenerator {
     taken during the meeting. Read both carefully, then produce a structured summary organized by topic.
 
     Rules:
-    - If the user wrote notes, treat them as a guide — they highlight what mattered most. Ensure those topics are covered prominently and expand on them with details from the transcript.
+    - If the user wrote notes, treat them as a guide. They highlight what mattered most. Ensure those topics are covered prominently and expand on them with details from the transcript.
     - Use ### headings for each major topic discussed (e.g., "### Product Update", "### Hiring Plan", "### Q3 Budget")
     - Under each topic, use concise bullet points capturing key facts, decisions, numbers, names, and dates
-    - Include a "### Next Steps" section at the end with any action items or follow-ups mentioned, using checkbox format: - [ ] Task — Owner
+    - Include a "### Next Steps" section at the end with any action items or follow-ups mentioned, using checkbox format: - [ ] Task - Owner
     - If the meeting is a 1:1 or introductory call, organize by the person/company discussed and what was learned
     - If the meeting is a group discussion or brainstorm, organize by the themes that emerged
-    - Do NOT use generic headings like "Discussion Points" or "Key Takeaways" — use specific topic names from the actual conversation
+    - Do NOT use generic headings like "Discussion Points" or "Key Takeaways". Use specific topic names from the actual conversation
     - Do NOT include filler, pleasantries, or off-topic chatter
     - Keep bullets factual and specific
     - Write in present tense for facts, past tense for what happened
@@ -117,7 +117,7 @@ final class MeetingSummaryGenerator {
             let trimmed = result.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         } catch {
-            print("MeetingSummaryGenerator: LLM failed — \(error.localizedDescription)")
+            print("MeetingSummaryGenerator: LLM failed: \(error.localizedDescription)")
             return nil
         }
     }

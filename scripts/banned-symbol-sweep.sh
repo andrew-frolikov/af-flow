@@ -29,6 +29,19 @@ CONFIG_PATHS=(project.yml GhostPepper/Info.plist GhostPepper/GhostPepper.entitle
 # run time. Removing an entry here is how C6 closes the deferral. Adding one
 # requires Andrew's approval.
 INERT_BY_DECISION='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter)\.swift'
+
+# The same deferral, expressed as the full set of cloud-integration SOURCE files
+# named in CLAUDE.md de-risk item 3 (Anthropic, Google Calendar, Zo, Trello,
+# Granola, Airtable, Reader, qmd). These files may define cloud clients. What no
+# file outside this set may do is CONSTRUCT one: that is the difference between
+# dead code awaiting C6 deletion and a live capability.
+#
+# Added 2026-07-19 after Codex round 6 found AppState still building a
+# TrelloBackend and passing live callbacks into the UI while the sweep reported
+# clean. The gate had no cloud-wiring check at all. This is the widening, not an
+# exclusion: it encodes a decision Andrew already made and it makes the live
+# layer checkable for the first time.
+INERT_CLOUD_SOURCES='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider|Reader/[A-Za-z]+)\.swift'
 # The keychain helper defines the migration function and names the upstream
 # service in a comment explaining why AF Flow does not use it. Test fixtures and
 # the dev-only probe tool carry the upstream bundle id as literal strings.
@@ -101,11 +114,58 @@ check "no live credential reads outside deferred files" \
 check "no live credential writes outside deferred files" \
   'KeychainHelper\.set\(' swift "$INERT_BY_DECISION|$DEFINITION_AND_FIXTURES"
 
+# Layer 2 and 3: no LIVE code may construct a cloud client or carry its wiring.
+# Codex round 6 found dangling Zo/Trello callbacks threaded through the UI and a
+# live TrelloBackend construction in AppState, all invisible to the old checks
+# because they never touched the keychain.
+check "no live code constructs a cloud client" \
+  '(ZoBackend|TrelloBackend|TrelloCommandParser|AirtableImporter|GranolaImporter|GoogleCalendarService|AnthropicProvider)\(' swift \
+  "$INERT_CLOUD_SOURCES"
+check "no cloud callback wiring in live code" \
+  'onSendToZo|onSendToTrello|isTrelloConfigured|trelloApiKey|trelloToken|trelloBoards|fetchTrelloBoards' swift \
+  "$INERT_CLOUD_SOURCES"
+
 # Layer 1: entitlement dropped with the Calendar loopback server.
 check "no network.server entitlement" 'network\.server' config
+# Layer 1: a registered custom URL scheme exists to receive an OAuth callback.
+# Nothing in AF Flow's spec needs the app to be a URL handler, and the Google
+# OAuth callback entry outlived the Calendar UI that used it.
+check "no OAuth callback URL scheme" 'CFBundleURLTypes|CFBundleURLSchemes|[Oo][Aa]uth' config
 # Layer 1 and 2: screen capture must also be absent from config, and the built
 # binary must not link the framework. A Swift-only grep cannot prove either.
 check "no ScreenCaptureKit in config" 'ScreenCaptureKit' config
+
+# CLAUDE.md hard rule 9: no em dashes in anything user-facing, and costs in CAD
+# with a label. Contract rules rather than security rules, but they were being
+# enforced only by whoever happened to read the diff, which is how a new em dash
+# and USD price strings both shipped past five review rounds.
+#
+# These run through scripts/string-literal-grep.py rather than grep, because
+# they must match INSIDE Swift string literals and nowhere else. A line-oriented
+# grep flags ordinary code comments that quote something before an em dash (it
+# produced eight false positives on 2026-07-19) and at the same time MISSES em
+# dashes inside multi-line triple-quoted LLM prompt literals, which are the ones
+# that matter most: a prompt containing em dashes teaches the model to emit them.
+# Excluding comments removes noise, not coverage. Comments are not user-facing.
+literal_check() {
+  local label="$1" pattern="$2" hits
+  hits=$(python3 scripts/string-literal-grep.py "$pattern" "${SWIFT_PATHS[@]}" 2>/dev/null || true)
+  if [ -n "$hits" ]; then
+    echo "FAIL  $label"
+    echo "$hits" | sed 's/^/        /'
+    fail=1
+  else
+    echo "ok    $label"
+  fi
+}
+
+literal_check "no em dash in user-facing strings" '\u2014'
+# The currency pattern must not match Swift's `$0` closure shorthand, which
+# appears inside interpolated strings all over the codebase. Matching it was a
+# bug in this check that buried the three real USD sites under 60 false
+# positives. Every real shape (a `$%` format specifier, a literal price, the
+# standalone word USD) is still caught, and the canary test proves it.
+literal_check "no non-CAD currency in user-facing strings" '[$]%|[$][0-9]+[.,][0-9]|\bUSD\b'
 
 BIN="build/run-derived/Build/Products/Debug/GhostPepper.app/Contents/MacOS"
 if [ -d "$BIN" ]; then

@@ -54,15 +54,15 @@ enum IndexSystemPrompt {
 
         ## Tools
 
-        - `list_dir(path)` — discover date folders in the archive (YYYY-MM-DD/).
-        - `grep(pattern, ...)` — find name mentions across meetings. Cheaper than reading whole files.
-        - `read_file(path, offset, limit)` — read meeting transcripts to gather context.
-        - `write_file(path, content)` — write a dossier entry. Path must be a flat `<slug>.md` filename in the index directory.
+        - `list_dir(path)`: discover date folders in the archive (YYYY-MM-DD/).
+        - `grep(pattern, ...)`: find name mentions across meetings. Cheaper than reading whole files.
+        - `read_file(path, offset, limit)`: read meeting transcripts to gather context.
+        - `write_file(path, content)`: write a dossier entry. Path must be a flat `<slug>.md` filename in the index directory.
 
         ## Entry file format
 
         Use exactly this YAML frontmatter, then the dossier body. The body
-        should be substantive — readers should come away knowing what this
+        should be substantive: readers should come away knowing what this
         \(noun) is, what it does, what's been discussed across meetings, and
         what's still open. Use the section structure below.
 
@@ -96,7 +96,7 @@ enum IndexSystemPrompt {
         ## Key Interactions
 
         Bulleted highlights from across all source meetings. Each bullet
-        should be a concrete fact, idea, or quote — not a generic summary.
+        should be a concrete fact, idea, or quote, not a generic summary.
         Include specifics like fund sizes, dates, names, decisions, asks.
 
         ## Themes & Interests
@@ -115,12 +115,12 @@ enum IndexSystemPrompt {
         - In `2026-04-26/q2-planning.md`: pushed back on the platform consolidation.
         ```
 
-        Wikilinks (`[[Jordan Pike]]`) are how dossiers cross-reference each other —
-        use them whenever you mention a person who has (or should have) their own
+        Wikilinks (`[[Jordan Pike]]`) are how dossiers cross-reference each other.
+        Use them whenever you mention a person who has (or should have) their own
         dossier. The link target is the person's canonical name.
 
-        Sections are flexible — drop "Open Threads" if there genuinely are
-        none, drop "Themes & Interests" for a one-meeting mention —
+        Sections are flexible: drop "Open Threads" if there genuinely are
+        none, drop "Themes & Interests" for a one-meeting mention,
         but most multi-meeting entries warrant the full structure.
 
         ## Slug rules
@@ -131,7 +131,7 @@ enum IndexSystemPrompt {
 
         ## Process
 
-        1. `list_dir` the index directory first — there may be entries from a
+        1. `list_dir` the index directory first: there may be entries from a
            previous run that was stopped. If `<slug>.md` already exists for a
            \(noun) you're about to write, `read_file` it and append to it
            rather than overwriting. Treat every existing entry as the source
@@ -148,7 +148,7 @@ enum IndexSystemPrompt {
            existing entry was read in step 1, preserve its existing body and
            append new mentions; do not regenerate from scratch.
         6. Cite source meetings under a "## Mentions" heading with brief
-           context. Don't paraphrase entire transcripts — keep it dossier-tight.
+           context. Don't paraphrase entire transcripts. Keep it dossier-tight.
 
         ## Quality bar
 
@@ -157,7 +157,7 @@ enum IndexSystemPrompt {
         - Don't invent facts. Cite source meetings inline (e.g.
           `[2026-04-26/q2-planning.md]`) for non-obvious claims so a reader
           can verify. If you only know it appeared in one meeting, say that.
-        - Be substantive but tight — every bullet should carry information
+        - Be substantive but tight: every bullet should carry information
           a future reader can act on. No filler, no generic platitudes.
         - For multi-meeting entries, aim for ~150–400 words of body content.
           For one-meeting mentions, much less is fine.
@@ -223,10 +223,10 @@ enum IndexSystemPrompt {
 
         ## Tools
 
-        - `read_file(path, offset, limit)` — read the new meeting transcript and existing dossiers.
-        - `grep(pattern, ...)` — confirm a name's context if needed.
-        - `list_dir(path)` — list the index directory if you need to discover existing entries.
-        - `write_file(path, content)` — write or overwrite a dossier entry.
+        - `read_file(path, offset, limit)`: read the new meeting transcript and existing dossiers.
+        - `grep(pattern, ...)`: confirm a name's context if needed.
+        - `list_dir(path)`: list the index directory if you need to discover existing entries.
+        - `write_file(path, content)`: write or overwrite a dossier entry.
 
         ## Process
 
@@ -249,7 +249,7 @@ enum IndexSystemPrompt {
               - `write_file` back.
            c. If new: `write_file` a fresh dossier with the full section
               structure, this meeting as the only source.
-        4. Stop. Do NOT re-process other meetings — only this one.
+        4. Stop. Do NOT re-process other meetings, only this one.
 
         ## Entry file format
 
@@ -274,7 +274,7 @@ enum IndexSystemPrompt {
         - In `<path>`: <one-line context>
         ```
 
-        Default to minimal updates — fold in one bullet under Mentions and
+        Default to minimal updates: fold in one bullet under Mentions and
         move on. But don't preserve a one-line stub body when the new
         meeting gives you enough material to write a real overview.
         """

@@ -21,7 +21,7 @@ struct ReaderCaptureSheet: View {
                 Spacer()
             }
 
-            Text("Paste a URL — the article will be saved as a note.")
+            Text("Paste a URL. The article will be saved as a note.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
