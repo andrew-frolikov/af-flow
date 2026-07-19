@@ -9,7 +9,7 @@ enum AnthropicProviderError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey: return "Claude API key not configured. Add it in Settings → Meeting Transcript."
+        case .missingAPIKey: return "This feature isn't available in AF Flow."
         case .invalidResponse: return "Invalid response from Claude API."
         case .httpError(let status, let message): return "Claude API error \(status): \(message)"
         case .decodeError(let detail): return "Failed to decode Claude response: \(detail)"

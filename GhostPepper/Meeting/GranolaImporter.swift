@@ -71,7 +71,7 @@ final class GranolaImporter: ObservableObject {
 
     func fetchTranscripts(apiKey: String, to directory: URL) async -> (imported: Int, transcripts: Int, enriched: Int) {
         guard !apiKey.isEmpty else {
-            state = .error("API key is required.")
+            state = .error("Granola import isn't available in AF Flow.")
             return (0, 0, 0)
         }
 

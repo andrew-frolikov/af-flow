@@ -107,7 +107,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case modelExperiment
     case transcriptionLab
     case recognizedVoices
-    case pepperChat
     case meetingTranscript
 
     var id: String { rawValue }
@@ -120,7 +119,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .modelExperiment: "Model Experiment"
         case .transcriptionLab: "History"
         case .recognizedVoices: "Recognized Voices"
-        case .pepperChat: "Context Bundler"
         case .meetingTranscript: "Meeting Transcript"
         }
     }
@@ -133,7 +131,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .modelExperiment: "Paste prompts and context to test local model behavior."
         case .transcriptionLab: "Saved recordings, reruns, and cleanup experiments."
         case .recognizedVoices: "Reusable speaker labels and 'this is me' voice prints."
-        case .pepperChat: "Capture screen context and send to Zo, Trello, or clipboard."
         case .meetingTranscript: "Auto-detect calls and transcribe meetings locally."
         }
     }
@@ -146,7 +143,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .modelExperiment: "testtube.2"
         case .transcriptionLab: "waveform.badge.magnifyingglass"
         case .recognizedVoices: "person.crop.circle.badge.checkmark"
-        case .pepperChat: "bubble.right"
         case .meetingTranscript: "waveform.badge.mic"
         }
     }
@@ -881,8 +877,6 @@ struct SettingsView: View {
                 transcriptionLabSection
             case .recognizedVoices:
                 recognizedVoicesSection
-            case .pepperChat:
-                pepperChatSection
             case .meetingTranscript:
                 meetingTranscriptSection
             }
@@ -2253,36 +2247,6 @@ struct SettingsView: View {
             exampleInput = entry.rawTranscription ?? ""
             exampleOutput = entry.correctedTranscription ?? ""
             exampleAdded = false
-        }
-    }
-
-    private var pepperChatSection: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            SettingsCard("Availability") {
-                Toggle("Enable Context Bundler", isOn: $appState.pepperChatEnabled)
-
-                Text("When disabled, Context Bundler stays out of the menu bar and its shortcut will not start new chats.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            SettingsCard("Shortcut") {
-                ShortcutRecorderView(
-                    title: "Context Bundler (hold to speak)",
-                    chord: appState.pepperChatChord,
-                    onRecordingStateChange: appState.setShortcutCaptureActive
-                ) { chord in
-                    appState.updateShortcut(chord, for: .pepperChat)
-                }
-
-                Text("Hold the shortcut, speak your question, then release. The response appears in a floating chat window.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-        }
-        .onAppear {
-            appState.loadStoredIntegrationKeysIfNeeded()
         }
     }
 

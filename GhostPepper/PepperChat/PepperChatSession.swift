@@ -141,7 +141,7 @@ final class PepperChatSession: ObservableObject {
         guard let backend = backendProvider() else {
             let errorMessage = PepperChatMessage(
                 role: .assistant,
-                text: "Add your Zo API key in Settings > Context Bundler.",
+                text: "Context Bundler isn't available in AF Flow.",
                 timestamp: Date()
             )
             messages.append(errorMessage)

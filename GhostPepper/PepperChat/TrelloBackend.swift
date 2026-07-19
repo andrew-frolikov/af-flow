@@ -164,7 +164,7 @@ enum TrelloError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "Trello is not configured. Add your API key, token, and list ID in Settings > Context Bundler."
+            return "Trello isn't available in AF Flow."
         case .apiError(let message):
             return "Trello API error: \(message)"
         case .invalidResponse:

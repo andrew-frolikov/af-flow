@@ -1,56 +1,28 @@
-# Privacy Audit
+# Privacy audit
 
-Ghost Pepper claims to be 100% local by default. This file is both the audit prompt and the record of the most recent verification.
+AF Flow is a personal, fully local fork of Ghost Pepper. This file states the current privacy posture in plain terms. It does not repeat the upstream Ghost Pepper audit, which described a different app (cloud features, system audio capture, an auto-updater) that AF Flow does not have.
 
-## How to verify
+## Current posture
 
-Paste the following prompt into Claude Code (or any AI assistant with codebase access) from the repo root:
+- **Fully local.** Speech-to-text (WhisperKit) and text cleanup (a local LLM via LLM.swift) both run on-device. No text or audio is sent anywhere for processing.
+- **No stored credentials anywhere.** AF Flow never stores, requests, or accepts a credential of any kind (key, token, or secret). This is a hard rule in [CLAUDE.md](CLAUDE.md), and `scripts/banned-symbol-sweep.sh` checks for it in code, config, and user-facing text on every change.
+- **No auto-updater.** The update mechanism the upstream project used is gone: the package dependency, the updater code, and the update-feed config keys have all been removed.
+- **No screen recording.** The code path that could request Screen Recording permission was removed, and the built app does not link any screen-capture framework.
+- **Model downloads are one-time and verified.** The first time a speech or cleanup model is selected, it downloads once from Hugging Face and is checked against a known hash before use. After that, it runs from the local cache with no further network activity.
+- **No telemetry.** No analytics or crash-reporting SDK is present.
 
-> Review the Ghost Pepper codebase and confirm that all default features run 100% locally with no network calls. Specifically verify:
->
-> 1. **Speech-to-text** — transcription runs entirely on-device (WhisperKit, FluidAudio, Qwen3-ASR). No audio is sent to any server.
-> 2. **Text cleanup** — the local Qwen LLM cleans up transcriptions on-device. No text is sent to any API.
-> 3. **Audio recording** — mic and system audio capture use AVAudioEngine and ScreenCaptureKit only. No audio is streamed or uploaded.
-> 4. **Meeting transcription & summarization** — chunked transcription, markdown storage, and LLM summary generation all happen locally. No meeting content leaves the device.
-> 5. **OCR & screen capture** — Vision framework runs on-device. Screenshots are processed locally and never transmitted.
-> 6. **File storage** — all meeting notes, transcripts, and summaries are saved as local markdown files. No cloud sync, no remote backup.
-> 7. **No third-party tracking SDKs** — confirm there are no tracking SDKs (Firebase, Mixpanel, Sentry, Amplitude, PostHog, Datadog, Segment, etc.) anywhere in the codebase. Local-only usage counters (UserDefaults) power the in-app Usage report panel — verify they don't make network calls.
->
-> For each item, check the relevant source files and confirm no `URLSession`, `URLRequest`, or HTTP URL strings exist in the core feature code. List any cloud-connected features separately and confirm they are all opt-in (disabled by default, require user-provided API keys).
->
-> Output your findings as a checklist with pass/fail for each item.
+## What is not yet verified
 
----
+- **Network egress test: pending.** The de-risk checklist (CLAUDE.md, item 7) calls for installing LuLu, running it default-deny, and confirming that dictation works with Wi-Fi off and that nothing unexpected reaches the network while dictating with Wi-Fi on. This has not been run yet. Until it has, "fully local" is a description of the code, not a measured result.
 
-## Most recent audit
+## Where the real audit lives
 
-**Date:** 2026-04-13
-**Auditor:** Claude Code (Opus 4.6)
-**Commit:** (run `git rev-parse --short HEAD` to fill in)
+The detailed security audit that this fork's de-risk checklist is based on lives in Andrew's vault, not in this repo: `AndrewFrolikov OS/Projects/heavy-work-runs/2026-07-18-dictation-app-stack-d4pp/06-security-audit.md`.
 
-### Core features (must be 100% local)
+For a machine-checkable version of the rules in this file, run:
 
-| # | Feature | Files checked | Result |
-|---|---------|--------------|--------|
-| 1 | Speech-to-text | `SpeechTranscriber.swift`, `ChunkedTranscriptionPipeline.swift` | :white_check_mark: Pass — no network calls. Inference runs via WhisperKit/FluidAudio on-device. |
-| 2 | Text cleanup | `MeetingSummaryGenerator.swift`, `TextCleanupManager.swift` (inference path only) | :white_check_mark: Pass — LLM inference via LLM.swift, fully on-device. `TextCleanupManager` has model download code but that is user-initiated, not part of inference. |
-| 3 | Audio recording | `Audio/AudioRecorder.swift`, `Audio/SystemAudioRecorder.swift`, `Audio/DualStreamCapture.swift` | :white_check_mark: Pass — AVAudioEngine (mic) and ScreenCaptureKit (system audio). No network calls. |
-| 4 | Meeting transcription & storage | `MeetingSession.swift`, `MeetingTranscript.swift`, `MeetingMarkdownWriter.swift`, `MeetingHistory.swift`, `MeetingTranscriptSettings.swift` | :white_check_mark: Pass — all local file I/O. Markdown written to user-chosen directory. |
-| 5 | OCR & screen capture | `Input/WindowCaptureService.swift`, Vision framework usage | :white_check_mark: Pass — Apple Vision framework, on-device only. |
-| 6 | File storage | `MeetingMarkdownWriter.swift`, `MeetingHistory.swift` | :white_check_mark: Pass — local filesystem only. No iCloud, CloudKit, or remote sync. |
-| 7 | No third-party tracking SDKs | Entire `GhostPepper/` directory | :white_check_mark: Pass — no Firebase, Mixpanel, Sentry, Amplitude, PostHog, Datadog, or Segment SDKs found. Local-only usage counters (UserDefaults) power the in-app Usage report panel. |
+```
+./scripts/banned-symbol-sweep.sh
+```
 
-### Cloud-connected features (all opt-in)
-
-These features require explicit user action and API keys. They are **disabled by default**.
-
-| Feature | Trigger | API key required |
-|---------|---------|-----------------|
-| Zo AI chat | User configures API key in Settings | Yes (`pepperChatApiKey`) |
-| Trello integration | User configures API key + token in Settings | Yes (`trelloApiKey`, `trelloToken`) |
-| Granola meeting import | User clicks Import and enters API key | Yes (`granolaApiKey`) |
-| Model downloads | User selects a model to download | No (public Hugging Face URLs) |
-
-### Verdict
-
-:white_check_mark: **All default features run 100% locally. No user data leaves the device unless the user explicitly configures a cloud integration.**
+It exits 0 when the codebase and docs are clean of the banned symbols and instructional text described above, and prints exactly what it found otherwise.

@@ -1,39 +1,35 @@
-# Pre-Deploy Privacy and Security Gate
+# Privacy and security gate
 
-Run this gate before every public build, appcast update, GitHub release, or notarized DMG upload.
+The upstream version of this file described a release gate for a publicly distributed app: notarized disk images, GitHub releases, update feeds. AF Flow has none of those. It is personal, built from source, and never distributed, so there is no deploy to gate.
 
-## Required checks
+What replaces it is a per-change gate, which is stricter because it runs every time rather than only before a release.
 
-1. Run the local static preflight:
+## Run before every closing commit
+
+1. The machine-checkable rules:
+
+   ```sh
+   ./scripts/banned-symbol-sweep.sh
+   ```
+
+   Exits 0 when clean. It checks code, config, the built binary, and product docs for the capabilities the contract forbids. Never edit this script to make a failure go green. If a check looks wrong, leave it failing and raise it.
+
+2. The static preflight inherited from upstream, which looks for tracked private data and credential-shaped strings:
 
    ```sh
    ./scripts/privacy-security-preflight.sh
    ```
 
-2. Run or review the Codex audit suite for the current deployment candidate:
+3. The independent review at each chunk boundary. The exact command is recorded in PROGRESS.md. It runs on a separate subscription and costs nothing, so there is no reason to skip it.
 
-   - Repo leaks and secrets
-   - Network egress and cloud boundaries
-   - Logs, diagnostics, storage, and retention
-   - Agent sandboxing and path traversal
-   - Dependencies, updater, model downloads, and release artifacts
+4. Confirm no real personal data is tracked in git: recordings, transcripts, meeting notes, screenshots, debug logs, or exported audio. The `.gitignore` covers the known shapes, but check `git status` before committing rather than trusting it.
 
-3. Confirm there is no real user data in tracked, modified, or untracked release inputs:
+## The one check that is still outstanding
 
-   - Granola cache files or imported meeting markdown
-   - Meeting participant names from private tests
-   - Transcripts, summaries, or people indexes from real meetings
-   - Audio/video files, screenshots, OCR text, or debug logs
-   - API keys, tokens, signing credentials, or local config
+Network egress has not been measured yet. The de-risk checklist in CLAUDE.md, item 7, calls for installing LuLu in default-deny mode, confirming that only the model host is contacted during the one-time download, and then confirming that dictation still works completely with Wi-Fi switched off.
 
-4. Confirm all network paths are expected:
+Until that has been run, statements about this app being local describe the code, not a measured result. Do not treat it as verified.
 
-   - Core transcription, cleanup, OCR, local summaries, and local storage do not send user content over the network.
-   - Cloud integrations are opt-in and require user configuration.
-   - Sparkle, GitHub, and Hugging Face paths are release/update/model-download paths only.
+## Why this file is short now
 
-5. Review any new debug or export UI for private content exposure.
-
-## Release rule
-
-Do not deploy until the preflight passes and any fresh Codex audit findings are either fixed or explicitly accepted for the release.
+The detailed threat analysis lives outside the repo, in Andrew's vault, at `AndrewFrolikov OS/Projects/heavy-work-runs/2026-07-18-dictation-app-stack-d4pp/06-security-audit.md`. Duplicating it here would create a second copy to keep in sync, and a stale security document is worse than none, which is exactly how the upstream version of this file ended up describing an app that no longer exists.

@@ -194,11 +194,13 @@ class AppState: ObservableObject {
             _ = KeychainHelper.set(pepperChatApiKey, for: Self.pepperChatApiKeychainKey)
         }
     }
-    @AppStorage("pepperChatEnabled") var pepperChatEnabled: Bool = false {
-        didSet {
-            hotkeyMonitor.updateBindings(shortcutBindings)
-        }
-    }
+    /// Context Bundler's only working backend was Zo (a cloud AI service).
+    /// AF Flow never stores or accepts an API key (CLAUDE.md hard rule 1),
+    /// so the feature has no way to work and its Settings toggle and menu
+    /// entry are removed. This is a read-only constant, not an `@AppStorage`
+    /// toggle, so a `true` value persisted from before this fix can't
+    /// re-enable a feature with no working backend.
+    var pepperChatEnabled: Bool { false }
     @AppStorage("pepperChatIncludeScreenContext") var pepperChatIncludeScreenContext: Bool = true
     @Published var trelloApiKey: String = "" {
         didSet {
@@ -1562,11 +1564,6 @@ class AppState: ObservableObject {
         debugLogWindowController.show(debugLogStore: debugLogStore)
     }
 
-    func showPepperChat() {
-        guard pepperChatEnabled else { return }
-        pepperChatWindowController.show(session: pepperChatSession)
-    }
-
     private var pepperChatRecorder: AudioRecorder?
     private var contextCaptureMonitor: Any?
     private var lastCapturedWindowTitle: String?
@@ -1969,7 +1966,6 @@ class AppState: ObservableObject {
 
     // MARK: - Index updates
 
-    private var claudeIndexBuilder: (model: ClaudeAPIModel, builder: IndexBuilder)?
     private var localWikiEngineCache: (model: LocalCleanupModelKind, saveDirPath: String, engine: LocalWikiEngine)?
 
     /// The local model used for wiki generation. It has a dedicated setting so
@@ -2206,33 +2202,16 @@ class AppState: ObservableObject {
         )
     }
 
-    /// Resolves the index builder for a kind, backend-aware:
-    /// - Agent backend = Claude AND an API key exists → the Claude-driven
-    ///   `IndexBuilder` (higher narrative quality, costs tokens).
-    /// - Otherwise → the token-free `LocalWikiEngine`.
-    ///
-    /// The Claude builder cache is keyed on the model — if the user changes
-    /// their selection in Settings or the build sheet, the next call
-    /// recreates the builder rather than returning a stale one.
+    /// Resolves the index builder for a kind. AF Flow never stores or accepts
+    /// an Anthropic API key (CLAUDE.md hard rule 1), so the Claude-driven
+    /// `IndexBuilder` path is structurally unreachable: this always returns
+    /// the token-free, on-device `LocalWikiEngine`.
     private func indexBuilder(for kind: IndexKind) -> (any IndexBuilding)? {
-        if case .claude = AgentBackend.resolveFromDefaults(),
-           let key = KeychainHelper.get(AnthropicProvider.keychainKey), !key.isEmpty {
-            let model = ClaudeAPIModel(rawValue: self.claudeAPIModel) ?? .sonnet
-            if let existing = claudeIndexBuilder, existing.model == model {
-                return existing.builder
-            }
-            let provider = AnthropicProvider(model: model, apiKey: key)
-            let saveDir = MeetingTranscriptSettings.effectiveSaveDirectory()
-            let builder = IndexBuilder(provider: provider, model: model, saveDir: saveDir)
-            claudeIndexBuilder = (model, builder)
-            return builder
-        }
-        return localWikiEngine()
+        localWikiEngine()
     }
 
-    /// Re-resolves the index builders when the API key or model changes.
+    /// Re-resolves the index builder when the model changes.
     func resetIndexBuilders() {
-        claudeIndexBuilder = nil
         localWikiEngineCache = nil
     }
 

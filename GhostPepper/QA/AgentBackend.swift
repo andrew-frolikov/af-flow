@@ -85,17 +85,20 @@ enum AgentBackend: Equatable {
         }
     }
 
-    /// Migration entry point. Reads the new `agentBackend` setting if set;
-    /// otherwise initializes from the legacy `claudeAPIModel` setting and
-    /// persists the result so future reads hit the new key.
+    /// Migration entry point. Reads the `agentBackend` setting if set;
+    /// otherwise defaults to the local, token-free backend and persists that
+    /// result so future reads hit the new key.
+    ///
+    /// AF Flow never stores or accepts an Anthropic API key (CLAUDE.md hard
+    /// rule 1), so the default here is local, not Claude. This also covers
+    /// upstream Ghost Pepper's legacy `claudeAPIModel` setting, which AF Flow
+    /// no longer reads as a signal to default into a cloud backend.
     static func resolveFromDefaults(_ defaults: UserDefaults = .standard) -> AgentBackend {
         if let stored = defaults.string(forKey: "agentBackend"),
            let decoded = decode(stored) {
             return decoded
         }
-        let legacy = defaults.string(forKey: "claudeAPIModel") ?? ClaudeAPIModel.sonnet.rawValue
-        let model = ClaudeAPIModel(rawValue: legacy) ?? .sonnet
-        let resolved: AgentBackend = .claude(model)
+        let resolved: AgentBackend = .local(.wikiDefault)
         defaults.set(resolved.encoded, forKey: "agentBackend")
         return resolved
     }

@@ -11,12 +11,6 @@ struct MenuBarView: View {
                 appState.showSettings()
             }
 
-            if appState.pepperChatEnabled {
-                Button("Context Bundler...") {
-                    appState.showPepperChat()
-                }
-            }
-
             Button("Debug Log...") {
                 appState.showDebugLog()
             }

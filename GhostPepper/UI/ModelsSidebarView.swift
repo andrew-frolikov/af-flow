@@ -14,7 +14,11 @@ struct ModelsSidebarView: View {
     let onDownloadSpeechModel: (String) -> Void
 
     @State private var refreshTick = 0
-    @State private var hasClaudeKey = false
+    /// AF Flow never stores or accepts an Anthropic API key (CLAUDE.md hard
+    /// rule 1), so this is always false. Kept as a constant rather than a
+    /// keychain-backed `@State` so the cloud section is structurally unable
+    /// to report a key as configured.
+    private let hasClaudeKey = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -45,7 +49,6 @@ struct ModelsSidebarView: View {
             Spacer()
             Button(action: {
                 refreshTick += 1
-                hasClaudeKey = (KeychainHelper.get(AnthropicProvider.keychainKey) ?? "").isEmpty == false
             }) {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 10))

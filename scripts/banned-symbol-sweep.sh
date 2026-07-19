@@ -68,7 +68,7 @@ echo ""
 check "no ScreenCaptureKit import or call sites" \
   'ScreenCaptureKit|SCShareableContent|SCScreenshotManager|SCStream|SCContentFilter' swift
 check "no Screen Recording permission request" \
-  'CGRequestScreenCaptureAccess|requestScreenRecordingPermission' swift
+  'CGRequestScreenCaptureAccess|CGPreflightScreenCaptureAccess|requestScreenRecordingPermission|hasScreenRecordingPermission' swift
 
 # Layer 1: the auto-updater. Never re-enable.
 check "no Sparkle symbols" 'import Sparkle|SPUUpdater|SPUStandardUpdater|UpdaterController' swift
@@ -81,12 +81,59 @@ check "no upstream keychain namespace in live code" 'com\.github\.matthartman\.g
 check "no credential migration in live code" 'migrateUserDefaultsString' swift \
   "$INERT_BY_DECISION|$DEFINITION_AND_FIXTURES"
 
-# Layer 3: UI that invites a pasted secret.
+# Layer 3: UI that invites a pasted secret, or tells the user to go set one up.
+# Both matter: a text field is an invitation, and instructional copy is worse
+# because it sends Andrew hunting for a field that no longer exists.
 check "no key or token entry fields" \
   'SecureField\(.*([Aa]pi[ _]?[Kk]ey|[Tt]oken|sk-ant|zo_sk)' swift
+check "no user-facing text instructing key setup" \
+  '"[^"]*([Aa]dd your .*[Kk]ey|API key .*(required|in Settings)|[Kk]ey in Settings)' swift
+
+# Layer 4: any live path that loads a credential and builds a cloud client.
+# This is the check whose absence let a live Anthropic key path pass on
+# 2026-07-18 while the sweep reported clean.
+check "no live credential reads outside deferred files" \
+  'KeychainHelper\.get\(' swift "$INERT_BY_DECISION|$DEFINITION_AND_FIXTURES"
 
 # Layer 1: entitlement dropped with the Calendar loopback server.
 check "no network.server entitlement" 'network\.server' config
+# Layer 1 and 2: screen capture must also be absent from config, and the built
+# binary must not link the framework. A Swift-only grep cannot prove either.
+check "no ScreenCaptureKit in config" 'ScreenCaptureKit' config
+
+BIN="build/run-derived/Build/Products/Debug/GhostPepper.app/Contents/MacOS"
+if [ -d "$BIN" ]; then
+  linked=$( { otool -L "$BIN/GhostPepper" 2>/dev/null; otool -L "$BIN/GhostPepper.debug.dylib" 2>/dev/null; } | grep -i "screencapture" || true)
+  if [ -n "$linked" ]; then
+    echo "FAIL  built binary does not link ScreenCaptureKit"
+    echo "$linked" | sed 's/^/        /'
+    fail=1
+  else
+    echo "ok    built binary does not link ScreenCaptureKit"
+  fi
+else
+  echo "skip  binary link check (no Debug build present, run xcodebuild first)"
+fi
+
+# Layer 5: product docs must not advertise removed capabilities or tell anyone
+# to run the prebuilt DMG (de-risk item 6 is build from source only). The
+# contract and log documents are excluded: CLAUDE.md, PROGRESS.md and LOOP.md
+# necessarily name what is banned in order to ban it.
+#
+# Known limitation, recorded rather than worked around: this is a substring
+# match, so it cannot tell "we removed X" from "we use X". Product docs
+# therefore describe absences without naming the removed thing. That is a
+# wording constraint, not a safety gap. Do not relax the check to allow
+# negation phrasing; the wording constraint is the cheaper price to pay.
+PRODUCT_DOCS=(README.md PRIVACY_AUDIT.md docs/index.html docs/pre-deploy-privacy-security.md)
+doc_hits=$(grep -rnE 'ScreenCaptureKit|[Ss]parkle|API key|\.dmg' "${PRODUCT_DOCS[@]}" 2>/dev/null || true)
+if [ -n "$doc_hits" ]; then
+  echo "FAIL  product docs describe removed capabilities"
+  echo "$doc_hits" | sed 's/^/        /'
+  fail=1
+else
+  echo "ok    product docs describe removed capabilities"
+fi
 
 echo ""
 if [ "$fail" -eq 0 ]; then
