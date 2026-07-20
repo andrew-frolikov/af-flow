@@ -2,6 +2,8 @@
 
 Andrew reads the scripts aloud via AF Flow into the target app. Read naturally, at normal speed, and do NOT suppress your real ums, pauses, and restarts: the cleanup layer must handle them. Claude Code records pass/fail and latency in PROGRESS.md.
 
+**Provenance, recorded 2026-07-20.** Every script below was written by an agent in commit `bf50e10`, the initial workspace-setup pass on 2026-07-18. Andrew did not author or dictate any of them. They are usable for measuring raw transcription accuracy, because scoring needs a fixed reference text and any fixed text provides one. They are NOT samples of his register and must never be described as such. LOOP.md previously claimed they were "written in Andrew's own voice"; that claim was false and has been corrected there.
+
 Scope, amended 2026-07-18 on measured usage data and applied here 2026-07-19: v1 is English plus Russian plus mixed RU/EN. Ukrainian is out of v1, so T3 and T4 have moved to the post-v1 section at the bottom and neither gates any chunk. The v1 set is T1, T2, T5, T6, T7, T8, T9, T10.
 
 ## T1 English brain-dump (60s, core loop)
@@ -23,7 +25,7 @@ PASS: clean single-language Russian with the allowlisted English terms kept in E
 
 PENDING REWRITE. The list below was written from memory and the real one is known to differ: the actual Wispr dictionary has 13 entries, roughly half of them snippets rather than spelling fixes, and it includes terms this list misses. Rewriting it from the real entries is queued behind the completed extraction so it is done once. Do not seed C3 from the list below.
 
-Provisional (from memory, to be replaced): Frolikov, Andrii, Softchoice, WWT, ENA Solution, Kharkiv, Calgary, Cowork, Wispr Flow, AF Flow, WhisperKit, Qwen, Obsidian.
+Provisional (agent-written from memory on 2026-07-18, NOT authored by Andrew, to be replaced): Frolikov, Andrii, Softchoice, WWT, ENA Solution, Kharkiv, Calgary, Cowork, Wispr Flow, AF Flow, WhisperKit, Qwen, Obsidian.
 
 Two kinds must be tested, not one:
 - Spelling protection: dictate each term in a sentence, all must come out spelled exactly.
