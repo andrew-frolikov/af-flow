@@ -116,6 +116,9 @@
 		77089185C9C0C0EDC4536F0A /* KeyChord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A54422D17879836781B7F71 /* KeyChord.swift */; };
 		780CB9207962633AEE3E69BD /* AudioDeviceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF6390CFE5F526DD23C316D /* AudioDeviceManager.swift */; };
 		783179FB65E4B507B25CF691 /* ChordEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65270DAE5CA7F1A37B4D890B /* ChordEngineTests.swift */; };
+		D71B32D5CF534848E396037A /* TextScoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB3FB1BC7F6C0A89C0149C81 /* TextScoring.swift */; };
+		B242CDB4C066E72540E69C79 /* AudioFixtureLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18EF23EAEA0244CC7B429BA8 /* AudioFixtureLoader.swift */; };
+		A72931314EA32B1D2C4EB0B3 /* TranscriptionScoringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C851BBE5DDB4ACA953BC287 /* TranscriptionScoringTests.swift */; };
 		78678A0067436B71C2C1C3C9 /* sprite_frame_1.png in Resources */ = {isa = PBXBuildFile; fileRef = 24362CABE7BBCAF53CB9B4A8 /* sprite_frame_1.png */; };
 		7A76401386357A585F42C422 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 777FDA0FC9C05B5D278C6C3E /* KeychainHelper.swift */; };
 		7F6B796521231B6254976F79 /* TranscriptionLabEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A2FBE70052D41935CC26FC6 /* TranscriptionLabEntry.swift */; };
@@ -315,6 +318,9 @@
 		648497BCB18036D3B10EADD2 /* MeetingHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistory.swift; sourceTree = "<group>"; };
 		64F59E7884CF5A1ABFB3C387 /* PathSandboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathSandboxTests.swift; sourceTree = "<group>"; };
 		65270DAE5CA7F1A37B4D890B /* ChordEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChordEngineTests.swift; sourceTree = "<group>"; };
+		EB3FB1BC7F6C0A89C0149C81 /* TextScoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextScoring.swift; sourceTree = "<group>"; };
+		18EF23EAEA0244CC7B429BA8 /* AudioFixtureLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFixtureLoader.swift; sourceTree = "<group>"; };
+		3C851BBE5DDB4ACA953BC287 /* TranscriptionScoringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionScoringTests.swift; sourceTree = "<group>"; };
 		659E43C6D2C350FE7DB967A3 /* PathSandbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathSandbox.swift; sourceTree = "<group>"; };
 		6A797BF8671DD4D44E9B1188 /* PepperChatSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PepperChatSession.swift; sourceTree = "<group>"; };
 		6B1A6E1B8F3D8C8F234BD408 /* SpeechTranscriberTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriberTests.swift; sourceTree = "<group>"; };
@@ -842,6 +848,9 @@
 				960D35875D60655B17574DF8 /* AudioRecorderTests.swift */,
 				6BF767CF1AA15DB2C2B82A1C /* ChordBindingStoreTests.swift */,
 				65270DAE5CA7F1A37B4D890B /* ChordEngineTests.swift */,
+				EB3FB1BC7F6C0A89C0149C81 /* TextScoring.swift */,
+				18EF23EAEA0244CC7B429BA8 /* AudioFixtureLoader.swift */,
+				3C851BBE5DDB4ACA953BC287 /* TranscriptionScoringTests.swift */,
 				886EA12D06680BB95FB78309 /* CleanupBackendTests.swift */,
 				A1B93B4F9F40EE6BD8525677 /* CleanupModelProbeRunnerTests.swift */,
 				F36633332009332F588C183E /* CleanupPromptBuilderTests.swift */,
@@ -1175,6 +1184,9 @@
 				242A5D63A9F6E3FAD4E09F7D /* AudioRecorderTests.swift in Sources */,
 				91B80C940C09B24CE80A4B81 /* ChordBindingStoreTests.swift in Sources */,
 				783179FB65E4B507B25CF691 /* ChordEngineTests.swift in Sources */,
+				D71B32D5CF534848E396037A /* TextScoring.swift in Sources */,
+				B242CDB4C066E72540E69C79 /* AudioFixtureLoader.swift in Sources */,
+				A72931314EA32B1D2C4EB0B3 /* TranscriptionScoringTests.swift in Sources */,
 				E06EAD2221790D5444E1F8E0 /* CleanupBackendTests.swift in Sources */,
 				0D32E8DDD47F77F86D9C1816 /* CleanupModelProbeRunnerTests.swift in Sources */,
 				A4826C92959DD203D5239B8E /* CleanupPromptBuilderTests.swift in Sources */,
