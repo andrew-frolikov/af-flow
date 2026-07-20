@@ -183,7 +183,7 @@ check "no live credential writes outside deferred files" \
 # hits, three of which were exactly such comments.
 cloud_hits=$(python3 scripts/swift-scan.py --mode code \
   '\b(ZoBackend|TrelloBackend|TrelloCommandParser|AirtableImporter|GranolaImporter|GoogleCalendarService|AnthropicProvider|ReaderCapture|ReaderCaptureSheet)\b' \
-  "${SWIFT_PATHS[@]}" --allow "$INERT_CLOUD_SOURCES_PATHS" 2>/dev/null | \
+  "${SWIFT_PATHS[@]}" --allow "$INERT_CLOUD_SOURCES_PATHS" 2>>/dev/stderr | \
   grep -vE 'GranolaImporter\.extractTranscript' || true)
 if [ -n "$cloud_hits" ]; then
   echo "FAIL  no live reference to a cloud service object"
@@ -205,24 +205,17 @@ check "no cloud callback wiring in live code" \
 # which was optional and therefore not load-bearing. Hoisted into the required
 # gate. Scans the whole repo, not just Swift: a key in a script or a plist is
 # still a key.
-# Scans the WORKING TREE, not the git index. Codex round 10, HIGH: `git grep`
-# skips ignored files even with --untracked, so a .env, a local xcconfig, or
-# anything else matched by .gitignore could hold a live key and pass this gate.
-# Ignored is exactly where a real leaked credential would sit.
+# Runs scripts/credential-scan.py, not grep. Codex round 11, HIGH: a raw
+# grep -r never gained the protections the Swift scanner already had, so it did
+# not follow symlinked directories and skipped unreadable files silently. A key
+# in a non-Swift file behind a symlink was invisible to the required gate.
 #
-# The two script self-exclusions that used to be here are gone as well. They
-# were unnecessary: the credential patterns do not match their own source text,
-# because after `sk-ant-` the next literal character is `[`, which is not in the
-# character class. Verified rather than assumed. A gate that excuses itself by
-# filename is one edit away from excusing anything.
-#
-# Only genuinely generated directories are skipped, and each is named.
-cred_hits=$(grep -rnI -E '(sk-ant-[A-Za-z0-9_-]{20,}|zo_sk_[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|Bearer [A-Za-z0-9._~+/=-]{20,}|-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----)' . \
-  --exclude-dir=.git --exclude-dir=build --exclude-dir=xcuserdata --exclude-dir=DerivedData --exclude-dir=.handoff 2>/dev/null || true)
-# Fable adversary finding 3: the raw grep above is line-oriented, so
-# "sk-ant-" + "api03_..." and a \u{}-escaped token both ship a working key while
-# it reports clean. This second pass matches what the compiled app actually
-# builds: literals concatenated and escapes decoded.
+# It scans the working tree rather than the git index, because `git grep` skips
+# ignored files and ignored is exactly where a leaked key sits.
+cred_hits=$(python3 scripts/credential-scan.py . 2>&1 | grep -v '^note ' || true)
+
+# Second pass over Swift only, matching what the COMPILED app builds rather
+# than what the source literally reads: literals concatenated, escapes decoded.
 cred_swift=$(python3 scripts/swift-scan.py --mode string --join \
   '(sk-ant-[A-Za-z0-9_-]{20,}|zo_sk_[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,})' \
   "${SWIFT_PATHS[@]}" 2>/dev/null || true)
@@ -260,7 +253,7 @@ check "no ScreenCaptureKit in config" 'ScreenCaptureKit' config
 # Excluding comments removes noise, not coverage. Comments are not user-facing.
 literal_check() {
   local label="$1" pattern="$2" hits
-  hits=$(python3 scripts/swift-scan.py --mode string --join "$pattern" "${SWIFT_PATHS[@]}" 2>/dev/null || true)
+  hits=$(python3 scripts/swift-scan.py --mode string --join "$pattern" "${SWIFT_PATHS[@]}" 2>>/dev/stderr || true)
   if [ -n "$hits" ]; then
     echo "FAIL  $label"
     echo "$hits" | sed 's/^/        /'

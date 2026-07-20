@@ -216,7 +216,9 @@ def tokenize(src):
     return out
 
 
-UNICODE_ESCAPE = re.compile(r"\\u\{([0-9A-Fa-f]{1,8})\}")
+# Raw strings escape as \#u{...}, \##u{...} and so on, one # per delimiter
+# hash. Codex round 11, HIGH: matching only \u{...} let #"\#u{2014}"# through.
+UNICODE_ESCAPE = re.compile(r"\\#*u\{([0-9A-Fa-f]{1,8})\}")
 
 
 def decode_escapes(text):

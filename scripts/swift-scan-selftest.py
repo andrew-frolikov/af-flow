@@ -29,6 +29,8 @@ _globals = {"__name__": "swift_scan_module"}
 with open(_spec_path, encoding="utf-8") as _fh:
     exec(compile(_fh.read(), _spec_path, "exec"), _globals)
 tokenize = _globals["tokenize"]
+decode_escapes = _globals["decode_escapes"]
+join_adjacent = _globals["join_adjacent"]
 
 # Each case: (label, swift source, needle, expected_kind)
 # expected_kind is the token kind the needle MUST land in for the gates to work.
@@ -88,6 +90,23 @@ CASES = [
 ]
 
 
+# Codex round 11, MEDIUM: the escape case only proved the tokenizer put the
+# text in a string token. It never proved decode_escapes or join_adjacent
+# actually transform it, which is where the matching happens.
+BEHAVIOUR_CASES = [
+    ("plain escape decodes", lambda: decode_escapes("a \\u{2014} b"), "a \u2014 b"),
+    ("raw 1-hash escape decodes", lambda: decode_escapes("a \\#u{2014} b"), "a \u2014 b"),
+    ("raw 2-hash escape decodes", lambda: decode_escapes("a \\##u{2014} b"), "a \u2014 b"),
+    ("dollar escape decodes", lambda: decode_escapes("costs \\u{0024}49.99"), "costs $49.99"),
+    ("concatenation joins",
+     lambda: [t[2] for t in join_adjacent(tokenize('let a = "sk-ant-" + "REST"'))
+              if t[0] == "string"], ["sk-ant-REST"]),
+    ("interpolation-split literal joins",
+     lambda: [t[2] for t in join_adjacent(tokenize('let a = "US\\("")D 10"'))
+              if t[0] == "string" and t[2]], ["USD 10"]),
+]
+
+
 def kind_of(src, needle):
     """Return the token kind the needle appears in, or None if in neither."""
     for kind, _lineno, text, _lid in tokenize(src):
@@ -105,16 +124,24 @@ def main():
                 "  %-46s expected %-6s got %s" % (label, expected, got)
             )
 
+    for label, fn, expected in BEHAVIOUR_CASES:
+        try:
+            got = fn()
+        except Exception as exc:
+            got = "raised %s" % exc
+        if got != expected:
+            failures.append("  %-46s expected %r got %r" % (label, expected, got))
+
     if failures:
         print("FAIL  swift-scan tokenizer self-test (%d of %d cases)"
-              % (len(failures), len(CASES)))
+              % (len(failures), len(CASES) + len(BEHAVIOUR_CASES)))
         for line in failures:
             print(line)
         print("      The verifier itself is broken. Every 'ok' below would be")
         print("      meaningless, so the sweep stops here.")
         return 1
 
-    print("ok    swift-scan tokenizer self-test (%d cases)" % len(CASES))
+    print("ok    swift-scan tokenizer self-test (%d cases)" % (len(CASES) + len(BEHAVIOUR_CASES)))
     return 0
 
 
