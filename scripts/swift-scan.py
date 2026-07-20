@@ -26,7 +26,15 @@ What it models:
     recursively, so a string inside an interpolation inside a string is still
     found
 
-Known limit, stated rather than hidden: this is a lexer, not a Swift parser. It
+Known limit, stated rather than hidden: BARE regex literals of the form
+/pattern/ are not modelled, only the extended #/pattern/# form. The bare form is
+genuinely ambiguous with division and with comment markers, and Swift itself
+resolves it with rules a lexer this size cannot carry. None exist in this
+codebase today. If one is ever added, this tool may mis-tokenize the line, and
+the correct response is to move the gate to SwiftSyntax rather than to add
+another special case here.
+
+This is a lexer, not a Swift parser. It
 does not resolve types, macros or conditional compilation. It is meant to make
 "is this token code or copy" reliable, which is all the two gates need. If a
 future finding needs real semantics, the answer is SwiftSyntax (already a
@@ -105,12 +113,39 @@ def tokenize(src):
                 buf_line = line
                 continue
 
-            # A string may be preceded by any number of # (raw string).
+            # A # run introduces either a raw string (#"..."#) or an extended
+            # regex literal (#/.../#). Both must be consumed here, before the
+            # comment and paren logic below.
             j = i
             h = 0
             while j < n and src[j] == "#":
                 h += 1
                 j += 1
+
+            # Extended regex literal. Codex round 10, HIGH: without this, the
+            # `//` inside #/https:\/\/x/# was read as a line comment and hid the
+            # rest of the line, and a `)` inside a regex could unbalance the
+            # interpolation paren counter and move real code into a string
+            # token. A regex pattern is neither executable code that can call a
+            # service nor copy a user reads, so it yields no token at all, the
+            # same treatment comments get.
+            if h > 0 and j < n and src[j] == "/":
+                flush("code")
+                closer = "/" + ("#" * h)
+                i = j + 1
+                while i < n:
+                    if src.startswith(closer, i):
+                        i += len(closer)
+                        break
+                    if src[i] == "\\":
+                        i += 2
+                        continue
+                    if src[i] == "\n":
+                        line += 1
+                    i += 1
+                buf_line = line
+                continue
+
             if j < n and src[j] == '"':
                 flush("code")
                 hashes = h

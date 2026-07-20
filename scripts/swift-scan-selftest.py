@@ -66,6 +66,16 @@ CASES = [
      'let a = """\nhe said "USD 10" here\n"""', "USD", "string"),
     ("multiline string is not code",
      'let a = """\nService.shared.go()\n"""', "Service", "string"),
+    # Codex round 10: an extended regex literal containing // must not be read
+    # as a line comment and swallow the rest of the file.
+    ("regex literal does not start a comment",
+     'let r = #/https:\\/\\/x/#\nlet a = "USD 10"', "USD", "string"),
+    ("regex literal itself yields no token",
+     'let r = #/USD 10/#', "USD", None),
+    # A ) inside a regex must not unbalance interpolation paren tracking and
+    # push real code into a string token.
+    ("regex paren inside interpolation does not unbalance",
+     'let a = "\\(f(#/)/#) + Service.shared.go())"', "Service", "code"),
 ]
 
 

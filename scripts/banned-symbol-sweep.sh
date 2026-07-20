@@ -195,10 +195,20 @@ check "no cloud callback wiring in live code" \
 # which was optional and therefore not load-bearing. Hoisted into the required
 # gate. Scans the whole repo, not just Swift: a key in a script or a plist is
 # still a key.
-# --untracked matters: a plain `git grep` only searches TRACKED files, so a
-# brand new file holding a key would pass the gate right up until the moment it
-# was committed. Caught by canary 2026-07-19.
-cred_hits=$(git grep -n -I --untracked -E '(sk-ant-[A-Za-z0-9_-]{20,}|zo_sk_[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|Bearer [A-Za-z0-9._~+/=-]{20,}|-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----)' -- . ":(exclude)scripts/banned-symbol-sweep.sh" ":(exclude)scripts/privacy-security-preflight.sh" 2>/dev/null || true)
+# Scans the WORKING TREE, not the git index. Codex round 10, HIGH: `git grep`
+# skips ignored files even with --untracked, so a .env, a local xcconfig, or
+# anything else matched by .gitignore could hold a live key and pass this gate.
+# Ignored is exactly where a real leaked credential would sit.
+#
+# The two script self-exclusions that used to be here are gone as well. They
+# were unnecessary: the credential patterns do not match their own source text,
+# because after `sk-ant-` the next literal character is `[`, which is not in the
+# character class. Verified rather than assumed. A gate that excuses itself by
+# filename is one edit away from excusing anything.
+#
+# Only genuinely generated directories are skipped, and each is named.
+cred_hits=$(grep -rnI -E '(sk-ant-[A-Za-z0-9_-]{20,}|zo_sk_[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|Bearer [A-Za-z0-9._~+/=-]{20,}|-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----)' . \
+  --exclude-dir=.git --exclude-dir=build --exclude-dir=xcuserdata --exclude-dir=DerivedData --exclude-dir=.handoff 2>/dev/null || true)
 if [ -n "$cred_hits" ]; then
   echo "FAIL  no credential-shaped literal anywhere in the repo"
   echo "$cred_hits" | sed 's/^/        /'
