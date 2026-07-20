@@ -83,6 +83,33 @@ enum SpeechModelCatalog {
         fluidAudioVariant: nil
     )
 
+    /// AF Flow's default. Multilingual, and the reason it is the default is
+    /// measured rather than assumed: 27 percent of Andrew's real dictation is
+    /// Russian, and the fork shipped an English-only default that would have
+    /// produced confident nonsense for every one of those utterances rather
+    /// than an error.
+    static let whisperLargeV3Turbo = SpeechModelDescriptor(
+        name: "openai_whisper-large-v3-v20240930_turbo_632MB",
+        pickerTitle: "Recommended",
+        variantName: "large-v3-turbo",
+        sizeDescription: "~632 MB",
+        backend: .whisperKit,
+        cachePathComponents: ["argmaxinc", "whisperkit-coreml", "openai_whisper-large-v3-v20240930_turbo_632MB"],
+        fluidAudioVariant: nil
+    )
+
+    /// Accuracy fallback if turbo disappoints on Russian, per the product spec.
+    /// Same family, larger weights, no new plumbing.
+    static let whisperLargeV3TurboLarge = SpeechModelDescriptor(
+        name: "openai_whisper-large-v3_turbo_954MB",
+        pickerTitle: "Highest accuracy",
+        variantName: "large-v3-turbo, larger",
+        sizeDescription: "~954 MB",
+        backend: .whisperKit,
+        cachePathComponents: ["argmaxinc", "whisperkit-coreml", "openai_whisper-large-v3_turbo_954MB"],
+        fluidAudioVariant: nil
+    )
+
     static let parakeetV3 = SpeechModelDescriptor(
         name: "fluid_parakeet-v3",
         pickerTitle: "Parakeet v3",
@@ -115,6 +142,8 @@ enum SpeechModelCatalog {
 
     /// Models that are always selectable on the current OS.
     private static let baseModels: [SpeechModelDescriptor] = [
+        whisperLargeV3Turbo,
+        whisperLargeV3TurboLarge,
         whisperTiny,
         whisperSmallEnglish,
         whisperSmallMultilingual,
@@ -132,7 +161,10 @@ enum SpeechModelCatalog {
         return models
     }
 
-    static let defaultModelID = whisperSmallEnglish.id
+    /// Changed from `whisperSmallEnglish` on 2026-07-19. The fork's default was
+    /// English-only, so a fresh install silently failed roughly a quarter of
+    /// Andrew's real dictation instead of reporting an error.
+    static let defaultModelID = whisperLargeV3Turbo.id
 
     static var whisperModels: [SpeechModelDescriptor] {
         availableModels.filter { $0.backend == .whisperKit }

@@ -1216,7 +1216,15 @@ struct SettingsView: View {
                             SpeechModelCatalog.model(named: appState.speechModel)?.automaticLanguageLabel
                                 ?? "Auto-detect"
                         ).tag("auto")
+                        // Andrew's own languages first, ordered by measured use:
+                        // English 72 percent, Russian 27 percent. Ukrainian is
+                        // not in v1's test set but the control offers it, since
+                        // the plumbing already exists and it is what makes
+                        // adding Ukrainian later cheap.
                         Text("English").tag("en")
+                        Text("Russian").tag("ru")
+                        Text("Ukrainian").tag("uk")
+                        Divider()
                         Text("Spanish").tag("es")
                         Text("French").tag("fr")
                         Text("German").tag("de")
@@ -1226,7 +1234,6 @@ struct SettingsView: View {
                         Text("Chinese").tag("zh")
                         Text("Japanese").tag("ja")
                         Text("Korean").tag("ko")
-                        Text("Russian").tag("ru")
                         Text("Arabic").tag("ar")
                         Text("Hindi").tag("hi")
                     }
