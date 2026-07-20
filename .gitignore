@@ -70,3 +70,9 @@ GhostPepper/Meeting/GranolaSessionSync.swift
 
 # AF Flow session handoffs
 .handoff/
+
+# Fixture reference texts are Andrew's real unscripted speech, not a script.
+# The audio is already excluded above; the transcripts are the same content.
+fixtures/*.reference.txt
+fixtures/*.draft-reference.txt
+fixtures/scores.md

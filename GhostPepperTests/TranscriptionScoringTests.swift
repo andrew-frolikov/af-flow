@@ -148,6 +148,82 @@ final class TranscriptionScoringTests: XCTestCase {
         )
     }
 
+    // MARK: - Draft reference generation
+
+    /// Step 2 of the fixture workflow: transcribe unscripted audio so Andrew has
+    /// something to correct, rather than asking him to type out what he just said.
+    ///
+    /// The fixtures are deliberately his real speech rather than a script, so
+    /// there is no reference text until he makes one. This produces a first draft
+    /// with the current default model and writes it beside the audio as
+    /// `<stem>.draft-reference.txt`.
+    ///
+    /// **The correction step is not optional and cannot be automated.** A
+    /// reference produced by a model and never corrected measures agreement with
+    /// that model, not accuracy, and would quietly rig the comparison in favour
+    /// of whichever engine wrote it. The draft is a typing aid. The extension
+    /// stays `.draft-reference.txt` until Andrew has fixed it and renamed it, so
+    /// an uncorrected draft can never be picked up as ground truth by accident.
+    @MainActor
+    func testGenerateDraftReferencesForUnreferencedAudio() async throws {
+        let pending = try audioWithoutReference()
+
+        try XCTSkipIf(
+            pending.isEmpty,
+            "No audio awaiting a reference. Nothing to draft."
+        )
+
+        let modelName = SpeechModelCatalog.defaultModelID
+        let manager = ModelManager(modelName: modelName)
+
+        try XCTSkipIf(
+            !manager.cachedModelNames.contains(modelName) && !downloadsAllowed,
+            "\(modelName) is not cached and AF_FLOW_ALLOW_MODEL_DOWNLOAD is not set."
+        )
+
+        await manager.loadModel(name: modelName, language: "ru")
+        guard manager.isReady else {
+            throw XCTSkip("Could not load \(modelName): \(manager.error?.localizedDescription ?? "unknown")")
+        }
+
+        for url in pending {
+            let audio = try AudioFixtureLoader.load(url)
+            guard let draft = await manager.transcribe(audioBuffer: audio.samples, language: "ru") else {
+                print("no text produced for \(url.lastPathComponent)")
+                continue
+            }
+
+            let stem = url.deletingPathExtension().lastPathComponent
+            let draftURL = fixturesDirectory.appendingPathComponent("\(stem).draft-reference.txt")
+            try draft.write(to: draftURL, atomically: true, encoding: .utf8)
+
+            print("""
+
+            === \(stem) (\(String(format: "%.1fs", audio.duration))) ===
+            \(draft)
+
+            Draft written to \(draftURL.lastPathComponent)
+            Correct it to exactly what you said, fillers included, then rename it
+            to \(stem).reference.txt
+            """)
+        }
+    }
+
+    private func audioWithoutReference() throws -> [URL] {
+        let manager = FileManager.default
+        guard manager.fileExists(atPath: fixturesDirectory.path) else { return [] }
+        let audioExtensions: Set<String> = ["wav", "m4a", "mp3", "aiff", "caf"]
+        return try manager.contentsOfDirectory(at: fixturesDirectory, includingPropertiesForKeys: nil)
+            .filter { audioExtensions.contains($0.pathExtension.lowercased()) }
+            .filter {
+                let stem = $0.deletingPathExtension().lastPathComponent
+                return !manager.fileExists(
+                    atPath: fixturesDirectory.appendingPathComponent("\(stem).reference.txt").path
+                )
+            }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
     // MARK: - The scorer's own correctness
 
     /// The rule from LOOP.md, learned the hard way across three review rounds:
