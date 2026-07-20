@@ -157,7 +157,17 @@ check "no live credential writes outside deferred files" \
 # Codex round 6 found dangling Zo/Trello callbacks threaded through the UI and a
 # live TrelloBackend construction in AppState, all invisible to the old checks
 # because they never touched the keychain.
-# Match the service IDENTIFIER, not just construction with parentheses.
+# Match the bare IDENTIFIER, with no suffix requirement at all.
+#
+# Fable adversary finding 1, and the most important result of the whole review:
+# requiring [.(] after the name meant `GoogleCalendarService\n    .shared` was
+# invisible, because tokens end at newlines. That is not an attack. It is what
+# any code formatter produces from a long line, so the check could switch itself
+# off silently during ordinary editing.
+#
+# Finding 2: a typealias hid the call behind a new name. Matching the bare
+# identifier catches the typealias DECLARATION, which is where the real name
+# has to appear, so this needs no symbol table.
 # Codex round 8, HIGH: MeetingSession started every recording with
 # GoogleCalendarService.shared.currentMeeting(), a live URLSession call, and the
 # old '\(' pattern never saw it because singleton access has no parenthesis
@@ -172,7 +182,7 @@ check "no live credential writes outside deferred files" \
 # it and cannot call anything. On first run the identifier check returned four
 # hits, three of which were exactly such comments.
 cloud_hits=$(python3 scripts/swift-scan.py --mode code \
-  '(ZoBackend|TrelloBackend|TrelloCommandParser|AirtableImporter|GranolaImporter|GoogleCalendarService|AnthropicProvider|ReaderCapture|ReaderCaptureSheet)[.(]' \
+  '\b(ZoBackend|TrelloBackend|TrelloCommandParser|AirtableImporter|GranolaImporter|GoogleCalendarService|AnthropicProvider|ReaderCapture|ReaderCaptureSheet)\b' \
   "${SWIFT_PATHS[@]}" --allow "$INERT_CLOUD_SOURCES_PATHS" 2>/dev/null | \
   grep -vE 'GranolaImporter\.extractTranscript' || true)
 if [ -n "$cloud_hits" ]; then
@@ -209,6 +219,15 @@ check "no cloud callback wiring in live code" \
 # Only genuinely generated directories are skipped, and each is named.
 cred_hits=$(grep -rnI -E '(sk-ant-[A-Za-z0-9_-]{20,}|zo_sk_[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|Bearer [A-Za-z0-9._~+/=-]{20,}|-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----)' . \
   --exclude-dir=.git --exclude-dir=build --exclude-dir=xcuserdata --exclude-dir=DerivedData --exclude-dir=.handoff 2>/dev/null || true)
+# Fable adversary finding 3: the raw grep above is line-oriented, so
+# "sk-ant-" + "api03_..." and a \u{}-escaped token both ship a working key while
+# it reports clean. This second pass matches what the compiled app actually
+# builds: literals concatenated and escapes decoded.
+cred_swift=$(python3 scripts/swift-scan.py --mode string --join \
+  '(sk-ant-[A-Za-z0-9_-]{20,}|zo_sk_[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,})' \
+  "${SWIFT_PATHS[@]}" 2>/dev/null || true)
+cred_hits="$cred_hits$cred_swift"
+
 if [ -n "$cred_hits" ]; then
   echo "FAIL  no credential-shaped literal anywhere in the repo"
   echo "$cred_hits" | sed 's/^/        /'
@@ -241,7 +260,7 @@ check "no ScreenCaptureKit in config" 'ScreenCaptureKit' config
 # Excluding comments removes noise, not coverage. Comments are not user-facing.
 literal_check() {
   local label="$1" pattern="$2" hits
-  hits=$(python3 scripts/swift-scan.py --mode string "$pattern" "${SWIFT_PATHS[@]}" 2>/dev/null || true)
+  hits=$(python3 scripts/swift-scan.py --mode string --join "$pattern" "${SWIFT_PATHS[@]}" 2>/dev/null || true)
   if [ -n "$hits" ]; then
     echo "FAIL  $label"
     echo "$hits" | sed 's/^/        /'
@@ -251,7 +270,17 @@ literal_check() {
   fi
 }
 
-literal_check "no em dash in user-facing strings" '\u2014'
+# Fable adversary finding 8: U+2015 HORIZONTAL BAR and U+2E3A render as em
+# dashes and sailed straight through a U+2014-only check.
+#
+# Scoped to em-dash LOOKALIKES only. The first version of this fix used the
+# range U+2012 to U+2015, which swept in the en dash and immediately failed two
+# correct lines, including a window-title matcher whose en dash is DATA that
+# Microsoft Teams puts in its own title bar. Removing it would have broken
+# meeting detection. Hard rule 9 bans em dashes; an en dash is a different
+# character with a different job, and widening past the rule creates pressure to
+# weaken the check later.
+literal_check "no em dash in user-facing strings" '[\u2014\u2015\u2E3A\u2E3B]'
 # The currency pattern must not match Swift's `$0` closure shorthand, which
 # appears inside interpolated strings all over the codebase. Matching it was a
 # bug in this check that buried the three real USD sites under 60 false

@@ -76,12 +76,21 @@ CASES = [
     # push real code into a string token.
     ("regex paren inside interpolation does not unbalance",
      'let a = "\\(f(#/)/#) + Service.shared.go())"', "Service", "code"),
+    # Fable adversary findings. Multi-line chaining is the one that matters
+    # most: it is produced by any code formatter, with no intent required.
+    ("multi-line chain still yields the identifier as code",
+     'let e = await GoogleCalendarService\n    .shared\n    .currentMeeting()',
+     "GoogleCalendarService", "code"),
+    ("typealias declaration names the service in code",
+     'typealias Bridge = GoogleCalendarService', "GoogleCalendarService", "code"),
+    ("unicode escape decodes to the banned character",
+     'let a = "done \\u{2014} saved"', "\\u{2014}", "string"),
 ]
 
 
 def kind_of(src, needle):
     """Return the token kind the needle appears in, or None if in neither."""
-    for kind, _lineno, text in tokenize(src):
+    for kind, _lineno, text, _lid in tokenize(src):
         if needle in text:
             return kind
     return None

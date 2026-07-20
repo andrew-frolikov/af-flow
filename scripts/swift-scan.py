@@ -71,10 +71,11 @@ def tokenize(src):
     hashes = 0
     depth = 0
     stack = []
+    lit_id = [0]
 
     def flush(kind):
         if buf:
-            out.append((kind, buf_line, "".join(buf)))
+            out.append((kind, buf_line, "".join(buf), lit_id[0] if kind == "string" else -1))
             del buf[:]
 
     while i < n:
@@ -156,6 +157,7 @@ def tokenize(src):
                     triple = False
                     i = j + 1
                 mode = "string"
+                lit_id[0] += 1
                 buf_line = line
                 continue
 
@@ -214,6 +216,72 @@ def tokenize(src):
     return out
 
 
+UNICODE_ESCAPE = re.compile(r"\\u\{([0-9A-Fa-f]{1,8})\}")
+
+
+def decode_escapes(text):
+    """Turn \\u{2014} into the character it produces at runtime.
+
+    Fable adversary finding 5: a banned character written as an escape never
+    appears literally in the source, so a literal scan could never see it, while
+    the compiled app prints it. What ships is what matters.
+    """
+    def sub(m):
+        try:
+            return chr(int(m.group(1), 16))
+        except (ValueError, OverflowError):
+            return m.group(0)
+    return UNICODE_ESCAPE.sub(sub, text)
+
+
+JOINABLE = re.compile(r"^[+()\s]*$")
+
+
+def join_adjacent(tokens):
+    """Merge string literals that Swift will concatenate into one value.
+
+    Fable adversary findings 3 and 6: the credential and currency checks are
+    regexes over one token, so "sk-ant-" + "api03_..." and "US" + "D 10" and
+    "US\(\"\")D 10" all slip through while the compiled app reconstructs the
+    banned value perfectly. Matching what the user or an attacker actually gets
+    means matching the concatenation, not the fragments.
+
+    Merges a run of string tokens when everything between them is only +,
+    parentheses and whitespace. Deliberately conservative: it will not merge
+    across a statement boundary, an identifier or a comma.
+    """
+    merged = []
+    i = 0
+    n = len(tokens)
+    while i < n:
+        kind, lineno, text, lid = tokens[i]
+        if kind != "string":
+            merged.append(tokens[i])
+            i += 1
+            continue
+        parts = [text]
+        ids = {lid}
+        j = i + 1
+        last = i
+        while j < n:
+            if tokens[j][0] == "string":
+                parts.append(tokens[j][2])
+                ids.add(tokens[j][3])
+                last = j
+                j += 1
+                continue
+            if JOINABLE.match(tokens[j][2]):
+                j += 1
+                continue
+            break
+        if last > i:
+            merged.append(("string", lineno, "".join(parts), -1))
+            i = last + 1
+        else:
+            merged.append(tokens[i])
+            i += 1
+    return merged
+
 def is_entity_table_allowed(text, path):
     """The one deliberate exception, unchanged in scope.
 
@@ -236,11 +304,15 @@ def main():
     args = sys.argv[1:]
     mode = "code"
     allow = None
+    join_strings = False
 
     if "--mode" in args:
         k = args.index("--mode")
         mode = args[k + 1]
         args = args[:k] + args[k + 2:]
+    if "--join" in args:
+        args.remove("--join")
+        join_strings = True
     if "--allow" in args:
         k = args.index("--allow")
         allow = re.compile(args[k + 1])
@@ -252,9 +324,26 @@ def main():
 
     pattern = re.compile(args[0])
     hits = 0
+    seen_dirs = set()
 
     for root in args[1:]:
-        for dirpath, _dirs, files in os.walk(root):
+        # followlinks=True. Fable adversary finding 4: os.walk skips symlinked
+        # DIRECTORIES by default, so a source folder that is a symlink is never
+        # scanned. This project already carries 12 file symlinks in
+        # CleanupModelProbeSupport, so a directory symlink would read as
+        # ordinary structure rather than as something suspicious. The inode set
+        # stops a symlink cycle turning this into an infinite walk.
+        for dirpath, dirnames, files in os.walk(root, followlinks=True):
+            try:
+                st = os.stat(dirpath)
+                key = (st.st_dev, st.st_ino)
+            except OSError:
+                key = dirpath
+            if key in seen_dirs:
+                dirnames[:] = []
+                continue
+            seen_dirs.add(key)
+
             for name in sorted(files):
                 if not name.endswith(".swift"):
                     continue
@@ -264,16 +353,48 @@ def main():
                 try:
                     with open(path, encoding="utf-8") as fh:
                         src = fh.read()
-                except (OSError, UnicodeDecodeError):
+                except (OSError, UnicodeDecodeError) as exc:
+                    # Fail CLOSED. Fable adversary finding 9: skipping an
+                    # unreadable file silently meant chmod 000 on a file
+                    # containing a live cloud call produced a clean report. A
+                    # verifier that cannot read a file has not checked it, and
+                    # must never imply otherwise.
+                    #
+                    # One exception, on evidence rather than convenience: a
+                    # DANGLING symlink resolves to nothing, so it provably
+                    # cannot hide a violation. It is reported as a note so it
+                    # stays visible, but it does not fail the gate. A symlink
+                    # that resolves is read and scanned normally.
+                    if os.path.islink(path) and not os.path.exists(path):
+                        sys.stderr.write(
+                            "note  dangling symlink, nothing to scan: %s\n" % path
+                        )
+                        continue
+                    print("%s:0:UNREADABLE, not checked: %s" % (path, exc))
+                    hits += 1
                     continue
 
                 lines = src.split("\n")
-                for kind, lineno, text in tokenize(src):
+                tokens = tokenize(src)
+                if join_strings:
+                    tokens = join_adjacent(tokens)
+
+                # A literal split by interpolation yields several tokens sharing
+                # one id, so requiring a unique id is how the entity exception
+                # demands a WHOLE literal (Fable adversary finding 7).
+                counts = {}
+                for kind, _ln, _tx, lid in tokens:
+                    if kind == "string" and lid >= 0:
+                        counts[lid] = counts.get(lid, 0) + 1
+
+                for kind, lineno, text, lid in tokens:
                     if kind != mode:
                         continue
+                    text = decode_escapes(text)
                     if not pattern.search(text):
                         continue
-                    if mode == "string" and is_entity_table_allowed(text, path):
+                    if mode == "string" and counts.get(lid) == 1 and \
+                            is_entity_table_allowed(text, path):
                         continue
                     shown = lines[lineno - 1].strip() if lineno <= len(lines) else text
                     print("%s:%d:%s" % (path, lineno, shown))
