@@ -292,7 +292,16 @@ def is_entity_table_allowed(text, path):
     copy. Requires the exact file and a token whose entire content is the entity
     name or the single character it decodes to.
 
-    Provisional pending Andrew's ratification.
+    RATIFIED by Andrew on 2026-07-20. This is the project's only allowlist
+    exception to hard rule 9, and it is permanent unless ReaderCapture.swift is
+    itself deleted (deferred to C6 with the rest of the inert cloud sources).
+
+    Rejected alternative, recorded so nobody re-proposes it: rewriting the table
+    to use "\\u{2014}" so no exception is needed at all. It looks cleaner and it
+    is a false pass. decode_escapes deliberately resolves unicode escapes before
+    matching, per the Fable adversary's finding 5 that a banned character written
+    as an escape never appears in source but still ships in the binary. Editing
+    source so a gate stops firing is the move LOOP.md forbids outright.
     """
     if os.path.normpath(path) != ENTITY_TABLE_FILE:
         return False
