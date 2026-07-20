@@ -49,8 +49,20 @@ INERT_CLOUD_SOURCES='GhostPepper/(Calendar/GoogleCalendarService|Meeting/Airtabl
 # The keychain helper defines the migration function and names the upstream
 # service in a comment explaining why AF Flow does not use it. Test fixtures and
 # the dev-only probe tool carry the upstream bundle id as literal strings.
-DEFINITION_AND_FIXTURES='GhostPepper/QA/KeychainHelper\.swift|GhostPepperTests/|CleanupModelProbe/main\.swift|GhostPepper/Meeting/MeetingTranscriptSettings\.swift'
+DEFINITION_AND_FIXTURES='GhostPepper/QA/KeychainHelper\.swift|GhostPepperTests/[^:]*\.swift|CleanupModelProbe/main\.swift|GhostPepper/Meeting/MeetingTranscriptSettings\.swift'
 
+# Same inert set as INERT_CLOUD_SOURCES, in the plain path form code-grep.py
+# expects (no grep -n colon anchoring).
+INERT_CLOUD_SOURCES_PATHS='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider)\.swift'
+
+# Documented single-symbol exception, added 2026-07-19 and flagged to Andrew.
+# GranolaImporter.extractTranscript is a `nonisolated static func` that parses a
+# local dictionary into a string. It contains no URLSession, no http, no
+# dataTask: verified, zero matches. It is a pure parsing helper that happens to
+# live on a cloud importer type, and MeetingMarkdownWriter calls it locally.
+# It is therefore a naming problem, not a capability. Recorded here rather than
+# silently excluded, and C6 should move the helper off that type so the
+# exception can be deleted along with the file.
 fail=0
 
 # $1 = human label, $2 = extended regex, $3 = "swift" | "config",
@@ -66,8 +78,14 @@ check() {
   # Codex round 7, HIGH: filtering the whole grep hit meant a live file could
   # suppress itself by mentioning an allowlisted path anywhere in its content,
   # e.g. TrelloBackend(...) // see GhostPepper/PepperChat/TrelloBackend.swift.
+  # The allowlist must match the WHOLE path, which in grep -n output ends at
+  # the first colon. Codex round 7 caught that filtering the whole line let a
+  # file suppress itself via a trailing comment; round 8 caught that anchoring
+  # with ^($allow) alone was still prefix-only, so
+  # GhostPepper/PepperChat/TrelloBackend.swift.evil/Live.swift would pass as
+  # allowlisted. Requiring the colon closes both.
   if [ -n "$allow" ] && [ -n "$hits" ]; then
-    hits=$(printf '%s\n' "$hits" | grep -vE "^($allow)" || true)
+    hits=$(printf '%s\n' "$hits" | grep -vE "^($allow):" || true)
   fi
 
   if [ -n "$hits" ]; then
@@ -126,9 +144,31 @@ check "no live credential writes outside deferred files" \
 # Codex round 6 found dangling Zo/Trello callbacks threaded through the UI and a
 # live TrelloBackend construction in AppState, all invisible to the old checks
 # because they never touched the keychain.
-check "no live code constructs a cloud client" \
-  '(ZoBackend|TrelloBackend|TrelloCommandParser|AirtableImporter|GranolaImporter|GoogleCalendarService|AnthropicProvider)\(' swift \
-  "$INERT_CLOUD_SOURCES"
+# Match the service IDENTIFIER, not just construction with parentheses.
+# Codex round 8, HIGH: MeetingSession started every recording with
+# GoogleCalendarService.shared.currentMeeting(), a live URLSession call, and the
+# old '\(' pattern never saw it because singleton access has no parenthesis
+# after the type name.
+#
+# Deliberately scoped to the service OBJECTS that own a URLSession, not to their
+# data types. CalendarEvent is a plain Codable struct with no networking and the
+# meeting UI still passes it around; banning a value type would be theatre while
+# the object that can actually reach the network is the control that does work.
+# Runs through scripts/code-grep.py, which strips comments and string literals,
+# because a comment recording that a capability was REMOVED necessarily names
+# it and cannot call anything. On first run the identifier check returned four
+# hits, three of which were exactly such comments.
+cloud_hits=$(python3 scripts/code-grep.py \
+  '(ZoBackend|TrelloBackend|TrelloCommandParser|AirtableImporter|GranolaImporter|GoogleCalendarService|AnthropicProvider)[.(]' \
+  "${SWIFT_PATHS[@]}" --allow "$INERT_CLOUD_SOURCES_PATHS" 2>/dev/null | \
+  grep -vE 'GranolaImporter\.extractTranscript' || true)
+if [ -n "$cloud_hits" ]; then
+  echo "FAIL  no live reference to a cloud service object"
+  echo "$cloud_hits" | sed 's/^/        /'
+  fail=1
+else
+  echo "ok    no live reference to a cloud service object"
+fi
 check "no cloud callback wiring in live code" \
   'onSendToZo|onSendToTrello|isTrelloConfigured|trelloApiKey|trelloToken|trelloBoards|fetchTrelloBoards' swift \
   "$INERT_CLOUD_SOURCES"
@@ -177,7 +217,26 @@ literal_check "no em dash in user-facing strings" '\u2014'
 # still skipping Swift's single-digit closure shorthand ($0, $1). Codex round 7,
 # HIGH: the previous pattern required a decimal point and so missed exactly the
 # shape that was sitting unlabelled in PROGRESS.md.
-literal_check "no non-CAD currency in user-facing strings" '[$]%|[$][0-9]{2,}|[$][0-9]+[.,][0-9]|\bUSD\b'
+# Codex round 8 asked for every literal dollar amount to be caught, on the
+# reasoning that stripping interpolation removes Swift's $0 shorthand. The
+# interpolation stripping is now in place, but it does NOT settle this case:
+# the remaining collisions are regex REPLACEMENT TEMPLATES, literal text like
+# "[$2]($1)" passed to replacingOccurrences with .regularExpression. Those are
+# plain characters in the string, not interpolation, so no amount of
+# interpolation handling separates them from a price.
+#
+# So `$` plus a single bare digit is genuinely ambiguous in Swift source, and a
+# check that flags it would fail on three correct lines today. The rule instead
+# catches every shape that is unambiguously money: a format specifier, a decimal
+# amount, two or more digits, the word USD, or a single digit carrying an
+# explicit currency word.
+#
+# KNOWN LIMITATION, recorded rather than hidden: a bare "$9" with no decimal and
+# no currency word is not flagged. Accepted because every cost this app can
+# display is CAD 0 on-device, so a one-digit hardcoded price is not a shape that
+# can legitimately occur here, while regex backreferences demonstrably do.
+literal_check "no non-CAD currency in user-facing strings" \
+  '[$]%|[$][0-9]+[.,][0-9]|[$][0-9]{2,}|\bUSD\b|[$][0-9] ?(USD|CAD|dollar)'
 
 # Rule 9 applies to helper-script output too. Codex round 7, MEDIUM: the sweep
 # only looked at Swift, so scripts/extract_granola.py printed an em dash to the

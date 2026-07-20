@@ -72,6 +72,37 @@ def string_spans(line, in_multiline):
     return spans, in_multiline
 
 
+def strip_interpolation(content):
+    """Remove Swift \\( ... ) interpolation segments from string content.
+
+    What is inside an interpolation is CODE, not user-facing text, and it is
+    where Swift's $0 closure shorthand lives. Stripping it means the currency
+    check can treat any $ followed by a digit as a price, which is what closes
+    the gap Codex round 8 found ($9 slipping past a two-digit rule). Handles
+    nesting, since \\(a.map { "\\($0)" }) is legal.
+    """
+    out = []
+    i = 0
+    n = len(content)
+    while i < n:
+        if content.startswith("\\(", i):
+            depth = 1
+            i += 2
+            while i < n and depth:
+                if content[i] == "(":
+                    depth += 1
+                elif content[i] == ")":
+                    depth -= 1
+                i += 1
+            continue
+        out.append(content[i])
+        i += 1
+    return "".join(out)
+
+
+ENTITY_TABLE_FILE = os.path.join("GhostPepper", "Reader", "ReaderCapture.swift")
+
+
 def is_allowed(content, is_entity_table_file):
     """The single deliberate exception, scoped as narrowly as it can be.
 
@@ -117,19 +148,26 @@ def main():
                 except (OSError, UnicodeDecodeError):
                     continue
 
-                is_entity_table_file = path.endswith(
-                    os.path.join("Reader", "ReaderCapture.swift")
-                )
+                # Exact repo-relative path, not a suffix match. Codex round 8:
+                # endswith("Reader/ReaderCapture.swift") would allowlist any
+                # file at that suffix anywhere, including one a contributor
+                # creates on purpose.
+                is_entity_table_file = os.path.normpath(path) == ENTITY_TABLE_FILE
 
                 in_multiline = False
                 for lineno, line in enumerate(lines, start=1):
                     line = line.rstrip("\n")
                     spans, in_multiline = string_spans(line, in_multiline)
+                    # The entity table is a list of ("&name;", "char") pairs, so
+                    # the exception only applies on a line that actually looks
+                    # like that. A line in the same file that does not is scanned
+                    # normally.
+                    entity_context = is_entity_table_file and '("&' in line
                     for start, end in spans:
-                        content = line[start:end]
+                        content = strip_interpolation(line[start:end])
                         if not pattern.search(content):
                             continue
-                        if is_allowed(content, is_entity_table_file):
+                        if is_allowed(content, entity_context):
                             continue
                         print("%s:%d:%s" % (path, lineno, line.strip()))
                         hits += 1

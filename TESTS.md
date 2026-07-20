@@ -55,7 +55,9 @@ Reboot: app auto-starts, hotkey works without re-granting permissions. Wi-Fi OFF
 
 ## Post-v1: Ukrainian
 
-Moved out of v1 on 2026-07-18 by Andrew, on measured evidence: of 1355 real dictations in Wispr Flow, 874 were English, 332 Russian and zero Ukrainian. Neither test below gates any v1 chunk, and T4 is explicitly no longer a binding condition on the C1 tripwire.
+Moved out of v1 on 2026-07-18 by Andrew, on measured evidence: 874 English, 332 Russian and zero Ukrainian. Neither test below gates any v1 chunk, and T4 is explicitly no longer a binding condition on the C1 tripwire.
+
+**Caveat, 2026-07-19, awaiting Andrew's ratification.** The completed extraction showed that count covers a 28-day window rather than his full history, and Wispr's `config.json` lists `uk` among his used languages. The zero is windowed, not lifetime. The removal stands until he decides otherwise, but if he restores Ukrainian these two tests come back with it, T4 as a binding condition.
 
 These are kept verbatim rather than deleted because Ukrainian is a wanted later capability and the force-language control still ships in v1, which is what makes adding it cheap. When Ukrainian returns, both tests return with it, and T4 returns as a binding condition: the single Bulgarian misdetection in the real data says Slavic language confusion is a genuine risk, not a hypothetical one.
 

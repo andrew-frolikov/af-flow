@@ -456,32 +456,22 @@ final class MeetingSession: ObservableObject {
         print("MeetingSession: applied user-chosen calendar event '\(event.title)' (\(event.attendees.count) attendees, \(declinedCount) declined)")
     }
 
-    /// Populate meeting title and attendees from Google Calendar if connected.
+    /// Calendar auto-match is removed. This used to reach
+    /// `GoogleCalendarService.shared` on every meeting start, which is a live
+    /// cloud client that makes real `URLSession` requests, so a code path that
+    /// begins every recording by calling out to Google is exactly what
+    /// CLAUDE.md hard rule 1 forbids.
+    ///
+    /// Codex round 8 found this while the sweep reported clean, because the
+    /// gate only matched construction with parentheses and this is singleton
+    /// access. The gate now matches the service identifier itself.
+    ///
+    /// The `CalendarEvent` struct it returned is left alone deliberately: it is
+    /// a plain `Codable` value type with no networking, and the UI still passes
+    /// it around. Banning a data struct would be theatre. Banning the object
+    /// that owns the URLSession is the control that does real work.
     private func populateFromCalendar() async {
-        guard !skipCalendarAutoMatch else {
-            print("MeetingSession: skipping calendar auto-match (user picked event explicitly)")
-            return
-        }
-        guard GoogleCalendarService.shared.isSignedIn else { return }
-        guard let event = await GoogleCalendarService.shared.currentMeeting() else {
-            print("MeetingSession: no current calendar event found")
-            return
-        }
-
-        // Set title from calendar if user hasn't edited it
-        if transcript.meetingName == originalName {
-            transcript.meetingName = event.title
-            hasAutoUpdatedTitle = true
-            print("MeetingSession: title set from calendar: '\(event.title)'")
-        }
-
-        // Set attendees from calendar
-        if transcript.attendees.isEmpty && !event.attendees.isEmpty {
-            transcript.attendees = event.attendees
-            print("MeetingSession: attendees set from calendar: \(event.attendees.map { $0.name }.joined(separator: ", "))")
-        }
-
-        autoSave()
+        return
     }
 
     /// Manually trigger title detection and attendee capture.
