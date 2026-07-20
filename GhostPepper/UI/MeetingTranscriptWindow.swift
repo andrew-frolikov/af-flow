@@ -2747,14 +2747,10 @@ struct MeetingRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .wikiKindsChanged)) { _ in
             state.loadIndexes()
         }
-        .sheet(isPresented: $showReaderCapture) {
-            ReaderCaptureSheet(
-                archiveRoot: state.saveDirectory
-            ) { savedURL in
-                state.openFile(savedURL)
-                state.loadHistory()
-            }
-        }
+        // Reader capture sheet removed. It fetched an arbitrary pasted URL over
+        // URLSession, which is a live outbound network capability in an app
+        // whose entire promise is that nothing leaves the Mac. Out of scope for
+        // AF Flow, and Codex round 9 rated it HIGH while the sweep was green.
         .onReceive(NotificationCenter.default.publisher(for: .indexUpdated)) { _ in
             state.loadIndexes()
         }
@@ -3964,11 +3960,6 @@ struct MeetingRootView: View {
                         } label: {
                             Label("New ad hoc meeting", systemImage: "waveform")
                         }
-                        Button {
-                            showReaderCapture = true
-                        } label: {
-                            Label("New reader…", systemImage: "newspaper")
-                        }
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 11, weight: .medium))
@@ -4003,7 +3994,6 @@ struct MeetingRootView: View {
 
     // MARK: - Empty State
 
-    @State private var showReaderCapture = false
     @State private var brainBuildStatus: BrainBuildStatus? = nil
 
     enum BrainBuildStatus: Equatable {

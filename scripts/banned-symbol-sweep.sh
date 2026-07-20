@@ -45,7 +45,7 @@ INERT_BY_DECISION='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableI
 # allowlisted the live ReaderCaptureSheet.swift UI file too. Neither Reader file
 # constructs a cloud client, so the entry is deleted rather than narrowed. Every
 # entry below names one file, never a directory shape.
-INERT_CLOUD_SOURCES='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider)\.swift'
+INERT_CLOUD_SOURCES='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider|Reader/ReaderCapture|Reader/ReaderCaptureSheet)\.swift'
 # The keychain helper defines the migration function and names the upstream
 # service in a comment explaining why AF Flow does not use it. Test fixtures and
 # the dev-only probe tool carry the upstream bundle id as literal strings.
@@ -53,7 +53,7 @@ DEFINITION_AND_FIXTURES='GhostPepper/QA/KeychainHelper\.swift|GhostPepperTests/[
 
 # Same inert set as INERT_CLOUD_SOURCES, in the plain path form code-grep.py
 # expects (no grep -n colon anchoring).
-INERT_CLOUD_SOURCES_PATHS='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider)\.swift'
+INERT_CLOUD_SOURCES_PATHS='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider|Reader/ReaderCapture|Reader/ReaderCaptureSheet)\.swift'
 
 # Documented single-symbol exception, added 2026-07-19 and flagged to Andrew.
 # GranolaImporter.extractTranscript is a `nonisolated static func` that parses a
@@ -154,12 +154,12 @@ check "no live credential writes outside deferred files" \
 # data types. CalendarEvent is a plain Codable struct with no networking and the
 # meeting UI still passes it around; banning a value type would be theatre while
 # the object that can actually reach the network is the control that does work.
-# Runs through scripts/code-grep.py, which strips comments and string literals,
+# Runs through scripts/swift-scan.py in code mode, which yields only real code,
 # because a comment recording that a capability was REMOVED necessarily names
 # it and cannot call anything. On first run the identifier check returned four
 # hits, three of which were exactly such comments.
-cloud_hits=$(python3 scripts/code-grep.py \
-  '(ZoBackend|TrelloBackend|TrelloCommandParser|AirtableImporter|GranolaImporter|GoogleCalendarService|AnthropicProvider)[.(]' \
+cloud_hits=$(python3 scripts/swift-scan.py --mode code \
+  '(ZoBackend|TrelloBackend|TrelloCommandParser|AirtableImporter|GranolaImporter|GoogleCalendarService|AnthropicProvider|ReaderCapture|ReaderCaptureSheet)[.(]' \
   "${SWIFT_PATHS[@]}" --allow "$INERT_CLOUD_SOURCES_PATHS" 2>/dev/null | \
   grep -vE 'GranolaImporter\.extractTranscript' || true)
 if [ -n "$cloud_hits" ]; then
@@ -172,6 +172,27 @@ fi
 check "no cloud callback wiring in live code" \
   'onSendToZo|onSendToTrello|isTrelloConfigured|trelloApiKey|trelloToken|trelloBoards|fetchTrelloBoards' swift \
   "$INERT_CLOUD_SOURCES"
+
+# Layer 2 and 4: an actual credential, hardcoded. Codex round 9, HIGH: this
+# sweep is the REQUIRED gate and it checked for key-entry UI, credential reads
+# and credential writes, but never for a key literal sitting in a file. A
+# hardcoded sk-ant-... or ghp_... would have shipped with the gate green.
+#
+# The pattern is the one already used by scripts/privacy-security-preflight.sh,
+# which was optional and therefore not load-bearing. Hoisted into the required
+# gate. Scans the whole repo, not just Swift: a key in a script or a plist is
+# still a key.
+# --untracked matters: a plain `git grep` only searches TRACKED files, so a
+# brand new file holding a key would pass the gate right up until the moment it
+# was committed. Caught by canary 2026-07-19.
+cred_hits=$(git grep -n -I --untracked -E '(sk-ant-[A-Za-z0-9_-]{20,}|zo_sk_[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|Bearer [A-Za-z0-9._~+/=-]{20,}|-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----)' -- . ":(exclude)scripts/banned-symbol-sweep.sh" ":(exclude)scripts/privacy-security-preflight.sh" 2>/dev/null || true)
+if [ -n "$cred_hits" ]; then
+  echo "FAIL  no credential-shaped literal anywhere in the repo"
+  echo "$cred_hits" | sed 's/^/        /'
+  fail=1
+else
+  echo "ok    no credential-shaped literal anywhere in the repo"
+fi
 
 # Layer 1: entitlement dropped with the Calendar loopback server.
 check "no network.server entitlement" 'network\.server' config
@@ -188,7 +209,7 @@ check "no ScreenCaptureKit in config" 'ScreenCaptureKit' config
 # enforced only by whoever happened to read the diff, which is how a new em dash
 # and USD price strings both shipped past five review rounds.
 #
-# These run through scripts/string-literal-grep.py rather than grep, because
+# These run through scripts/swift-scan.py rather than grep, because
 # they must match INSIDE Swift string literals and nowhere else. A line-oriented
 # grep flags ordinary code comments that quote something before an em dash (it
 # produced eight false positives on 2026-07-19) and at the same time MISSES em
@@ -197,7 +218,7 @@ check "no ScreenCaptureKit in config" 'ScreenCaptureKit' config
 # Excluding comments removes noise, not coverage. Comments are not user-facing.
 literal_check() {
   local label="$1" pattern="$2" hits
-  hits=$(python3 scripts/string-literal-grep.py "$pattern" "${SWIFT_PATHS[@]}" 2>/dev/null || true)
+  hits=$(python3 scripts/swift-scan.py --mode string "$pattern" "${SWIFT_PATHS[@]}" 2>/dev/null || true)
   if [ -n "$hits" ]; then
     echo "FAIL  $label"
     echo "$hits" | sed 's/^/        /'
