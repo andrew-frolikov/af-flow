@@ -101,6 +101,19 @@ echo "AF Flow banned-symbol sweep"
 echo "scope: code and config only, docs excluded by design (see header)"
 echo ""
 
+# The verifier proves itself BEFORE it verifies anything else. Rounds 7, 8 and 9
+# each found a hole in this project's Swift parsing, and each one meant the
+# sweep had been reporting clean while a real violation sat in the tree. A gate
+# with a silently wrong parser is worse than no gate: it manufactures
+# confidence. Canaries were being run by hand, which is not a control because it
+# depends on someone remembering. Now it runs every time, first, and a failure
+# here stops the sweep rather than letting 15 misleading "ok" lines print.
+if ! python3 scripts/swift-scan-selftest.py; then
+  echo ""
+  echo "RESULT: verifier self-test failed, no other check can be trusted"
+  exit 1
+fi
+
 # Layer 1 and 2: screen capture. Hard rule 1 forbids requesting Screen Recording.
 # "Removed" means: no import, no call site reachable or unreachable, framework
 # not linked. See LOOP.md section 3.
