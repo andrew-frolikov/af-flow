@@ -90,7 +90,7 @@ class OnboardingWindowController {
 
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 480, height: 620),
-                styleMask: [.titled, .closable],
+                styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
             )
