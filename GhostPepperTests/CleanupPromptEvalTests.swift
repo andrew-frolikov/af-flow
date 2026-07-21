@@ -158,11 +158,20 @@ final class CleanupPromptEvalTests: XCTestCase {
     /// Shared eval runner for any model kind.
     @MainActor
     private func runEvalSuite(modelKind: LocalCleanupModelKind) async throws {
+        // Check for a downloaded model BEFORE loading. `loadModel(kind:)`
+        // downloads the model if it is missing, so checking `manager.state`
+        // afterward can never observe "not downloaded" -- it silently pulls
+        // multi-gigabyte weights instead of skipping. Skip here, before any
+        // network access happens.
+        guard TextCleanupManager.isModelDownloaded(modelKind) else {
+            throw XCTSkip("Cleanup model \(modelKind.rawValue) not available (not downloaded)")
+        }
+
         let manager = TextCleanupManager(selectedCleanupModelKind: modelKind)
         await manager.loadModel(kind: modelKind)
 
         guard manager.state == .ready else {
-            throw XCTSkip("Cleanup model \(modelKind.rawValue) not available (not downloaded)")
+            throw XCTSkip("Cleanup model \(modelKind.rawValue) failed to load after being downloaded")
         }
 
         manager.activeLLM?.seed = 1

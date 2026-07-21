@@ -45,7 +45,7 @@ final class RuntimeModelInventoryTests: XCTestCase {
         XCTAssertEqual(row(named: "Qwen 3.5 4B Q4_K_M (Full)", in: rows)?.isSelected, true)
     }
 
-    func testRuntimeModelRowsSeparateSelectedSpeechModelFromActiveDownload() {
+    func testRuntimeModelRowsSeparateSelectedSpeechModelFromActiveDownload() throws {
         let rows = RuntimeModelInventory.rows(
             selectedSpeechModelName: "openai_whisper-small.en",
             activeSpeechModelName: "openai_whisper-tiny.en",
@@ -57,26 +57,50 @@ final class RuntimeModelInventoryTests: XCTestCase {
             cachedCleanupKinds: []
         )
 
-        XCTAssertEqual(rows[0].status, .downloading(progress: nil))
-        XCTAssertFalse(rows[0].isSelected)
+        // Property: the row for the model currently being downloaded must
+        // never be conflated with the row for the model the user has
+        // selected. Looked up by catalog id (not array position) so that
+        // SpeechModelCatalog.baseModels growing or reordering -- e.g. the
+        // 2026-07-19 change that prepended two new default models ahead of
+        // whisperTiny/whisperSmallEnglish -- cannot silently disable this
+        // assertion again the way positional indices did.
+        let activeDownloadRow = try XCTUnwrap(
+            rows.first(where: { $0.id == SpeechModelCatalog.whisperTiny.id })
+        )
+        XCTAssertEqual(activeDownloadRow.status, .downloading(progress: nil))
+        XCTAssertFalse(activeDownloadRow.isSelected)
 
-        XCTAssertEqual(rows[1].status, .notLoaded)
-        XCTAssertTrue(rows[1].isSelected)
+        let selectedRow = try XCTUnwrap(
+            rows.first(where: { $0.id == SpeechModelCatalog.whisperSmallEnglish.id })
+        )
+        XCTAssertEqual(selectedRow.status, .notLoaded)
+        XCTAssertTrue(selectedRow.isSelected)
     }
 
-    func testRuntimeModelRowsShowCachedSpeechModelAsLoadingInsteadOfDownloading() {
+    func testRuntimeModelRowsShowCachedSpeechModelAsLoadingInsteadOfDownloading() throws {
+        // Exercise the "cached but loading" property against the model AF
+        // Flow actually ships as the default (multilingual large-v3-turbo)
+        // rather than the demoted English-only small.en, so this coverage
+        // follows the model users actually run instead of parking itself on
+        // one they are steered away from.
+        let defaultModelID = SpeechModelCatalog.defaultModelID
         let rows = RuntimeModelInventory.rows(
-            selectedSpeechModelName: "openai_whisper-small.en",
-            activeSpeechModelName: "openai_whisper-small.en",
+            selectedSpeechModelName: defaultModelID,
+            activeSpeechModelName: defaultModelID,
             speechModelState: .loading,
             speechDownloadProgress: nil,
-            cachedSpeechModelNames: ["openai_whisper-small.en"],
+            cachedSpeechModelNames: [defaultModelID],
             cleanupState: .idle,
             selectedCleanupModelKind: .qwen35_2b_q4_k_m,
             cachedCleanupKinds: []
         )
 
-        XCTAssertEqual(rows[1].status, .loading)
+        // Property: a model that is already on disk and merely being loaded
+        // into memory must render as "loading", never as a phantom
+        // "downloading". Looked up by catalog id, not array position, so
+        // catalog reordering cannot silently disable this assertion again.
+        let row = try XCTUnwrap(rows.first(where: { $0.id == defaultModelID }))
+        XCTAssertEqual(row.status, .loading)
         XCTAssertNil(RuntimeModelInventory.activeDownloadText(rows: rows))
     }
 

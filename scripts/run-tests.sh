@@ -62,6 +62,17 @@ echo "backup: $BACKUP"
 restore() {
     echo
     echo "restoring the $DOMAIN defaults domain"
+    # `defaults import` MERGES; it does not replace. That is the hole this had
+    # on its first real run on 2026-07-20: the backup was taken while
+    # `speechModel` and `preferredLanguage` were absent, the suite then created
+    # both, and importing the backup left the suite's values in place because
+    # there was nothing in the backup to overwrite them with. The wrapper
+    # reported "restored" and printed the corrupted values in the same breath.
+    #
+    # Deleting the domain first makes the restore exact rather than additive.
+    # Safe because the backup was verified non-empty before the run started,
+    # and its path is printed on every failure path below.
+    defaults delete "$DOMAIN" 2>/dev/null
     if defaults import "$DOMAIN" "$BACKUP" 2>/dev/null; then
         echo "restored from $BACKUP"
     else

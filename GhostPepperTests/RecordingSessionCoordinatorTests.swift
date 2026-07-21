@@ -247,6 +247,24 @@ final class RecordingSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(recordedEvents, ["finish", "batch", "cleanup"])
     }
 
+    // NOTE (2026-07-20): deliberately left failing, do not "fix" by loosening
+    // the ordering assertion below. A first-pass analysis attributed the
+    // failure to a benign ordering flake in RecordingSessionCoordinator's
+    // concurrently-scheduled "finish streamed" / "finish full-buffer" Tasks
+    // and proposed replacing `XCTAssertEqual(recordedEvents, [...])` with an
+    // order-independent set+count check. An independent adversarial review
+    // refuted that: nobody has confirmed via an actual test run which
+    // assertion is failing (this task is barred from running
+    // `xcodebuild test`, which is the only way to get that ground truth
+    // here), the two finalization Tasks run concurrent inference over
+    // shared FluidAudio AsrManager model instances whose interaction has
+    // never been benchmarked, and this assertion is the only artifact in the
+    // repo recording the author's intended finalization order. Loosening it
+    // without first observing the real failure risks permanently hiding a
+    // live, unvalidated concurrency question rather than fixing a stale
+    // test. Leave red until someone runs the real suite (accepting the
+    // model-download cost) and either serializes finalization deliberately
+    // or relaxes this assertion with that evidence in hand.
     func testSlidingWindowRecordingTranscriptionSessionDoesNotFallBackToStreamedTranscriptWhenFullBufferTranscriptionFails() async {
         let events = LockedValue<[String]>([])
         let session = SlidingWindowRecordingTranscriptionSession(

@@ -161,9 +161,20 @@ struct ModelsSidebarView: View {
                 LocalModelRow(
                     title: desc.displayName,
                     subtitle: desc.sizeDescription,
-                    capabilities: desc.kind == .gemma4_12b_it_optiq_4bit_mlx
-                        ? ["2nd Brain", "MLX"]
-                        : ["cleanup", "meeting summary"],
+                    // Driven by `recommendation`, not by kind: this ForEach
+                    // iterates TextCleanupManager.cleanupModels, which no
+                    // longer contains .gemma4_12b_it_optiq_4bit_mlx (its
+                    // descriptor was removed -- see TextCleanupManager.swift
+                    // near line 796), so a kind-based check here was already
+                    // dead code. Models without a recommendation tier (e.g.
+                    // deepseekR1Qwen7BModel, whose doc comment states
+                    // "Cleanup-quality is unverified -- primarily added for
+                    // the agent path") must not be labeled "cleanup" /
+                    // "meeting summary" capable, since that overstates what
+                    // the model has actually been verified to do.
+                    capabilities: desc.recommendation != nil
+                        ? ["cleanup", "meeting summary"]
+                        : ["agent tool-use"],
                     isDownloaded: downloaded,
                     isActive: isActive,
                     progress: progress,

@@ -9,13 +9,22 @@ final class SpeechTranscriberTests: XCTestCase {
         let ids = SpeechModelCatalog.availableModels.map(\.id)
         let backends = SpeechModelCatalog.availableModels.map(\.backend)
 
+        // Ordered list, deliberately literal rather than mirrored from
+        // SpeechModelCatalog.baseModels: this array IS the picker order
+        // rendered by ModelsSidebarView/SettingsWindow, so a silent reorder
+        // (e.g. demoting the multilingual default below an English-only
+        // model) is a real regression this test must be able to catch.
         var expectedIDs = [
+            "openai_whisper-large-v3-v20240930_turbo_632MB",
+            "openai_whisper-large-v3_turbo_954MB",
             "openai_whisper-tiny.en",
             "openai_whisper-small.en",
             "openai_whisper-small",
             "fluid_parakeet-v3",
         ]
         var expectedBackends: [SpeechBackendKind] = [
+            .whisperKit,
+            .whisperKit,
             .whisperKit,
             .whisperKit,
             .whisperKit,
@@ -33,7 +42,17 @@ final class SpeechTranscriberTests: XCTestCase {
 
         XCTAssertEqual(ids, expectedIDs)
         XCTAssertEqual(backends, expectedBackends)
-        XCTAssertEqual(SpeechModelCatalog.defaultModelID, "openai_whisper-small.en")
+
+        // Hard literal pin, deliberately NOT `SpeechModelCatalog.defaultModelID`
+        // (that would reduce to X == X and could never fail regardless of
+        // what the default is). This is one of exactly two assertions in the
+        // whole suite that pin the shipped default speech model; see the
+        // sibling pin in testModelManagerDefaultModelName below. Changed from
+        // "openai_whisper-small.en" on 2026-07-19: an English-only default
+        // silently mangled roughly 27 percent of real (Russian) dictation
+        // instead of erroring. Do not revert this literal to a ".en" model;
+        // a deliberate future change to the default must edit it on purpose.
+        XCTAssertEqual(SpeechModelCatalog.defaultModelID, "openai_whisper-large-v3-v20240930_turbo_632MB")
     }
 
     func testSpeechAnalyzerDescriptorIsSystemManagedAndDoesNotFilterSpeakers() {
@@ -101,9 +120,30 @@ final class SpeechTranscriberTests: XCTestCase {
         XCTAssertNil(manager.error)
     }
 
-    func testModelManagerDefaultModelName() {
+    func testModelManagerDefaultModelName() throws {
         let manager = ModelManager()
-        XCTAssertEqual(manager.modelName, "openai_whisper-small.en")
+
+        // Property, not identity. `ModelManager()`'s default parameter IS
+        // `SpeechModelCatalog.defaultModelID`, so asserting
+        // `manager.modelName == SpeechModelCatalog.defaultModelID` would
+        // reduce to X == X and could never fail, even if the default
+        // silently reverted to an English-only model. Instead: resolve the
+        // model from the catalog (XCTUnwrap also guards that the default is
+        // actually offered on this OS) and assert the property that matters
+        // -- the shipped default must not be English-only, because 27
+        // percent of real dictation is Russian and an English-only default
+        // silently produces confident nonsense instead of an error (see
+        // SpeechModelCatalog.defaultModelID's doc comment, changed
+        // 2026-07-19). See the sibling hard literal pin in
+        // testSpeechModelCatalogIncludesModelsSupportedByTheCurrentOS above.
+        let defaultModel = try XCTUnwrap(
+            SpeechModelCatalog.model(named: manager.modelName),
+            "ModelManager's default model must exist in the catalog for the current OS"
+        )
+        XCTAssertFalse(
+            defaultModel.name.hasSuffix(".en"),
+            "The shipped default speech model must not be English-only"
+        )
     }
 
     func testModelManagerCustomModelName() {

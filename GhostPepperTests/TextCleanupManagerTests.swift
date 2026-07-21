@@ -31,12 +31,16 @@ final class TextCleanupManagerTests: XCTestCase {
     }
 
     func testCleanupModelCatalogIncludesVeryFastFastAndFullQwenModels() {
+        // Catalog membership and order. deepseek_r1_qwen_7b_q4_k_m was added
+        // in dc6dd95 (2026-05-12), well before and unrelated to the
+        // 2026-07-19 speech-model default change; it belongs in this list.
         XCTAssertEqual(
             TextCleanupManager.cleanupModels.map(\.kind),
             [
                 .qwen35_0_8b_q4_k_m,
                 .qwen35_2b_q4_k_m,
                 .qwen35_4b_q4_k_m,
+                .deepseek_r1_qwen_7b_q4_k_m,
             ]
         )
         XCTAssertEqual(
@@ -45,7 +49,19 @@ final class TextCleanupManagerTests: XCTestCase {
                 "Qwen 3.5 0.8B Q4_K_M (Very fast)",
                 "Qwen 3.5 2B Q4_K_M (Fast)",
                 "Qwen 3.5 4B Q4_K_M (Full)",
+                "DeepSeek R1 Distill Qwen 7B Q4_K_M",
             ]
+        )
+        // Property: only the cleanup-verified Qwen tiers may carry a
+        // Very fast/Fast/Full recommendation. DeepSeek's own descriptor
+        // comment states its cleanup quality is unverified and it was added
+        // primarily for the agent tool-use path -- it must not silently pick
+        // up a recommendation tier, since SettingsWindow's cleanup-model
+        // caption promises "Recommended cleanup models are marked Very
+        // fast, Fast, and Full."
+        XCTAssertEqual(
+            TextCleanupManager.cleanupModels.map(\.recommendation),
+            [.veryFast, .fast, .full, nil]
         )
         XCTAssertEqual(
             TextCleanupManager.recommendedFullModel.fileName,

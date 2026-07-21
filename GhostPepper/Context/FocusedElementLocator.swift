@@ -8,6 +8,19 @@ struct FrontmostWindowReference: Equatable, Sendable {
     let frame: CGRect
 }
 
+/// What the Accessibility preflight could establish about the frontmost app's focused element.
+/// The two negatives are deliberately kept apart: `noFocusedInput` is a fact and must never be
+/// overridden by an app-level guess, while `focusUnknown` means Accessibility saw nothing at all
+/// and leaves room for one.
+enum PastePreflight: Equatable {
+    /// A focused text input was found. A simulated Cmd+V will land in it.
+    case focusedInputAvailable
+    /// The frontmost app exposes a focused element and it is not a text input.
+    case noFocusedInput
+    /// The frontmost app exposes no focused element, so Accessibility cannot tell either way.
+    case focusUnknown
+}
+
 final class FocusedElementLocator {
     struct PasteTargetObservation: Equatable {
         enum Status: Equatable {
@@ -161,21 +174,40 @@ final class FocusedElementLocator {
         processID: pid_t,
         windowID: UInt32?
     ) -> Bool {
+        pastePreflight(
+            directFocusedTargetAvailable: directFocusedTargetAvailable,
+            hasDirectFocusedElement: hasDirectFocusedElement,
+            observation: observation,
+            processID: processID,
+            windowID: windowID
+        ) == .focusedInputAvailable
+    }
+
+    /// The same decision as `canPasteIntoObservedTarget`, keeping the reason for a negative.
+    /// A focused element that is not a text input is a definite no; seeing no focused element at
+    /// all is not, and only that case may be second-guessed by the caller.
+    static func pastePreflight(
+        directFocusedTargetAvailable: Bool,
+        hasDirectFocusedElement: Bool,
+        observation: PasteTargetObservation?,
+        processID: pid_t,
+        windowID: UInt32?
+    ) -> PastePreflight {
         if directFocusedTargetAvailable {
-            return true
+            return .focusedInputAvailable
         }
 
         if hasDirectFocusedElement {
-            return false
+            return .noFocusedInput
         }
 
         guard let observation,
               observation.processID == processID,
               observation.windowID == windowID else {
-            return false
+            return .focusUnknown
         }
 
-        return observation.status == .editable
+        return observation.status == .editable ? .focusedInputAvailable : .noFocusedInput
     }
 
     static func firstAvailableText<Element>(
@@ -244,10 +276,10 @@ final class FocusedElementLocator {
         return nil
     }
 
-    func canPasteIntoFocusedElement() -> Bool {
+    func pastePreflight() -> PastePreflight {
         guard PermissionChecker.checkAccessibility(),
               let application = NSWorkspace.shared.frontmostApplication else {
-            return false
+            return .noFocusedInput
         }
 
         Self.pasteTargetMonitor.start()
@@ -266,7 +298,7 @@ final class FocusedElementLocator {
             )
         }
 
-        return Self.canPasteIntoObservedTarget(
+        return Self.pastePreflight(
             directFocusedTargetAvailable: directFocusedTargetAvailable,
             hasDirectFocusedElement: directFocusedElement != nil,
             observation: Self.pasteTargetMonitor.currentObservation(),

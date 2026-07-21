@@ -116,6 +116,7 @@
 		77089185C9C0C0EDC4536F0A /* KeyChord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A54422D17879836781B7F71 /* KeyChord.swift */; };
 		780CB9207962633AEE3E69BD /* AudioDeviceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF6390CFE5F526DD23C316D /* AudioDeviceManager.swift */; };
 		783179FB65E4B507B25CF691 /* ChordEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65270DAE5CA7F1A37B4D890B /* ChordEngineTests.swift */; };
+		14C36DB91A35908875A04FFC /* SpeechModelMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67933D8EBECB363826AF101A /* SpeechModelMigrationTests.swift */; };
 		D71B32D5CF534848E396037A /* TextScoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB3FB1BC7F6C0A89C0149C81 /* TextScoring.swift */; };
 		B242CDB4C066E72540E69C79 /* AudioFixtureLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18EF23EAEA0244CC7B429BA8 /* AudioFixtureLoader.swift */; };
 		A72931314EA32B1D2C4EB0B3 /* TranscriptionScoringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C851BBE5DDB4ACA953BC287 /* TranscriptionScoringTests.swift */; };
@@ -318,6 +319,7 @@
 		648497BCB18036D3B10EADD2 /* MeetingHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistory.swift; sourceTree = "<group>"; };
 		64F59E7884CF5A1ABFB3C387 /* PathSandboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathSandboxTests.swift; sourceTree = "<group>"; };
 		65270DAE5CA7F1A37B4D890B /* ChordEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChordEngineTests.swift; sourceTree = "<group>"; };
+		67933D8EBECB363826AF101A /* SpeechModelMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechModelMigrationTests.swift; sourceTree = "<group>"; };
 		EB3FB1BC7F6C0A89C0149C81 /* TextScoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextScoring.swift; sourceTree = "<group>"; };
 		18EF23EAEA0244CC7B429BA8 /* AudioFixtureLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFixtureLoader.swift; sourceTree = "<group>"; };
 		3C851BBE5DDB4ACA953BC287 /* TranscriptionScoringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionScoringTests.swift; sourceTree = "<group>"; };
@@ -848,6 +850,7 @@
 				960D35875D60655B17574DF8 /* AudioRecorderTests.swift */,
 				6BF767CF1AA15DB2C2B82A1C /* ChordBindingStoreTests.swift */,
 				65270DAE5CA7F1A37B4D890B /* ChordEngineTests.swift */,
+				67933D8EBECB363826AF101A /* SpeechModelMigrationTests.swift */,
 				EB3FB1BC7F6C0A89C0149C81 /* TextScoring.swift */,
 				18EF23EAEA0244CC7B429BA8 /* AudioFixtureLoader.swift */,
 				3C851BBE5DDB4ACA953BC287 /* TranscriptionScoringTests.swift */,
@@ -1184,6 +1187,7 @@
 				242A5D63A9F6E3FAD4E09F7D /* AudioRecorderTests.swift in Sources */,
 				91B80C940C09B24CE80A4B81 /* ChordBindingStoreTests.swift in Sources */,
 				783179FB65E4B507B25CF691 /* ChordEngineTests.swift in Sources */,
+				14C36DB91A35908875A04FFC /* SpeechModelMigrationTests.swift in Sources */,
 				D71B32D5CF534848E396037A /* TextScoring.swift in Sources */,
 				B242CDB4C066E72540E69C79 /* AudioFixtureLoader.swift in Sources */,
 				A72931314EA32B1D2C4EB0B3 /* TranscriptionScoringTests.swift in Sources */,

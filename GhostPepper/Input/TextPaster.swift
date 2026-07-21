@@ -73,13 +73,16 @@ final class TextPaster {
 
     private let pasteSessionProvider: PasteSessionProvider
     private let pasteboard: NSPasteboard
-    private let canPasteIntoFocusedElement: () -> Bool
+    private let pastePreflight: () -> PastePreflight
     private let prepareCommandV: () -> (() -> Void)?
     private let schedule: PasteScheduler
 
+    /// - Parameter canPasteIntoFocusedElement: Overrides the Accessibility preflight with a
+    ///   definite answer. `nil` uses the real preflight, which can also report that it could not
+    ///   tell.
     init(
         pasteboard: NSPasteboard = .general,
-        canPasteIntoFocusedElement: @escaping () -> Bool = { TextPaster.defaultCanPasteIntoFocusedElement() },
+        canPasteIntoFocusedElement: (() -> Bool)? = nil,
         prepareCommandV: @escaping () -> (() -> Void)? = { TextPaster.defaultCommandVPasteAction() },
         pasteSessionProvider: @escaping PasteSessionProvider = { text, date in
             FocusedElementLocator().capturePasteSession(for: text, at: date)
@@ -89,7 +92,11 @@ final class TextPaster {
         }
     ) {
         self.pasteboard = pasteboard
-        self.canPasteIntoFocusedElement = canPasteIntoFocusedElement
+        if let canPasteIntoFocusedElement {
+            self.pastePreflight = { canPasteIntoFocusedElement() ? .focusedInputAvailable : .noFocusedInput }
+        } else {
+            self.pastePreflight = { FocusedElementLocator().pastePreflight() }
+        }
         self.prepareCommandV = prepareCommandV
         self.pasteSessionProvider = pasteSessionProvider
         self.schedule = schedule
@@ -146,7 +153,8 @@ final class TextPaster {
     /// 1. Save current clipboard
     /// 2. Write text to clipboard
     /// 3. After a short delay, simulate Cmd+V
-    /// 4. After another delay, restore the original clipboard
+    /// 4. After another delay, restore the original clipboard, but only if the preflight found a
+    ///    real focused input to paste into
     ///
     /// - Parameter text: The text to paste.
     func paste(text: String) -> PasteResult {
@@ -156,10 +164,17 @@ final class TextPaster {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
 
-        guard canPasteIntoFocusedElement() || Self.frontmostAppHasPasteMenuItem(), let postCommandV = prepareCommandV() else {
+        let preflight = pastePreflight()
+
+        guard Self.shouldAttemptPaste(for: preflight), let postCommandV = prepareCommandV() else {
             onPasteEnd?()
             return .copiedToClipboard
         }
+
+        // Restoring the clipboard destroys the transcript, so it is only safe when the preflight
+        // found the input the keystroke lands in. After a duck-typed paste the text stays on the
+        // clipboard: a stale clipboard is an annoyance, losing dictated words is not.
+        let pasteTargetIsConfirmed = preflight == .focusedInputAvailable
 
         schedule(Self.preKeystrokeDelay) { [weak self] in
             postCommandV()
@@ -171,7 +186,7 @@ final class TextPaster {
                     self.onPaste?(pasteSession)
                 }
 
-                if let savedState = savedState {
+                if pasteTargetIsConfirmed, let savedState = savedState {
                     self.restoreClipboard(savedState)
                 }
 
@@ -184,8 +199,18 @@ final class TextPaster {
 
     // MARK: - Accessibility Preflight
 
-    private static func defaultCanPasteIntoFocusedElement() -> Bool {
-        FocusedElementLocator().canPasteIntoFocusedElement()
+    /// The Accessibility preflight is authoritative. The menu-bar duck-type answers "can this app
+    /// paste at all", a per-app fact, so it may only break the tie when Accessibility saw no
+    /// focused element; it must never overturn an answer of "there is no focused input right now".
+    private static func shouldAttemptPaste(for preflight: PastePreflight) -> Bool {
+        switch preflight {
+        case .focusedInputAvailable:
+            return true
+        case .noFocusedInput:
+            return false
+        case .focusUnknown:
+            return frontmostAppHasPasteMenuItem()
+        }
     }
 
     static func containsLikelyPasteTarget(

@@ -186,6 +186,46 @@ class AppState: ObservableObject {
     @AppStorage("transcriptionLabEnabled") var transcriptionLabEnabled: Bool = false
     @AppStorage("cleanupPrompt") var cleanupPrompt: String = TextCleaner.defaultPrompt
     @AppStorage("speechModel") var speechModel: String = SpeechModelCatalog.defaultModelID
+
+    /// Defaults key recording that the English-only speech-model migration has
+    /// already run, so it can never fight a later deliberate choice.
+    nonisolated static let englishOnlySpeechModelMigrationKey = "speechModelEnglishOnlyMigrationV1"
+
+    /// One-time migration off an English-only speech model.
+    ///
+    /// The problem this exists for, learned the hard way on 2026-07-20. The
+    /// default above only applies when the `speechModel` key is **absent**.
+    /// Anything that writes the key once, a settings click or a stray test,
+    /// pins it forever, and the multilingual default can never reach the user
+    /// again. That is exactly what happened: the key was left holding
+    /// `openai_whisper-small.en`, Andrew dictated Russian, and got English
+    /// back. An English-only model cannot emit Cyrillic at all, so this is a
+    /// silent total failure for the 27 percent of his speech that is Russian,
+    /// not a quality regression he would notice and correct.
+    ///
+    /// Scope is deliberately narrow, because a migration that overrides a real
+    /// preference is its own bug:
+    /// - Only fires when the stored model is English-only or has fallen out of
+    ///   the catalog. Any valid multilingual choice is left alone.
+    /// - Runs once, guarded by a version key, so if the user genuinely wants an
+    ///   English-only model afterwards, the choice sticks.
+    /// `nonisolated` on purpose: this reads and writes UserDefaults and touches
+    /// no `AppState` instance state, so tying it to the main actor would buy
+    /// nothing and would stop tests from calling it directly.
+    nonisolated static func migrateEnglishOnlySpeechModel(
+        defaults: UserDefaults = .standard
+    ) {
+        guard !defaults.bool(forKey: englishOnlySpeechModelMigrationKey) else { return }
+        defaults.set(true, forKey: englishOnlySpeechModelMigrationKey)
+
+        guard let stored = defaults.string(forKey: "speechModel") else { return }
+
+        let isEnglishOnly = stored.hasSuffix(".en")
+        let isUnknown = SpeechModelCatalog.model(named: stored) == nil
+        guard isEnglishOnly || isUnknown else { return }
+
+        defaults.set(SpeechModelCatalog.defaultModelID, forKey: "speechModel")
+    }
     @AppStorage("preferredLanguage") var preferredLanguage: String = "auto"
     @AppStorage("pepperChatHost") var pepperChatHost: String = "https://api.zo.computer"
     /// Always empty, and deliberately has no keychain write. AF Flow never
@@ -442,6 +482,7 @@ class AppState: ObservableObject {
            UserDefaults.standard.object(forKey: "selectedCleanupModelKind") != nil {
             showWhatsNew = true
         }
+        Self.migrateEnglishOnlySpeechModel()
         self.transcriber = SpeechTranscriber(modelManager: self.modelManager)
         self.textCleaner = TextCleaner(
             cleanupManager: self.textCleanupManager,
