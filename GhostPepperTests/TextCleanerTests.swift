@@ -331,55 +331,57 @@ final class TextCleanerTests: XCTestCase {
     }
 }
 
-/// The window-filtering judgement behind the Dock presence fix.
+/// Tests at the layer of the actual claim: "Andrew can minimize the window".
 ///
-/// Tested as a pure function rather than through AppKit, because the part that
-/// can be wrong is which windows count, not the notification plumbing. The
-/// specific failure worth guarding against is the recording overlay: it is a
-/// borderless panel that appears every single time Andrew speaks, so counting
-/// it would flash a Dock icon in and out on every dictation. That would be a
-/// more annoying bug than the missing minimize button this fixes.
+/// The previous tests here verified a helper function that encoded my model of
+/// macOS window behavior, and the defect was in the model, so 456 green tests
+/// said nothing about his click. These read the built app and a real window
+/// instead. They still cannot click the button over a fullscreen game; only
+/// Andrew can. That limit is stated rather than papered over.
 @MainActor
-final class DockPresenceControllerTests: XCTestCase {
+final class WindowFoldabilityTests: XCTestCase {
 
-    private func window(visible: Bool = true, titled: Bool = true, panel: Bool = false)
-        -> DockPresenceController.WindowFacts {
-        .init(isVisible: visible, isTitled: titled, isPanel: panel)
+    /// The test host IS the app, so Bundle.main is the shipped Info.plist.
+    /// LSUIElement makes macOS treat the app as an agent and disable Dock
+    /// behaviors; Andrew chose a permanent Dock app on 2026-07-21.
+    func testAppIsNotAnAgentApp() {
+        let value = Bundle.main.object(forInfoDictionaryKey: "LSUIElement")
+        XCTAssertNil(value, "LSUIElement is back in Info.plist; the app must be a normal Dock app")
     }
 
-    func testNoWindowsMeansNoDockIcon() {
-        XCTAssertFalse(DockPresenceController.shouldShowInDock([]))
-    }
-
-    func testAnOpenTitledWindowShowsTheDockIcon() {
-        XCTAssertTrue(DockPresenceController.shouldShowInDock([window()]))
-    }
-
-    func testTheRecordingOverlayMustNotShowTheDockIcon() {
-        // Borderless, and a panel. This fires on every dictation.
-        let overlay = window(titled: false, panel: true)
-        XCTAssertFalse(
-            DockPresenceController.shouldShowInDock([overlay]),
-            "a dictation overlay must not put AF Flow in the Dock, or the icon flashes on every utterance"
+    /// A window configured the way the main window is shipped must have a
+    /// live miniaturize button in a regular-policy app.
+    func testMainStyleWindowCanMiniaturize() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.orderOut(nil) }
+        XCTAssertTrue(
+            window.standardWindowButton(.miniaturizeButton)?.isEnabled ?? false,
+            "the yellow button is disabled on the shipped window configuration"
         )
     }
 
-    func testAHiddenWindowDoesNotCount() {
-        XCTAssertFalse(DockPresenceController.shouldShowInDock([window(visible: false)]))
-    }
-
-    func testATitledPanelStillDoesNotCount() {
-        // The debug log is a titled utility panel. macOS will not miniaturize
-        // it whatever the policy, so it should not drive the Dock icon either.
-        XCTAssertFalse(DockPresenceController.shouldShowInDock([window(panel: true)]))
-    }
-
-    func testOneRealWindowAmongOverlaysIsEnough() {
-        let windows = [
-            window(titled: false, panel: true),
-            window(visible: false),
-            window(),
-        ]
-        XCTAssertTrue(DockPresenceController.shouldShowInDock(windows))
+    /// PROBE, printed not asserted: does the old all-Spaces collection
+    /// behavior disable the miniaturize button? This is the leading hypothesis
+    /// for why fold was greyed out before 2026-07-21, and recording the answer
+    /// mechanically beats guessing. No assertion because the answer is an OS
+    /// behavior being measured, not a requirement being enforced.
+    func testProbeAllSpacesEffectOnMiniaturize() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.orderOut(nil) }
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        let enabled = window.standardWindowButton(.miniaturizeButton)?.isEnabled ?? false
+        print("PROBE allSpaces+fullScreenAuxiliary miniaturize enabled = \(enabled)")
     }
 }

@@ -12,8 +12,6 @@
 	<string>2.4.2</string>
 	<key>CFBundleVersion</key>
 	<string>20</string>
-	<key>LSUIElement</key>
-	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Ghost Pepper needs microphone access to record your voice for transcription.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

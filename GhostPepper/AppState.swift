@@ -245,7 +245,6 @@ class AppState: ObservableObject {
     // that built a TrelloBackend from them, so the capability was one populated
     // string away from working. Removed per CLAUDE.md hard rule 1.
     @AppStorage("meetingTranscriptEnabled") var meetingTranscriptEnabled: Bool = false
-    @Published var showWhatsNew = false
     @AppStorage("meetingAutoDetectEnabled") var meetingAutoDetectEnabled: Bool = true
     @AppStorage("meetingWindowFloatsWhileRecording") var meetingWindowFloatsWhileRecording: Bool = true
     @AppStorage("meetingSummaryPrompt") var meetingSummaryPrompt: String = MeetingSummaryGenerator.defaultPrompt
@@ -477,11 +476,6 @@ class AppState: ObservableObject {
             // the meeting transcript setting → this is an update, enable it
             meetingTranscriptEnabled = true
         }
-        // Show "What's New" dialog once after update introduces meetings
-        if !UserDefaults.standard.bool(forKey: "hasSeenMeetingTranscriptAnnouncement"),
-           UserDefaults.standard.object(forKey: "selectedCleanupModelKind") != nil {
-            showWhatsNew = true
-        }
         Self.migrateEnglishOnlySpeechModel()
         self.transcriber = SpeechTranscriber(modelManager: self.modelManager)
         self.textCleaner = TextCleaner(
@@ -636,31 +630,19 @@ class AppState: ObservableObject {
                 return
             }
 
-            let needsAccessibility = !PermissionChecker.checkAccessibility()
-            let needsInputMonitoring = !inputMonitoringChecker()
-            if needsAccessibility || needsInputMonitoring {
-                showSettings()
-            }
+            // The Settings window used to auto-open here whenever the
+            // accessibility or input-monitoring check read false at launch,
+            // which after every rebuild/re-sign meant a window stealing focus
+            // over whatever Andrew was doing. Removed at his instruction,
+            // 2026-07-21: the app never opens a window he did not ask for.
+            // If a permission is genuinely missing, the no-sound overlay and
+            // the meeting window's own settings buttons still lead here.
         }
 
-        // Show "What's New" dialog for returning users who haven't seen the meeting announcement
-        if showWhatsNew {
-            showWhatsNew = false
-            UserDefaults.standard.set(true, forKey: "hasSeenMeetingTranscriptAnnouncement")
-            Task { @MainActor in
-                let alert = NSAlert()
-                alert.messageText = "What's New in Ghost Pepper"
-                alert.informativeText = "Meeting transcription is here: record calls with notes, transcript, and AI-generated summaries.\n\n100% local. 100% private. Nothing leaves your Mac."
-                alert.alertStyle = .informational
-                alert.icon = NSImage(named: "AppIcon")
-                alert.addButton(withTitle: "Open Meetings")
-                alert.addButton(withTitle: "Got It")
-                let response = alert.runModal()
-                if response == .alertFirstButtonReturn {
-                    showMeetingTranscriptWindow()
-                }
-            }
-        }
+        // The "What's New in Ghost Pepper" alert used to fire here whenever
+        // its defaults key was missing, with an "Open Meetings" button that
+        // raised the all-Spaces window. Upstream marketing, and a popup Andrew
+        // never asked for. Removed at his instruction, 2026-07-21.
 
         // The Trello send path used to be wired up here. It is removed, not
         // disabled: it constructed a live TrelloBackend and made a network call.

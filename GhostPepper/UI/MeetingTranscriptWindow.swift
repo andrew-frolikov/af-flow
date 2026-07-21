@@ -1170,9 +1170,11 @@ final class MeetingTranscriptWindowController: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 500, height: 400)
         window.contentViewController = NSHostingController(rootView: view)
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // Deliberately NOT [.canJoinAllSpaces, .fullScreenAuxiliary]: those made
+        // this window follow Andrew onto every Space, including over fullscreen
+        // games, which he reported on 2026-07-21 as "on top of everything".
+        // The dictation overlay keeps those flags; a document window does not.
         window.hidesOnDeactivate = false
-        NSApp.setActivationPolicy(.regular)
         window.setFrame(NSRect(x: screenFrame.midX - windowWidth / 2, y: screenFrame.minY, width: windowWidth, height: windowHeight), display: true)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -1186,7 +1188,6 @@ final class MeetingTranscriptWindowController: NSObject, NSWindowDelegate {
         self.window = nil
         windowState?.onRecordingStateChanged = nil
         windowState = nil
-        NSApp.setActivationPolicy(.accessory)
     }
 
     /// Request a recording — shows consent dialog first (or starts immediately if user opted out).
