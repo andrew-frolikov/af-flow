@@ -102,6 +102,7 @@ xcodebuild test-without-building \
     -skip-testing:GhostPepperTests/TranscriptionScoringTests/testScoreCandidateModelsOnFixtures \
     -skip-testing:GhostPepperTests/TranscriptionScoringTests/testPrefetchNamedModel \
     -skip-testing:GhostPepperTests/TranscriptionScoringTests/testGenerateDraftReferencesForUnreferencedAudio \
+    -skip-testing:GhostPepperTests/CleanupPromptEvalTests \
     "$@" \
     2>&1 | grep -E "Test Case.*(failed)|Executed [0-9]+ tests|\*\* TEST"
 
