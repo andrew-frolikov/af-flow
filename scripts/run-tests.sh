@@ -195,11 +195,26 @@ xcodebuild test-without-building \
     -destination "platform=macOS,arch=arm64" \
     "${SKIPS[@]}" \
     "$@" \
-    2>&1 | grep -E "Test Case.*(failed|skipped)|Executed [0-9]+ tests|Test skipped|\*\* TEST|fixtures directory|clips awaiting|captured |wrote |not captured|^xcodebuild: error|error: .*flag|BUILD FAILED"
+    2>&1 | { if [ "${AF_FLOW_RAW_OUTPUT:-}" = "1" ]; then cat; else
+        grep -E "Test Case.*(failed|skipped)|Executed [0-9]+ tests|Test skipped|\*\* TEST|fixtures directory|clips awaiting|captured |wrote |not captured|^xcodebuild: error|error: .*flag|BUILD FAILED"
+    fi; }
 # The alternation above must cover the failure shapes, not just the happy path.
 # Twice on 2026-07-21 this filter hid the answer: once a silent skip, once a
 # usage error that exited 64 with no line surviving the grep. A filter that
 # only matches success turns every failure into silence.
+#
+# AF_FLOW_RAW_OUTPUT=1 bypasses the filter entirely and exists for one reason:
+# on 2026-07-21 the filter hid the suite's grand total, and to see it I ran
+# `xcodebuild test-without-building` directly, OUTSIDE this wrapper. That
+# skipped the defaults snapshot, and the suite wrote `speechModel =
+# openai_whisper-small.en` and `preferredLanguage = fr` into Andrew's live
+# app: the exact regression of 2026-07-20, caused the same way, by the one
+# person who had just written the rule against it.
+#
+# The lesson is not "be more careful". A safety wrapper that hides output
+# people need CREATES the incentive to go around it, and going around it is
+# what removes the safety. So the wrapper now shows everything on request. If
+# you ever want raw xcodebuild output, use this flag, never the bare command.
 
 STATUS=${PIPESTATUS[0]}
 
