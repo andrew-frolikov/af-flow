@@ -45,6 +45,42 @@ def fold(token):
     return token.lower().replace("ё", "е")
 
 
+CYRILLIC = re.compile(r"[Ѐ-ӿ]")
+LATIN = re.compile(r"[A-Za-z]")
+
+
+def cyrillic_ratio(text):
+    c, l = len(CYRILLIC.findall(text)), len(LATIN.findall(text))
+    return c / (c + l) if (c + l) else 0.0
+
+
+def drop_wrong_script(entries):
+    """Remove transcripts that are not even in the right alphabet.
+
+    Found necessary on the first real run: whisper turbo 954 with language
+    auto-detect returned Latin script for Russian audio on most clips, a
+    language-identification failure rather than a transcription one. Averaging
+    such a transcript into the disagreement set marks every single word as
+    disputed, which turns a worksheet meant to save Andrew time into one that
+    wastes it.
+
+    Deliberately compared against the majority of the other engines rather than
+    against a hardcoded expectation, so this stays correct for an English
+    fixture too.
+    """
+    if len(entries) < 3:
+        return entries, []
+    ratios = sorted(cyrillic_ratio(e["hypothesis"]) for e in entries)
+    majority = ratios[len(ratios) // 2]
+    keep, dropped = [], []
+    for entry in entries:
+        if abs(cyrillic_ratio(entry["hypothesis"]) - majority) > 0.4:
+            dropped.append(entry)
+        else:
+            keep.append(entry)
+    return (keep, dropped) if keep else (entries, [])
+
+
 def most_central(hypotheses):
     """The spine is the transcript closest to all the others.
 
@@ -88,10 +124,16 @@ def disagreements(spine, others):
             heard = " ".join(other_tokens[j1:j2]) or "(nothing)"
             spans.setdefault((i1, i2), {})[label] = heard
 
-    return sorted(spans.items())
+    # A span needs at least two engines disagreeing with the spine before it is
+    # worth Andrew's attention. One dissenter among eight is far more likely to
+    # be that engine being wrong than the consensus being wrong, and flagging
+    # every such case rebuilt exactly the read-every-word job this script
+    # exists to avoid. A wrong consensus is still catchable: he reads the draft
+    # itself, not only the disputed list.
+    return sorted((span, heard) for span, heard in spans.items() if len(heard) >= 2)
 
 
-def render(stem, spine, entries, spans):
+def render(stem, spine, entries, spans, dropped=()):
     spine_tokens = tokenize(spine["hypothesis"])
     lines = [
         f"# Correction worksheet: {stem}",
@@ -107,6 +149,9 @@ def render(stem, spine, entries, spans):
         f"3. Save the corrected draft as {stem}.reference.txt in this same folder.",
         "",
         f"Engines compared: {len(entries)}. Disputed spots: {len(spans)}.",
+        *([f"EXCLUDED as wrong-alphabet output, a language-detection failure rather",
+           f"than a transcription one: " + ", ".join(f"{e['model']} [{e['language']}]" for e in dropped)]
+          if dropped else []),
         f"Draft spine: {spine['model']} [{spine['language']}], chosen as the transcript",
         "closest to all the others rather than by which engine we favour.",
         "",
@@ -160,19 +205,24 @@ def main():
             print(f"{stem}: only 1 transcript, so nothing can be cross-checked. "
                   "Correct it with full attention rather than skimming.")
 
+        entries, dropped = drop_wrong_script(entries)
         spine = most_central(entries)
         others = [e for e in entries if e is not spine]
         spans = disagreements(spine, others)
 
-        (fixtures / f"{stem}.worksheet.md").write_text(render(stem, spine, entries, spans))
+        (fixtures / f"{stem}.worksheet.md").write_text(render(stem, spine, entries, spans, dropped))
         (fixtures / f"{stem}.draft-reference.txt").write_text(spine["hypothesis"].strip() + "\n")
 
-        agreement = ""
+        # Count each disputed token once. Summing span widths double-counted
+        # overlapping spans and could exceed the token count, which is why the
+        # first run reported a meaningless "0% agreement".
         total = len(tokenize(spine["hypothesis"]))
-        if total:
-            disputed = sum(max(1, end - start) for (start, end), _ in spans)
-            agreement = f", engines agree on about {100 * (1 - min(disputed, total) / total):.0f}% of words"
-        print(f"{stem}: {len(entries)} transcripts, {len(spans)} disputed spots{agreement}")
+        touched = set()
+        for (start, end), _ in spans:
+            touched.update(range(start, max(end, start + 1)))
+        agreement = f", engines agree on {100 * (1 - len(touched) / total):.0f}% of words" if total else ""
+        note = f", {len(dropped)} dropped for wrong script" if dropped else ""
+        print(f"{stem}: {len(entries)} transcripts{note}, {len(spans)} disputed spots{agreement}")
         written += 1
 
     print(f"\n{written} worksheet(s) written to {fixtures}")

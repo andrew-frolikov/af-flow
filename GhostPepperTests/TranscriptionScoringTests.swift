@@ -45,6 +45,22 @@ final class TranscriptionScoringTests: XCTestCase {
             .appendingPathComponent("fixtures")
     }
 
+    /// Where results are written, which is NOT where the audio is read from.
+    ///
+    /// The test host is the app, and the app is sandboxed. It can read fixture
+    /// audio from an arbitrary folder but it cannot write back into one:
+    /// attempting it fails with a bare `NSPOSIXErrorDomain Code=1`, which reads
+    /// like a file-permissions mistake rather than what it is. Results
+    /// therefore go somewhere inside the container, and `run-tests.sh` copies
+    /// them out afterwards. Defaults to the fixtures directory so the ordinary
+    /// in-repo case still behaves as before.
+    private var outputDirectory: URL {
+        if let override = ProcessInfo.processInfo.environment["AF_FLOW_OUTPUT"] {
+            return URL(fileURLWithPath: override)
+        }
+        return fixturesDirectory
+    }
+
     private var candidateModels: [String] {
         if let override = ProcessInfo.processInfo.environment["AF_FLOW_MODELS"] {
             return override.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
@@ -176,7 +192,7 @@ final class TranscriptionScoringTests: XCTestCase {
         let report = Self.render(rows: rows, skipped: skipped, fixtures: fixtures)
         print(report)
 
-        let reportURL = fixturesDirectory.appendingPathComponent("scores.md")
+        let reportURL = outputDirectory.appendingPathComponent("scores.md")
         try? report.write(to: reportURL, atomically: true, encoding: .utf8)
 
         try XCTSkipIf(
@@ -289,7 +305,7 @@ final class TranscriptionScoringTests: XCTestCase {
             }
 
             let stem = url.deletingPathExtension().lastPathComponent
-            let draftURL = fixturesDirectory.appendingPathComponent("\(stem).draft-reference.txt")
+            let draftURL = outputDirectory.appendingPathComponent("\(stem).draft-reference.txt")
             try draft.write(to: draftURL, atomically: true, encoding: .utf8)
 
             print("""
@@ -341,11 +357,26 @@ final class TranscriptionScoringTests: XCTestCase {
     /// and do not need regenerating.
     @MainActor
     func testCaptureAllCandidateTranscriptsForUnreferencedAudio() async throws {
+        // Printed BEFORE the skip, deliberately. The first version of this
+        // printed afterwards, so when the directory resolved to the wrong place
+        // the test skipped in 0.029 seconds and the only signal that came back
+        // was "TEST EXECUTE SUCCEEDED". A capture that silently did nothing was
+        // indistinguishable from one that worked. The diagnostic has to come
+        // before the guard it diagnoses.
         let pending = try audioWithoutReference()
+        print("fixtures directory: \(fixturesDirectory.path)")
+        print("clips awaiting a reference: \(pending.count)")
 
         try XCTSkipIf(
             pending.isEmpty,
-            "No audio awaiting a reference. Nothing to capture."
+            """
+            No audio awaiting a reference in \(fixturesDirectory.path).
+            If that is not the directory you meant, AF_FLOW_FIXTURES did not
+            reach this process. Note that `test-without-building` runs from a
+            pre-generated .xctestrun, so TEST_RUNNER_ variables have to be set
+            on the `build-for-testing` invocation that generates it, not on the
+            run itself.
+            """
         )
 
         var captured: [String: [PersistedHypothesis]] = [:]
@@ -417,7 +448,7 @@ final class TranscriptionScoringTests: XCTestCase {
     }
 
     private func hypothesesURL(for stem: String) -> URL {
-        fixturesDirectory.appendingPathComponent("\(stem).hypotheses.json")
+        outputDirectory.appendingPathComponent("\(stem).hypotheses.json")
     }
 
     func persistedHypotheses(for stem: String) -> [PersistedHypothesis] {
