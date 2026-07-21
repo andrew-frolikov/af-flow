@@ -154,6 +154,53 @@ final class TextCleaner {
                 debugLogger?(.cleanup, "Stripped model reasoning tags from cleanup output.")
             }
 
+            // Sanitizing can legitimately consume the ENTIRE response, and when
+            // it does, the result is a silent total loss of what Andrew said.
+            //
+            // The gap this closes: `TextCleanupManager.clean` guards against an
+            // empty response, but it checks the RAW output, before reasoning
+            // tags are stripped. A reply that is nothing but `<think>...</think>`
+            // is not empty raw, so it passes that guard, and then sanitizing
+            // reduces it to "". That empty string was returned as a SUCCESS with
+            // `usedFallback: false`, so no clipboard fallback fired and no error
+            // was shown. The dictation simply vanished.
+            //
+            // Reachable today rather than theoretical: the catalog includes
+            // DeepSeek R1, whose own descriptor says it always emits `<think>`
+            // blocks before answers. Suppression is requested, not guaranteed,
+            // and one non-compliant reply is enough to lose an utterance.
+            //
+            // Falling back to the raw transcription mirrors the `.unusableOutput`
+            // path below, and the ranking behind it is the project's rule: text
+            // that is merely uncleaned is a small annoyance, and text that is
+            // gone is unrecoverable.
+            guard !sanitizedText.isEmpty else {
+                debugLogger?(
+                    .cleanup,
+                    "Cleanup output was entirely model reasoning, returning raw transcription."
+                )
+                logCleanupTranscript(
+                    prompt: activePrompt,
+                    input: formattedInput,
+                    rawOutput: cleanedText,
+                    sanitizedOutput: sanitizedText,
+                    finalOutput: text
+                )
+                return TextCleanerResult(
+                    text: text,
+                    performance: TextCleanerPerformance(
+                        modelCallDuration: modelCallDuration,
+                        postProcessDuration: Date().timeIntervalSince(postProcessStart)
+                    ),
+                    transcript: TextCleanerTranscript(
+                        prompt: activePrompt,
+                        inputText: formattedInput,
+                        rawOutput: cleanedText
+                    ),
+                    usedFallback: true
+                )
+            }
+
             logCleanupTranscript(
                 prompt: activePrompt,
                 input: formattedInput,

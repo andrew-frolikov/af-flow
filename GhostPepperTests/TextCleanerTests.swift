@@ -156,7 +156,13 @@ final class TextCleanerTests: XCTestCase {
         XCTAssertEqual(result, "Final cleaned text")
     }
 
-    func testCleanerStripsUnterminatedLeadingThinkBlockFromCleanupOutput() async {
+    /// Renamed and re-pointed on 2026-07-20. It previously asserted the result
+    /// was `""` and so encoded a data-loss bug as intended behaviour: an
+    /// unterminated `<think>` block consumed the whole response, the empty
+    /// string was returned as a success, and the user's dictation vanished with
+    /// no clipboard fallback and no error. The stripping is still correct; what
+    /// was wrong is what happens when stripping leaves nothing behind.
+    func testCleanerFallsBackToRawTextWhenAnUnterminatedThinkBlockConsumesTheOutput() async {
         let localBackend = SpyCleanupBackend(
             nextResult: .success(
                 """
@@ -171,7 +177,43 @@ final class TextCleanerTests: XCTestCase {
 
         let result = await cleaner.clean(text: "raw text", prompt: "unused prompt")
 
-        XCTAssertEqual(result, "")
+        XCTAssertEqual(
+            result,
+            "raw text",
+            "losing the user's words is never an acceptable outcome; uncleaned text is"
+        )
+    }
+
+    /// The closed-tag sibling of the case above. A model that replies with only
+    /// a complete `<think>...</think>` block is the realistic shape for a
+    /// reasoning model such as DeepSeek R1, whose descriptor states it always
+    /// emits reasoning before answers.
+    func testCleanerFallsBackToRawTextWhenTheOutputIsOnlyAClosedThinkBlock() async {
+        let localBackend = SpyCleanupBackend(
+            nextResult: .success("<think>all reasoning, no answer</think>")
+        )
+        let cleaner = TextCleaner(
+            localBackend: localBackend
+        )
+
+        let result = await cleaner.clean(text: "raw text", prompt: "unused prompt")
+
+        XCTAssertEqual(result, "raw text")
+    }
+
+    /// Guards the fallback from becoming over-eager: when sanitizing leaves
+    /// real content, that content must still win over the raw input.
+    func testCleanerKeepsSanitizedContentWhenStrippingLeavesSomethingBehind() async {
+        let localBackend = SpyCleanupBackend(
+            nextResult: .success("<think>reasoning</think>Cleaned sentence.")
+        )
+        let cleaner = TextCleaner(
+            localBackend: localBackend
+        )
+
+        let result = await cleaner.clean(text: "raw text", prompt: "unused prompt")
+
+        XCTAssertEqual(result, "Cleaned sentence.")
     }
 
     func testCleanerLogsPromptInputToSensitiveLogger() async throws {
