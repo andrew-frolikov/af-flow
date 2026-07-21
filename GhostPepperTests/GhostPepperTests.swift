@@ -2461,7 +2461,11 @@ final class GhostPepperTests: XCTestCase {
         XCTAssertTrue(formattedText.contains("cleaned text"))
     }
 
-    func testAppStateReturnsRawTranscriptionWhenCleanupModelIsUnavailable() async throws {
+    /// RETARGETED 2026-07-21, twin of the TextCleaner fallback test. See the
+    /// reasoning there: CLAUDE.md's dictionary spec asks for a deterministic
+    /// post-ASR layer as well as the prompt glossary, and the fallback path is
+    /// where it matters most, because that text goes straight to his cursor.
+    func testAppStateFallbackTranscriptionCarriesDictionaryCorrections() async throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let correctionStore = CorrectionStore(defaults: defaults)
@@ -2483,7 +2487,11 @@ final class GhostPepperTests: XCTestCase {
 
         let result = await appState.cleanedTranscription("just see approved it")
 
-        XCTAssertEqual(result, "just see approved it")
+        XCTAssertEqual(
+            result,
+            "Jesse approved it",
+            "the dictionary must survive an unavailable cleanup model"
+        )
     }
 
     func testAppStatePrepareForTerminationShutsDownCleanupBackend() throws {

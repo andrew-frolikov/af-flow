@@ -37,7 +37,28 @@ final class TextCleanerTests: XCTestCase {
         )
     }
 
-    func testCommonlyMisheardReplacementStaysInPromptAndDoesNotRewriteModelInput() async throws {
+    /// RETARGETED 2026-07-21, and the reason matters more than the change.
+    ///
+    /// This test pinned upstream's design, in which corrections are prompt
+    /// hints and never touch the text. Upstream deleted its
+    /// DeterministicCorrectionEngine in e262c40, "fold corrections into cleanup
+    /// prompt", and four tests were left guarding that decision.
+    ///
+    /// AF Flow's contract asks for something different, in as many words:
+    /// "deterministic post-ASR replacement layer PLUS the glossary injected
+    /// into the cleanup prompt". Both, not either. Only the prompt half had
+    /// shipped. CLAUDE.md wins over inherited fork behaviour by its own rule.
+    ///
+    /// The evidence is Andrew's, not theoretical: "prompt" survived correctly
+    /// once and became Cyrillic elsewhere IN THE SAME utterance, and his brand
+    /// name has been mangled five different ways in five sessions, never twice
+    /// alike. A prompt is a request, and the same request produced different
+    /// answers inside one clip. Prompt tuning cannot make a sampled model
+    /// deterministic; a lookup table is deterministic by construction.
+    ///
+    /// What is still guarded: the glossary must REMAIN in the prompt, so this
+    /// is additive rather than a swap.
+    func testCommonlyMisheardReplacementRewritesModelInputPerTheDictionarySpec() async throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let correctionStore = CorrectionStore(defaults: defaults)
@@ -53,7 +74,8 @@ final class TextCleanerTests: XCTestCase {
         XCTAssertEqual(result, "ChatGPT fixes text")
         XCTAssertEqual(
             localBackend.cleanedInputs.map(\.text),
-            [TextCleaner.formatCleanupInput(userInput: "chat gbt fixes text")]
+            [TextCleaner.formatCleanupInput(userInput: "ChatGPT fixes text")],
+            "the cleanup model must receive text whose terminology is already correct"
         )
     }
 
@@ -83,7 +105,13 @@ final class TextCleanerTests: XCTestCase {
         XCTAssertFalse(formatted.contains("<NORMALIZED_TRANSCRIPTION>"))
     }
 
-    func testCleanerReturnsRawInputWhenCleanupBackendIsUnavailable() async throws {
+    /// RETARGETED 2026-07-21. The fallback is exactly where corrections matter
+    /// MOST: when the cleanup model is unavailable, the raw transcription is
+    /// what lands at Andrew's cursor, so leaving it uncorrected would mean the
+    /// dictionary silently stops working on the worst day. Corrections are
+    /// applied before the model is called, so all three fallback paths inherit
+    /// them for free.
+    func testCleanerFallbackCarriesDictionaryCorrections() async throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let correctionStore = CorrectionStore(defaults: defaults)
@@ -96,7 +124,11 @@ final class TextCleanerTests: XCTestCase {
 
         let result = await cleaner.clean(text: "just see approved it", prompt: "unused prompt")
 
-        XCTAssertEqual(result, "just see approved it")
+        XCTAssertEqual(
+            result,
+            "Jesse approved it",
+            "a cleanup failure must not also disable the dictionary"
+        )
     }
 
     func testPreferredTranscriptionsDoNotRewriteCleanupOutput() async throws {
@@ -115,7 +147,13 @@ final class TextCleanerTests: XCTestCase {
         XCTAssertEqual(result, "ghost-pepper is ready")
     }
 
-    func testCommonlyMisheardReplacementSpecialCharactersArePromptHintsOnly() async throws {
+    /// RETARGETED 2026-07-21 alongside the test above, but the concern it
+    /// raises is real and is now guarded harder rather than dropped: a
+    /// replacement VALUE containing `$` or a backslash must be inserted
+    /// literally and never interpreted as a regex template. Getting that wrong
+    /// would corrupt Andrew's text while claiming to correct it. The layer
+    /// restores through literal string replacement precisely for this reason.
+    func testCommonlyMisheardReplacementSpecialCharactersAreInsertedLiterally() async throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let correctionStore = CorrectionStore(defaults: defaults)
@@ -131,7 +169,8 @@ final class TextCleanerTests: XCTestCase {
         XCTAssertEqual(result, #"$HOME C:\\temp"#)
         XCTAssertEqual(
             localBackend.cleanedInputs.map(\.text),
-            [TextCleaner.formatCleanupInput(userInput: "environment")]
+            [TextCleaner.formatCleanupInput(userInput: #"$HOME C:\\temp"#)],
+            "special characters in a replacement must survive verbatim, not be read as a template"
         )
     }
 
@@ -383,5 +422,122 @@ final class WindowFoldabilityTests: XCTestCase {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let enabled = window.standardWindowButton(.miniaturizeButton)?.isEnabled ?? false
         print("PROBE allSpaces+fullScreenAuxiliary miniaturize enabled = \(enabled)")
+    }
+}
+
+/// The deterministic dictionary layer, tested against the REAL failures from
+/// voice-observations.md rather than invented strings.
+///
+/// Every case below is a defect actually observed in Andrew's dictation and
+/// logged with a date. That is the point: a table of made-up terms would prove
+/// the regex works, and these prove the layer fixes the things that have been
+/// costing him one mis-transcription per message for five sessions.
+final class DeterministicCorrectionsTests: XCTestCase {
+
+    private func corrections(
+        preferred: [String] = [],
+        misheard: [(String, String)] = []
+    ) -> DeterministicCorrections {
+        DeterministicCorrections(
+            preferredTranscriptions: preferred,
+            commonlyMisheard: misheard.map { MisheardReplacement(wrong: $0.0, right: $0.1) }
+        )
+    }
+
+    /// The shipped seed list is EMPTY on purpose, per the 2026-07-20 decision
+    /// to seed only after the C2 model scoring, so deterministic replacement
+    /// cannot contaminate the comparison. An empty layer must be a no-op, not
+    /// a silent mangler.
+    func testEmptyCorrectionsChangeNothing() {
+        let input = "Wispr Flow and AF Flow, unchanged."
+        XCTAssertEqual(corrections().apply(to: input), input)
+    }
+
+    /// Casing was 30 percent of his real Wispr edits, the single most common
+    /// mechanical fix, and the safest, because case cannot change meaning.
+    func testCasingIsNormalisedToThePreferredForm() {
+        let layer = corrections(preferred: ["AF Flow", "LuLu", "Wispr Flow"])
+        XCTAssertEqual(layer.apply(to: "af flow crashed"), "AF Flow crashed")
+        XCTAssertEqual(layer.apply(to: "I opened Lulu"), "I opened LuLu")
+        // Observed 2026-07-19: the same term cased two ways in ONE message.
+        XCTAssertEqual(
+            layer.apply(to: "AF flow and AF FLOW"),
+            "AF Flow and AF Flow",
+            "inconsistency inside one utterance is noise, not preference"
+        )
+    }
+
+    /// Five different manglings of one brand across five sessions, never the
+    /// same twice, which is why a prompt cannot fix this and a table can.
+    func testTheBrandNameManglingsAreRepaired() {
+        let layer = corrections(
+            preferred: ["Wispr Flow"],
+            misheard: [("Visper Flow", "Wispr Flow"), ("whisper flow", "Wispr Flow")]
+        )
+        XCTAssertEqual(layer.apply(to: "retire Visper Flow now"), "retire Wispr Flow now")
+        XCTAssertEqual(layer.apply(to: "remove whisper flow"), "remove Wispr Flow")
+    }
+
+    /// Observed 2026-07-20: "Hugging Face" arrived as two different wrong
+    /// spellings inside a single message, and it changed the MEANING of a
+    /// question he was asking, which is what escalated it from annoyance.
+    func testTheHuggingFaceCaseThatCorruptedAQuestion() {
+        let layer = corrections(
+            preferred: ["Hugging Face"],
+            misheard: [("fighting face", "Hugging Face"), ("Hagging face", "Hugging Face")]
+        )
+        XCTAssertEqual(
+            layer.apply(to: "is fighting face in my setup, the Hagging face thing"),
+            "is Hugging Face in my setup, the Hugging Face thing"
+        )
+    }
+
+    /// His register borrows English technical vocabulary into Russian
+    /// sentences, and the seed list must cover INFLECTED forms, not just the
+    /// nominative. Both observed 2026-07-20.
+    func testRussianInflectedBorrowingsAreRepaired() {
+        let layer = corrections(misheard: [
+            ("\u{043F}\u{0440}\u{043E}\u{043C}\u{0442}\u{043E}\u{0432}", "\u{043F}\u{0440}\u{043E}\u{043C}\u{043F}\u{0442}\u{043E}\u{0432}"),
+            ("\u{043F}\u{0440}\u{043E}\u{043C}\u{043F}\u{0443}\u{0442}", "prompt"),
+        ])
+        XCTAssertEqual(
+            layer.apply(to: "\u{043F}\u{0430}\u{0440}\u{0443} \u{043F}\u{0440}\u{043E}\u{043C}\u{0442}\u{043E}\u{0432} \u{043D}\u{0430}\u{0437}\u{0430}\u{0434}"),
+            "\u{043F}\u{0430}\u{0440}\u{0443} \u{043F}\u{0440}\u{043E}\u{043C}\u{043F}\u{0442}\u{043E}\u{0432} \u{043D}\u{0430}\u{0437}\u{0430}\u{0434}"
+        )
+        XCTAssertEqual(
+            layer.apply(to: "\u{0441}\u{0434}\u{0435}\u{043B}\u{0430}\u{0442}\u{044C} \u{043F}\u{0440}\u{043E}\u{043C}\u{043F}\u{0443}\u{0442}"),
+            "\u{0441}\u{0434}\u{0435}\u{043B}\u{0430}\u{0442}\u{044C} prompt"
+        )
+    }
+
+    /// A term must never match inside a longer word. Without this the layer
+    /// would corrupt ordinary text while claiming to fix it, which is worse
+    /// than the defect.
+    func testTermsDoNotMatchInsideLongerWords() {
+        let layer = corrections(preferred: ["Claude"], misheard: [("cat", "dog")])
+        XCTAssertEqual(layer.apply(to: "concatenate the catalog"), "concatenate the catalog")
+        XCTAssertEqual(layer.apply(to: "Claudette left"), "Claudette left")
+    }
+
+    /// Protected terms are placeholder-substituted before the misheard rules
+    /// run, so a broad misheard rule cannot chew through a term the user
+    /// explicitly protected. Upstream's ordering, and it was right.
+    func testAProtectedTermSurvivesABroadMisheardRule() {
+        let layer = corrections(
+            preferred: ["Wispr Flow"],
+            misheard: [("Flow", "Stream")]
+        )
+        XCTAssertEqual(
+            layer.apply(to: "Wispr Flow and the Flow state"),
+            "Wispr Flow and the Stream state",
+            "the protected brand keeps its Flow; the unprotected word is replaced"
+        )
+    }
+
+    /// Longest rule wins, so a specific phrase is not pre-empted by a rule for
+    /// one of its words.
+    func testLongerRulesTakePrecedence() {
+        let layer = corrections(misheard: [("face", "FACE"), ("fighting face", "Hugging Face")])
+        XCTAssertEqual(layer.apply(to: "the fighting face"), "the Hugging Face")
     }
 }

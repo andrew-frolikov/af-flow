@@ -30,6 +30,129 @@ struct TextCleanerResult {
     }
 }
 
+
+/// The deterministic post-ASR replacement layer from CLAUDE.md's dictionary spec.
+///
+/// **Why this exists, when a glossary is already injected into the cleanup
+/// prompt.** The spec asks for both, and only the prompt half shipped: upstream
+/// deleted its `DeterministicCorrectionEngine` in `e262c40`, "fold corrections
+/// into cleanup prompt". Andrew's own dictation is the argument for putting the
+/// deterministic half back. In one C1 clip the word "prompt" survived correctly
+/// in Latin script once and became Cyrillic elsewhere **in the same utterance**,
+/// and "Wispr Flow" has now been mangled five different ways across five
+/// sessions, never twice the same. A prompt is a request; the same request
+/// produced different answers inside one clip. No amount of prompt tuning makes
+/// a sampled model deterministic, and this class of defect is exactly the one a
+/// lookup table fixes completely and for free.
+///
+/// The measurement in PROGRESS.md sharpens it further: the cleanup model deletes
+/// about ten words for every one it adds. Asking that same lossy layer to also
+/// repair terminology is asking the leakiest part of the pipeline to do more
+/// work. This runs BEFORE it, so the model receives text that is already right.
+///
+/// **Two mechanisms, because the failures are two different shapes.**
+///
+/// - `preferredTranscriptions` normalises CASING and spelling of a term the
+///   engine hears correctly but writes inconsistently: "AF flow" to "AF Flow",
+///   "Lulu" to "LuLu". Casing was 30 percent of Andrew's real Wispr edits, the
+///   single most common mechanical fix, and it is the safest possible rewrite
+///   because changing case cannot change meaning.
+/// - `commonlyMisheard` maps a genuinely wrong word onto the right one:
+///   "Visper Flow" to "Wispr Flow". This one CAN change meaning, so it only
+///   ever fires on exact phrase matches the user typed in themselves.
+///
+/// Protected terms are substituted for placeholders before the misheard rules
+/// run and restored afterwards, so a misheard rule can never chew through a
+/// term the user explicitly protected. That ordering is upstream's, and it was
+/// right.
+struct DeterministicCorrections: Sendable {
+    let preferredTranscriptions: [String]
+    let commonlyMisheard: [MisheardReplacement]
+
+    var isEmpty: Bool { preferredTranscriptions.isEmpty && commonlyMisheard.isEmpty }
+
+    func apply(to text: String) -> String {
+        guard !isEmpty else { return text }
+
+        // Every substitution writes a PLACEHOLDER, never the final word, and
+        // the placeholders are expanded once at the end.
+        //
+        // Found by this layer's own test before it shipped: with rules
+        // "fighting face -> Hugging Face" and "face -> FACE", writing the final
+        // word directly meant the output of the first rule was re-matched by
+        // the second, producing "Hugging FACE". Longest-first ordering does not
+        // prevent that, because the cascade happens after the ordering. Text
+        // that has already been corrected must be inert for the rest of the
+        // pass, and a placeholder is what makes it inert.
+        var restorations: [String: String] = [:]
+        var working = text
+
+        for term in preferredTranscriptions.sorted(by: { $0.count > $1.count }) {
+            working = Self.substitute(term, in: working, with: term, into: &restorations)
+        }
+        for replacement in commonlyMisheard.sorted(by: { $0.wrong.count > $1.wrong.count }) {
+            working = Self.substitute(
+                replacement.wrong,
+                in: working,
+                with: replacement.right,
+                into: &restorations
+            )
+        }
+
+        return restorations.reduce(working) { partial, entry in
+            partial.replacingOccurrences(of: entry.key, with: entry.value)
+        }
+    }
+
+    /// Replaces every bounded, case-insensitive occurrence of `phrase` with a
+    /// fresh placeholder, recording `canonical` as what the placeholder becomes.
+    ///
+    /// For a preferred transcription, `phrase` and `canonical` are the same
+    /// string, which is what turns protection into case NORMALISATION: whatever
+    /// casing the engine produced is matched, and the user's spelling is what
+    /// comes back.
+    private static func substitute(
+        _ phrase: String,
+        in text: String,
+        with canonical: String,
+        into restorations: inout [String: String]
+    ) -> String {
+        guard let expression = phraseExpression(for: phrase) else { return text }
+        var working = text
+        var searchStart = working.startIndex
+
+        while searchStart <= working.endIndex,
+              let match = expression.firstMatch(
+                  in: working,
+                  options: [],
+                  range: NSRange(searchStart..<working.endIndex, in: working)
+              ),
+              let range = Range(match.range, in: working) {
+            let token = "\u{FFFC}AF\(restorations.count)\u{FFFC}"
+            working.replaceSubrange(range, with: token)
+            restorations[token] = canonical
+            guard let tokenRange = working.range(of: token) else { break }
+            searchStart = tokenRange.upperBound
+        }
+
+        return working
+    }
+
+    /// Case-insensitive, and bounded so a term never matches inside a longer
+    /// word. Uses lookaround rather than `\b` because `\b` sits between a word
+    /// and a non-word character, and a term may begin or end with punctuation
+    /// or a digit, which would silently stop it matching.
+    private static func phraseExpression(for phrase: String) -> NSRegularExpression? {
+        let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let escaped = NSRegularExpression.escapedPattern(for: trimmed)
+        return try? NSRegularExpression(
+            pattern: "(?<![\\p{L}\\p{N}])\(escaped)(?![\\p{L}\\p{N}])",
+            options: [.caseInsensitive]
+        )
+    }
+}
+
 final class TextCleaner {
     private static let thinkBlockExpression = try? NSRegularExpression(
         pattern: #"(?is)<think\b[^>]*>.*?</think>"#
@@ -137,6 +260,20 @@ final class TextCleaner {
             basePrompt: basePrompt,
             modelKind: modelKind
         )
+
+        // The deterministic dictionary runs HERE, on the raw transcription,
+        // before the cleanup model sees a single token. Shadowing `text` is
+        // deliberate: every downstream path, including all three fallbacks that
+        // return the raw transcription when cleanup fails, then carries the
+        // corrected terms. Correcting only the success path would mean the
+        // fallback text Andrew actually receives on a bad day is the uncorrected
+        // one, which is the reverse of what he needs.
+        let corrections = DeterministicCorrections(
+            preferredTranscriptions: correctionStore.preferredTranscriptions,
+            commonlyMisheard: correctionStore.commonlyMisheard
+        )
+        let text = corrections.apply(to: text)
+
         let formattedInput = Self.formatCleanupInput(userInput: text)
 
         let modelCallStart = Date()
