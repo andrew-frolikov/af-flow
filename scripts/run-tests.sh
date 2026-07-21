@@ -124,8 +124,13 @@ xcodebuild build-for-testing \
     DEVELOPMENT_TEAM="$TEAM" \
     CODE_SIGN_IDENTITY="Apple Development" \
     CODE_SIGN_STYLE=Automatic \
-    "${RUNNER_ENV[@]}" \
+    ${RUNNER_ENV[@]+"${RUNNER_ENV[@]}"} \
     2>&1 | grep -E "error:|warning: .*never be executed|TEST BUILD SUCCEEDED|BUILD FAILED"
+BUILD_STATUS=${PIPESTATUS[0]}
+if [ "$BUILD_STATUS" -ne 0 ]; then
+    echo "BUILD FAILED (exit $BUILD_STATUS). Not running tests." >&2
+    exit "$BUILD_STATUS"
+fi
 
 echo
 echo "running tests"

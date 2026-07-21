@@ -330,3 +330,56 @@ final class TextCleanerTests: XCTestCase {
         XCTAssertEqual(result.transcript?.rawOutput, "...")
     }
 }
+
+/// The window-filtering judgement behind the Dock presence fix.
+///
+/// Tested as a pure function rather than through AppKit, because the part that
+/// can be wrong is which windows count, not the notification plumbing. The
+/// specific failure worth guarding against is the recording overlay: it is a
+/// borderless panel that appears every single time Andrew speaks, so counting
+/// it would flash a Dock icon in and out on every dictation. That would be a
+/// more annoying bug than the missing minimize button this fixes.
+@MainActor
+final class DockPresenceControllerTests: XCTestCase {
+
+    private func window(visible: Bool = true, titled: Bool = true, panel: Bool = false)
+        -> DockPresenceController.WindowFacts {
+        .init(isVisible: visible, isTitled: titled, isPanel: panel)
+    }
+
+    func testNoWindowsMeansNoDockIcon() {
+        XCTAssertFalse(DockPresenceController.shouldShowInDock([]))
+    }
+
+    func testAnOpenTitledWindowShowsTheDockIcon() {
+        XCTAssertTrue(DockPresenceController.shouldShowInDock([window()]))
+    }
+
+    func testTheRecordingOverlayMustNotShowTheDockIcon() {
+        // Borderless, and a panel. This fires on every dictation.
+        let overlay = window(titled: false, panel: true)
+        XCTAssertFalse(
+            DockPresenceController.shouldShowInDock([overlay]),
+            "a dictation overlay must not put AF Flow in the Dock, or the icon flashes on every utterance"
+        )
+    }
+
+    func testAHiddenWindowDoesNotCount() {
+        XCTAssertFalse(DockPresenceController.shouldShowInDock([window(visible: false)]))
+    }
+
+    func testATitledPanelStillDoesNotCount() {
+        // The debug log is a titled utility panel. macOS will not miniaturize
+        // it whatever the policy, so it should not drive the Dock icon either.
+        XCTAssertFalse(DockPresenceController.shouldShowInDock([window(panel: true)]))
+    }
+
+    func testOneRealWindowAmongOverlaysIsEnough() {
+        let windows = [
+            window(titled: false, panel: true),
+            window(visible: false),
+            window(),
+        ]
+        XCTAssertTrue(DockPresenceController.shouldShowInDock(windows))
+    }
+}
