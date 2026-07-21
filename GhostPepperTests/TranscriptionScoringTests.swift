@@ -148,6 +148,61 @@ final class TranscriptionScoringTests: XCTestCase {
         )
     }
 
+    // MARK: - Deliberate model prefetch
+
+    /// Downloads one named model, on purpose, when explicitly asked to.
+    ///
+    /// Two jobs, and the second is why it exists at all:
+    ///
+    /// 1. C2 needs three models that are not on disk. Fetching them ahead of a
+    ///    scoring run keeps download time out of the measured latency numbers.
+    /// 2. It is the **observation target for de-risk checklist item 7**. That
+    ///    item wants the destination hosts of a model download observed, and the
+    ///    window has been missed three times: LuLu was not installed for the
+    ///    first download, the rule it later wrote was `any address:any port` and
+    ///    recorded no hostname, and the third went unwatched during a test run.
+    ///    Run under `scripts/observe-egress.sh` this produces the evidence
+    ///    directly, from the app's own networking stack rather than a firewall's
+    ///    bookkeeping.
+    ///
+    /// Doubly gated, and deliberately so: it needs both the download permission
+    /// and an explicit model name, so no ordinary test run can ever trigger a
+    /// download by accident. That is the exact failure this project just had.
+    @MainActor
+    func testPrefetchNamedModel() async throws {
+        try XCTSkipUnless(
+            downloadsAllowed,
+            "Set AF_FLOW_ALLOW_MODEL_DOWNLOAD=1 to permit a download."
+        )
+
+        let requested = try XCTUnwrap(
+            ProcessInfo.processInfo.environment["AF_FLOW_PREFETCH_MODEL"],
+            "Set AF_FLOW_PREFETCH_MODEL to the model name to fetch."
+        )
+
+        let descriptor = try XCTUnwrap(
+            SpeechModelCatalog.model(named: requested),
+            "\(requested) is not in the catalog on this OS."
+        )
+
+        let manager = ModelManager(modelName: requested)
+        if manager.cachedModelNames.contains(requested) {
+            print("\(descriptor.pickerTitle) is already cached; nothing to download.")
+            return
+        }
+
+        print("downloading \(descriptor.pickerTitle) (\(descriptor.sizeDescription))...")
+        let started = Date()
+        await manager.loadModel(name: requested, language: "ru")
+        let elapsed = Date().timeIntervalSince(started)
+
+        XCTAssertTrue(
+            manager.isReady,
+            "\(requested) failed to load: \(manager.error?.localizedDescription ?? "unknown")"
+        )
+        print(String(format: "loaded in %.1fs", elapsed))
+    }
+
     // MARK: - Draft reference generation
 
     /// Step 2 of the fixture workflow: transcribe unscripted audio so Andrew has
