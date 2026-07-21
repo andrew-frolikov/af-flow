@@ -80,6 +80,42 @@ final class TranscriptionScoringTests: XCTestCase {
         var rows: [ScoreRow] = []
         var skipped: [String] = []
 
+        // Persisted hypotheses first. Transcription needs the app quit and a
+        // model loaded; scoring is pure text arithmetic and needs neither. So
+        // any fixture whose transcripts were already captured is scored here
+        // without touching a model at all, which is what lets the reference
+        // text arrive after the transcription run rather than before it.
+        var needingLiveTranscription: [Fixture] = []
+        for fixture in fixtures {
+            let persisted = persistedHypotheses(for: fixture.name)
+            if persisted.isEmpty {
+                needingLiveTranscription.append(fixture)
+                continue
+            }
+            for entry in persisted {
+                rows.append(ScoreRow(
+                    model: entry.model,
+                    modelID: entry.modelID,
+                    language: entry.language,
+                    fixture: fixture.name,
+                    hypothesis: entry.hypothesis,
+                    wer: TextScoring.wordErrorRate(hypothesis: entry.hypothesis, reference: fixture.reference),
+                    cer: TextScoring.characterErrorRate(hypothesis: entry.hypothesis, reference: fixture.reference),
+                    punctuation: TextScoring.punctuationErrorRate(hypothesis: entry.hypothesis, reference: fixture.reference),
+                    boundaries: TextScoring.sentenceBoundaries(hypothesis: entry.hypothesis, reference: fixture.reference),
+                    missingSpaces: TextScoring.missingSpaceAfterPeriod(in: entry.hypothesis),
+                    latinTerms: TextScoring.latinTermsPreserved(hypothesis: entry.hypothesis, reference: fixture.reference),
+                    seconds: entry.seconds,
+                    audioDuration: entry.audioDuration
+                ))
+            }
+        }
+
+        guard !needingLiveTranscription.isEmpty else {
+            try finish(rows: rows, skipped: skipped, fixtures: fixtures)
+            return
+        }
+
         for modelName in candidateModels {
             guard let descriptor = SpeechModelCatalog.model(named: modelName) else {
                 skipped.append("\(modelName): not in the catalog on this OS")
@@ -101,7 +137,7 @@ final class TranscriptionScoringTests: XCTestCase {
                     continue
                 }
 
-                for fixture in fixtures {
+                for fixture in needingLiveTranscription {
                     let started = Date()
                     let hypothesis = await manager.transcribe(
                         audioBuffer: fixture.samples,
@@ -133,6 +169,10 @@ final class TranscriptionScoringTests: XCTestCase {
             }
         }
 
+        try finish(rows: rows, skipped: skipped, fixtures: fixtures)
+    }
+
+    private func finish(rows: [ScoreRow], skipped: [String], fixtures: [Fixture]) throws {
         let report = Self.render(rows: rows, skipped: skipped, fixtures: fixtures)
         print(report)
 
@@ -264,6 +304,133 @@ final class TranscriptionScoringTests: XCTestCase {
         }
     }
 
+    // MARK: - Capture every candidate in one run
+
+    /// A transcript produced by one engine on one clip, persisted so it can be
+    /// scored later without re-running the engine.
+    struct PersistedHypothesis: Codable {
+        let model: String
+        let modelID: String
+        let language: String
+        let hypothesis: String
+        let seconds: Double
+        let audioDuration: Double
+        /// `local` for a model this app runs, `incumbent` for a transcript
+        /// carried in from the app being replaced. Only `local` entries are
+        /// rewritten by a capture run, so an incumbent row survives re-capture.
+        let source: String
+    }
+
+    /// Runs every candidate model against every clip that has no reference yet,
+    /// and writes the transcripts beside the audio.
+    ///
+    /// **Why this exists, and it is a scheduling fix rather than a technical
+    /// one.** Transcribing requires the app to be quit, because the test host
+    /// launches a second copy that competes for the microphone, and Andrew
+    /// dictates with this app all day. Scoring requires only the reference text
+    /// and some arithmetic. Those two facts were previously welded together:
+    /// `testScoreCandidateModelsOnFixtures` transcribed and scored in one pass,
+    /// so the reference had to exist *before* the models ran, which forced two
+    /// separate interruptions of his day, one to produce a draft and another to
+    /// score the corrected version.
+    ///
+    /// Capturing every hypothesis once decouples them. He gives up the machine
+    /// once, corrects the reference whenever he likes, and every score after
+    /// that is free. It also makes re-scoring free for the rest of the project:
+    /// when C3 changes the cleanup prompt, the ASR transcripts are unchanged
+    /// and do not need regenerating.
+    @MainActor
+    func testCaptureAllCandidateTranscriptsForUnreferencedAudio() async throws {
+        let pending = try audioWithoutReference()
+
+        try XCTSkipIf(
+            pending.isEmpty,
+            "No audio awaiting a reference. Nothing to capture."
+        )
+
+        var captured: [String: [PersistedHypothesis]] = [:]
+        var skipped: [String] = []
+        let clips = try pending.map { (url: $0, audio: try AudioFixtureLoader.load($0)) }
+
+        for modelName in candidateModels {
+            guard let descriptor = SpeechModelCatalog.model(named: modelName) else {
+                skipped.append("\(modelName): not in the catalog on this OS")
+                continue
+            }
+
+            let manager = ModelManager(modelName: modelName)
+            if !manager.cachedModelNames.contains(modelName) && !downloadsAllowed {
+                skipped.append("\(descriptor.pickerTitle): not cached, and AF_FLOW_ALLOW_MODEL_DOWNLOAD is not set")
+                continue
+            }
+
+            for language in languages {
+                let label = language ?? "auto"
+                await manager.loadModel(name: modelName, language: language)
+
+                guard manager.isReady else {
+                    skipped.append("\(descriptor.pickerTitle) [\(label)]: load failed, \(manager.error?.localizedDescription ?? "unknown")")
+                    continue
+                }
+
+                for clip in clips {
+                    let stem = clip.url.deletingPathExtension().lastPathComponent
+                    let started = Date()
+                    let hypothesis = await manager.transcribe(audioBuffer: clip.audio.samples, language: language)
+                    let elapsed = Date().timeIntervalSince(started)
+
+                    guard let hypothesis, !hypothesis.isEmpty else {
+                        skipped.append("\(descriptor.pickerTitle) [\(label)] on \(stem): returned no text")
+                        continue
+                    }
+
+                    captured[stem, default: []].append(PersistedHypothesis(
+                        model: descriptor.pickerTitle,
+                        modelID: modelName,
+                        language: label,
+                        hypothesis: hypothesis,
+                        seconds: elapsed,
+                        audioDuration: clip.audio.duration,
+                        source: "local"
+                    ))
+                    print(String(format: "captured %@ [%@] on %@ in %.2fs", descriptor.pickerTitle, label, stem, elapsed))
+                }
+            }
+        }
+
+        for (stem, entries) in captured {
+            // Merge rather than overwrite, so an incumbent transcript written
+            // in from the Wispr archive is not destroyed by a re-capture.
+            let preserved = persistedHypotheses(for: stem).filter { $0.source != "local" }
+            try writeHypotheses(preserved + entries, for: stem)
+            print("wrote \(preserved.count + entries.count) transcripts to \(stem).hypotheses.json")
+        }
+
+        if !skipped.isEmpty {
+            print("\nnot captured:\n" + skipped.map { "  - \($0)" }.joined(separator: "\n"))
+        }
+
+        XCTAssertFalse(
+            captured.isEmpty,
+            "No transcript was captured for any clip:\n" + skipped.map { "  - \($0)" }.joined(separator: "\n")
+        )
+    }
+
+    private func hypothesesURL(for stem: String) -> URL {
+        fixturesDirectory.appendingPathComponent("\(stem).hypotheses.json")
+    }
+
+    func persistedHypotheses(for stem: String) -> [PersistedHypothesis] {
+        guard let data = try? Data(contentsOf: hypothesesURL(for: stem)) else { return [] }
+        return (try? JSONDecoder().decode([PersistedHypothesis].self, from: data)) ?? []
+    }
+
+    private func writeHypotheses(_ entries: [PersistedHypothesis], for stem: String) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(entries).write(to: hypothesesURL(for: stem), options: .atomic)
+    }
+
     private func audioWithoutReference() throws -> [URL] {
         let manager = FileManager.default
         guard manager.fileExists(atPath: fixturesDirectory.path) else { return [] }
@@ -337,6 +504,58 @@ final class TranscriptionScoringTests: XCTestCase {
         )
         XCTAssertEqual(preserved.missing, ["prompt"])
         XCTAssertEqual(preserved.preserved, 0)
+    }
+
+    /// The persistence layer that lets capture and scoring happen on different
+    /// days is new logic sitting underneath the only objective verifier this
+    /// project has, so per LOOP.md it gets its own test in the same command.
+    ///
+    /// The failure that matters is not arithmetic, it is silent substitution: a
+    /// hypotheses file that fails to decode must fall back to live
+    /// transcription rather than report a fixture as scored with zero rows, and
+    /// a re-capture must not delete the incumbent transcript that makes the
+    /// Wispr comparison possible.
+    func testPersistedHypothesesRoundTripAndPreserveIncumbent() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("af-flow-hyp-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let previous = ProcessInfo.processInfo.environment["AF_FLOW_FIXTURES"]
+        setenv("AF_FLOW_FIXTURES", directory.path, 1)
+        defer {
+            if let previous { setenv("AF_FLOW_FIXTURES", previous, 1) } else { unsetenv("AF_FLOW_FIXTURES") }
+        }
+
+        XCTAssertEqual(persistedHypotheses(for: "absent").count, 0, "a missing file must read as empty, not throw")
+
+        let incumbent = PersistedHypothesis(
+            model: "Wispr Flow", modelID: "wispr-qwen-http", language: "ru",
+            hypothesis: "one", seconds: 0.6, audioDuration: 30, source: "incumbent"
+        )
+        let local = PersistedHypothesis(
+            model: "Turbo", modelID: "turbo", language: "ru",
+            hypothesis: "two", seconds: 1.2, audioDuration: 30, source: "local"
+        )
+        try writeHypotheses([incumbent, local], for: "clip")
+
+        let restored = persistedHypotheses(for: "clip")
+        XCTAssertEqual(restored.count, 2)
+        XCTAssertEqual(restored.first { $0.source == "incumbent" }?.hypothesis, "one")
+        XCTAssertEqual(restored.first { $0.source == "local" }?.seconds, 1.2)
+
+        // The merge a capture run performs: local entries are replaced, the
+        // incumbent survives. Losing it would silently drop the baseline and
+        // the comparison would still look complete.
+        let preserved = restored.filter { $0.source != "local" }
+        XCTAssertEqual(preserved.count, 1)
+        XCTAssertEqual(preserved.first?.modelID, "wispr-qwen-http")
+
+        // A corrupt file must degrade to live transcription, never to a
+        // confident zero. This is the project's recurring failure shape: a
+        // check that cannot fail reports success.
+        try Data("not json".utf8).write(to: directory.appendingPathComponent("clip.hypotheses.json"))
+        XCTAssertEqual(persistedHypotheses(for: "clip").count, 0, "undecodable must read as empty so the fixture falls through to live transcription")
     }
 
     /// Proves the loader actually resamples, rather than trusting that it does.

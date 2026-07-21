@@ -75,4 +75,5 @@ GhostPepper/Meeting/GranolaSessionSync.swift
 # The audio is already excluded above; the transcripts are the same content.
 fixtures/*.reference.txt
 fixtures/*.draft-reference.txt
+fixtures/*.hypotheses.json
 fixtures/scores.md
