@@ -7,14 +7,14 @@
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleName</key>
-	<string>Ghost Pepper</string>
+	<string>AF Flow</string>
 	<key>CFBundleShortVersionString</key>
 	<string>2.4.2</string>
 	<key>CFBundleVersion</key>
 	<string>20</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Ghost Pepper needs microphone access to record your voice for transcription.</string>
+	<string>AF Flow needs microphone access to record your voice for transcription.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Ghost Pepper uses on-device speech recognition to transcribe your recordings.</string>
+	<string>AF Flow uses on-device speech recognition to transcribe your recordings.</string>
 </dict>
 </plist>

@@ -118,7 +118,7 @@ final class ModelManagerTests: XCTestCase {
         guard #available(macOS 26, *) else {
             throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
         }
-        let backend = StubSpeechAnalyzerBackend(result: "Ghost Pepper transcription")
+        let backend = StubSpeechAnalyzerBackend(result: "AF Flow transcription")
         var requestedLanguages: [String?] = []
         let manager = ModelManager(
             modelName: SpeechModelCatalog.speechAnalyzer.id,
@@ -134,7 +134,7 @@ final class ModelManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .ready)
         XCTAssertEqual(requestedLanguages.count, 1)
         XCTAssertEqual(requestedLanguages[0], "es")
-        XCTAssertEqual(result, "Ghost Pepper transcription")
+        XCTAssertEqual(result, "AF Flow transcription")
         XCTAssertEqual(backend.receivedAudioBuffers, [[0.25, -0.25]])
     }
 

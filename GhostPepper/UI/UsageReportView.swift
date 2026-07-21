@@ -5,7 +5,7 @@ import SwiftUI
 /// times the user has hit each feature in the trailing window, then offers a
 /// "Generate feature requests" button that asks the currently-selected
 /// cleanup model to write a short note in the user's voice describing what
-/// they used most and what they'd like Ghost Pepper to focus on next.
+/// they used most and what they'd like AF Flow to focus on next.
 ///
 /// Generation is local-only (cleanup-model picker, not the agent backend) so
 /// it never spends Claude API credits.
@@ -210,7 +210,7 @@ struct UsageReportView: View {
     }
 
     private static let systemPrompt = """
-    You are writing a short, casual feature-request note from a Ghost Pepper user to the development team.
+    You are writing a short, casual feature-request note from a AF Flow user to the development team.
 
     The user message starts with "WINDOW PHRASE: …". Use that phrase VERBATIM in your first sentence so the team knows what time period this covers.
 

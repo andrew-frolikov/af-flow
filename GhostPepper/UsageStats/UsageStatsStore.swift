@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// Tracks how the user actually exercises Ghost Pepper. Counters are
+/// Tracks how the user actually exercises AF Flow. Counters are
 /// UserDefaults-backed so they survive launches without needing a database;
 /// each call appends a timestamp into a per-event date list, which lets us
 /// answer both "lifetime use" and "last 7 days" without separate buckets.

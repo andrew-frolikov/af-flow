@@ -5,7 +5,7 @@ final class MeetingWindowHeuristicsTests: XCTestCase {
     func testBestAutoUpdateTitleIgnoresTitlesFromDifferentAppBundle() {
         XCTAssertNil(
             MeetingWindowHeuristics.bestAutoUpdateTitle(
-                in: ["Ghost Pepper Settings"],
+                in: ["AF Flow Settings"],
                 appName: "Zoom",
                 observedBundleIdentifier: "com.github.matthartman.ghostpepper",
                 monitoredBundleIdentifier: "us.zoom.xos"

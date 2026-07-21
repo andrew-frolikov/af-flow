@@ -35,7 +35,7 @@ enum MeetingQASystemPrompt {
            sometimes ## Transcript with **[HH:MM] Speaker:** lines. Transcripts can be \
            4,000+ lines.
 
-        2. Native Ghost Pepper (a smaller fraction, quick notes and window snippets). \
+        2. Native AF Flow (a smaller fraction, quick notes and window snippets). \
            No frontmatter. Starts with an H1 title, then **Date:** line, then ## Notes \
            with free-form content. Generally short.
 

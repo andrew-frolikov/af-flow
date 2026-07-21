@@ -2273,14 +2273,14 @@ final class MeetingWindowState: ObservableObject {
     func archiveSecondBrain(to destinationFolder: URL) throws -> URL {
         let archiveRoot = generatedWikiArchiveRoot ?? saveDirectory
         let timestamp = Self.archiveTimestampFormatter.string(from: Date())
-        let baseName = "Ghost Pepper 2nd Brain Archive \(timestamp)"
+        let baseName = "AF Flow 2nd Brain Archive \(timestamp)"
         let destination = uniqueArchiveFolder(named: baseName, in: destinationFolder)
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
 
         let artifacts: [(relativePath: String, label: String)] = [
             ("wikis", "2nd Brain pages"),
-            ("\(GhostPepperHistoryStore.metadataFolderName)/\(GhostPepperHistoryStore.historyFolderName)", "Ghost Pepper history"),
+            ("\(GhostPepperHistoryStore.metadataFolderName)/\(GhostPepperHistoryStore.historyFolderName)", "AF Flow history"),
             ("\(MarkdownArchivePaths.indexesFolderName)/_cards", "2nd Brain meeting card cache")
         ]
 
@@ -4008,7 +4008,7 @@ struct MeetingRootView: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 24, height: 24)
-                .accessibilityLabel("Ghost Pepper")
+                .accessibilityLabel("AF Flow")
             Spacer()
         }
         .padding(.horizontal, 24)
@@ -5142,7 +5142,7 @@ private struct WikiGenerationConsoleSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 pepperCharacter(size: 18)
-                Text("Ghost Pepper Import")
+                Text("AF Flow Import")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
@@ -5897,7 +5897,7 @@ private struct WikiGenerationConsoleSheet: View {
     private var windows95TitleBar: some View {
         HStack(spacing: 8) {
             pepperCharacter(size: 20)
-            Text("Ghost Pepper Import")
+            Text("AF Flow Import")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(.white)
             Spacer()
@@ -6475,8 +6475,8 @@ private struct GeneratedWikiPageView: View {
                 Text(page.pendingGeneratedUpdate ? "User edits preserved" : "User-edited page")
                     .font(.system(size: 12, weight: .semibold))
                 Text(page.pendingGeneratedUpdate
-                    ? "Ghost Pepper saved the generated update in local history instead of overwriting this page."
-                    : "This 2nd Brain page has been edited since Ghost Pepper last generated it.")
+                    ? "AF Flow saved the generated update in local history instead of overwriting this page."
+                    : "This 2nd Brain page has been edited since AF Flow last generated it.")
                     .font(.system(size: 11))
             }
             Spacer()
@@ -7217,7 +7217,7 @@ private struct SecondBrainDashboardView: View {
     private func chooseArchiveLocationAndArchive() {
         let panel = NSOpenPanel()
         panel.title = "Choose where to archive this 2nd Brain"
-        panel.message = "Ghost Pepper will create a dated archive folder here. Source meetings and imports will stay where they are."
+        panel.message = "AF Flow will create a dated archive folder here. Source meetings and imports will stay where they are."
         panel.prompt = "Archive Here"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -9558,7 +9558,7 @@ private struct ConsentDialogView: View {
     @State private var copied = false
     @AppStorage("skipConsentDialog") private var skipConsent = false
 
-    private static let consentMessage = "I'm using 🌶️ Ghost Pepper, a completely private AI note taker. Nothing leaves my computer and all AI models are done on device."
+    private static let consentMessage = "I'm using 🌶️ AF Flow, a completely private AI note taker. Nothing leaves my computer and all AI models are done on device."
 
     var body: some View {
         VStack(spacing: 20) {

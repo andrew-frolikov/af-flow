@@ -4,7 +4,7 @@ import Security
 
 enum KeychainHelper {
     // AF Flow: a fresh keychain namespace, deliberately distinct from
-    // upstream Ghost Pepper's "com.github.matthartman.ghostpepper" service,
+    // upstream AF Flow's "com.github.matthartman.ghostpepper" service,
     // so AF Flow can never read or migrate any secret an upstream install left behind.
     static let service = "com.frolikov.afflow"
 

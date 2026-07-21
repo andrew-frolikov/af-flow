@@ -416,7 +416,7 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
 
         if case .mlxRepository = requestedDescriptor.runtime {
             throw CleanupBackendError.unsupportedRuntime(
-                "\(requestedDescriptor.displayName) is downloaded/selectable, but MLX inference is not wired into Ghost Pepper yet. Choose a GGUF model such as Qwen 3.5 4B, or wire the MLX provider next."
+                "\(requestedDescriptor.displayName) is downloaded/selectable, but MLX inference is not wired into AF Flow yet. Choose a GGUF model such as Qwen 3.5 4B, or wire the MLX provider next."
             )
         }
 
@@ -656,7 +656,7 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         }
 
         if case .mlxRepository = descriptor.runtime {
-            errorMessage = "Downloaded \(descriptor.displayName). MLX inference is not wired into Ghost Pepper yet."
+            errorMessage = "Downloaded \(descriptor.displayName). MLX inference is not wired into AF Flow yet."
             state = .error
             debugLogger?(.model, errorMessage ?? "MLX model downloaded but runtime unavailable.")
             return

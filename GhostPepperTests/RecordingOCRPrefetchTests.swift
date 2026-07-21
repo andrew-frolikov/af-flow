@@ -19,7 +19,7 @@ final class RecordingOCRPrefetchTests: XCTestCase {
             return OCRContext(windowContents: "captured")
         }
 
-        prefetch.start(customWords: ["Ghost Pepper"])
+        prefetch.start(customWords: ["AF Flow"])
         try? await Task.sleep(nanoseconds: 10_000_000)
 
         let count = await spy.callCount

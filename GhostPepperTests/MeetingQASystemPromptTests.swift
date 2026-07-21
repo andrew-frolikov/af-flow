@@ -15,7 +15,7 @@ final class MeetingQASystemPromptTests: XCTestCase {
 
     func testPromptDescribesNativeFormat() {
         let prompt = MeetingQASystemPrompt.build(archiveRootPath: "/tmp/Meetings", backend: .claude(.sonnet), maxIterations: 15)
-        XCTAssertTrue(prompt.contains("Native Ghost Pepper"), prompt)
+        XCTAssertTrue(prompt.contains("Native AF Flow"), prompt)
         XCTAssertTrue(prompt.contains("**Date:**"), prompt)
         XCTAssertTrue(prompt.contains("## Notes"), prompt)
     }

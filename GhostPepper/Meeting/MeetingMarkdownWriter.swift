@@ -410,7 +410,7 @@ struct MeetingMarkdownWriter {
         let text: String
     }
 
-    /// Parse Ghost Pepper, Granola, and pasted transcript speaker turns.
+    /// Parse AF Flow, Granola, and pasted transcript speaker turns.
     /// Supports timestamped lines, bold speaker labels, plain `Speaker: text`
     /// lines, and wrapped continuation lines after a speaker turn.
     private static func parseTranscriptSegments(from lines: [String]) -> [TranscriptSegment] {

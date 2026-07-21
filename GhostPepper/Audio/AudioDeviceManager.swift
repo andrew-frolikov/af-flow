@@ -56,7 +56,7 @@ class AudioDeviceManager {
         return deviceID
     }
 
-    /// Persists the selected input device UID for Ghost Pepper's use.
+    /// Persists the selected input device UID for AF Flow's use.
     /// Does NOT change the system-wide default — the device is set directly
     /// on the audio unit when recording starts.
     static func setSelectedInputDevice(

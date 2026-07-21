@@ -21,7 +21,7 @@ final class DebugLogWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Ghost Pepper Debug Log"
+        window.title = "AF Flow Debug Log"
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.isFloatingPanel = true

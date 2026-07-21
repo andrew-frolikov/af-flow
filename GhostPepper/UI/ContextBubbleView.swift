@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Ghost Pepper logo view — uses the character image, falls back to emoji.
+/// AF Flow logo view — uses the character image, falls back to emoji.
 private struct PepperLogo: View {
     var size: CGFloat = 32
 
@@ -18,7 +18,7 @@ private struct PepperLogo: View {
     }
 }
 
-/// The Ghost Pepper Context Bubble — a branded floating panel used to prompt
+/// The AF Flow Context Bubble — a branded floating panel used to prompt
 /// the user when a meeting is auto-detected in a call app.
 ///
 /// This view previously also hosted a cloud "Context Bundler" chat UI that sent

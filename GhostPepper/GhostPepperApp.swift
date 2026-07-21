@@ -3,7 +3,7 @@ import Combine
 
 @main
 struct GhostPepperApp: App {
-    private static let automaticTerminationReason = "Ghost Pepper keeps a persistent menu bar presence."
+    private static let automaticTerminationReason = "AF Flow keeps a persistent menu bar presence."
     private static let forceOnboarding = ProcessInfo.processInfo.arguments.contains("--force-onboarding")
     @StateObject private var appState = AppState()
     @NSApplicationDelegateAdaptor(AppReopenDelegate.self) private var reopenDelegate

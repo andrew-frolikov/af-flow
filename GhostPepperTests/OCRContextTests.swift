@@ -60,9 +60,9 @@ final class OCRContextTests: XCTestCase {
     }
 
     func testOCRRequestFactoryAcceptsCustomWords() {
-        let request = OCRRequestFactory().makeRequest(customWords: ["Ghost Pepper", "Jesse"])
+        let request = OCRRequestFactory().makeRequest(customWords: ["AF Flow", "Jesse"])
 
-        XCTAssertEqual(request.customWords, ["Ghost Pepper", "Jesse"])
+        XCTAssertEqual(request.customWords, ["AF Flow", "Jesse"])
     }
 
     func testCaptureStillAttemptsWindowImageWhenPreflightPermissionIsFalse() async {

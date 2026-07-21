@@ -760,7 +760,7 @@ private class LoopbackOAuthServer {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Ghost Pepper Connected</title>
+        <title>AF Flow Connected</title>
         <style>
           body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #20272b; color: #f1f3f4; }
           main { text-align: center; max-width: 520px; padding: 48px 24px; }
@@ -771,9 +771,9 @@ private class LoopbackOAuthServer {
       </head>
       <body>
         <main>
-          <h1>Ready to return to Ghost Pepper</h1>
+          <h1>Ready to return to AF Flow</h1>
           <p>Google Calendar is connected. You can close this tab, or jump back to the app.</p>
-          <a href="com.github.matthartman.ghostpepper://calendar-connected">Return to Ghost Pepper</a>
+          <a href="com.github.matthartman.ghostpepper://calendar-connected">Return to AF Flow</a>
         </main>
         <script>
           setTimeout(function () {
@@ -790,7 +790,7 @@ private class LoopbackOAuthServer {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Ghost Pepper Calendar Error</title>
+        <title>AF Flow Calendar Error</title>
         <style>
           body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #20272b; color: #f1f3f4; }
           main { text-align: center; max-width: 520px; padding: 48px 24px; }
@@ -801,7 +801,7 @@ private class LoopbackOAuthServer {
       <body>
         <main>
           <h1>Could not connect Calendar</h1>
-          <p>Please return to Ghost Pepper and try connecting Google Calendar again.</p>
+          <p>Please return to AF Flow and try connecting Google Calendar again.</p>
         </main>
       </body>
     </html>

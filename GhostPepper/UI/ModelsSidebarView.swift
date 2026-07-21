@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Right-side panel showing what Ghost Pepper does, which model is doing it,
+/// Right-side panel showing what AF Flow does, which model is doing it,
 /// and the toolkit of local models. Local model rows expose inline
 /// download/delete affordances.
 struct ModelsSidebarView: View {
@@ -57,7 +57,7 @@ struct ModelsSidebarView: View {
     // MARK: - Section 1 · Functions
 
     private var functionsSection: some View {
-        section(title: "What Ghost Pepper does") {
+        section(title: "What AF Flow does") {
             FunctionRowPicker(
                 icon: "waveform",
                 title: "Speech-to-text",
@@ -227,7 +227,7 @@ struct ModelsSidebarView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 4) {
             Divider()
-            Text("Ghost Pepper runs 100% on-device.")
+            Text("AF Flow runs 100% on-device.")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.secondary)
         }

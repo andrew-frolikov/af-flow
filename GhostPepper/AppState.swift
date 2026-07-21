@@ -29,7 +29,7 @@ enum AppThemeID: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .current: "The current Ghost Pepper skin."
+        case .current: "The current AF Flow skin."
         case .windows95: "Classic gray chrome, navy accents, and square edges."
         case .space: "Deep starfield panels with electric blue-violet accents."
         }
@@ -639,7 +639,7 @@ class AppState: ObservableObject {
             // the meeting window's own settings buttons still lead here.
         }
 
-        // The "What's New in Ghost Pepper" alert used to fire here whenever
+        // The "What's New in AF Flow" alert used to fire here whenever
         // its defaults key was missing, with an "Open Meetings" button that
         // raised the all-Spaces window. Upstream marketing, and a popup Andrew
         // never asked for. Removed at his instruction, 2026-07-21.
@@ -694,7 +694,7 @@ class AppState: ObservableObject {
         do {
             try appRelauncher.relaunch()
         } catch {
-            errorMessage = "Failed to relaunch Ghost Pepper: \(error.localizedDescription)"
+            errorMessage = "Failed to relaunch AF Flow: \(error.localizedDescription)"
         }
     }
 

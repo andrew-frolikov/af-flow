@@ -94,7 +94,7 @@ class OnboardingWindowController {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "Ghost Pepper"
+            window.title = "AF Flow"
             window.contentView = NSHostingView(rootView: onboardingView)
             window.center()
             window.level = .normal
@@ -164,7 +164,7 @@ struct WelcomeStep: View {
                 .frame(width: 128, height: 128)
                 .cornerRadius(24)
 
-            Text("Ghost Pepper")
+            Text("AF Flow")
                 .font(.system(size: 28, weight: .bold))
 
             Text("Sovereign personal intelligence\nfor your Mac")
@@ -258,7 +258,7 @@ struct SetupStep: View {
             return "Ready for voice-to-text"
         }
 
-        return "Downloading the local models Ghost Pepper needs"
+        return "Downloading the local models AF Flow needs"
     }
 
     private var modelRows: [RuntimeModelRow] {
@@ -293,7 +293,7 @@ struct SetupStep: View {
                 .padding(.top, 24)
                 .padding(.bottom, 8)
 
-            Text("Grant permissions. Ghost Pepper chooses the local models.")
+            Text("Grant permissions. AF Flow chooses the local models.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 16)
@@ -553,7 +553,7 @@ private struct OnboardingModelSummary: View {
                 OnboardingModelRow(label: "Cleanup", name: row.name, size: row.sizeDescription, status: row.status)
             }
 
-            Text("Ghost Pepper picks these during onboarding. Advanced model controls live in Settings.")
+            Text("AF Flow picks these during onboarding. Advanced model controls live in Settings.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .padding(.top, 4)
@@ -879,7 +879,7 @@ struct DoneStep: View {
             Text("You're All Set!")
                 .font(.system(size: 28, weight: .bold))
 
-            Text("Ghost Pepper lives in your menu bar")
+            Text("AF Flow lives in your menu bar")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -941,7 +941,7 @@ struct DoneStep: View {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text(isCompleting ? "Finishing Setup..." : "Start Using Ghost Pepper")
+                    Text(isCompleting ? "Finishing Setup..." : "Start Using AF Flow")
                         .font(.headline)
                 }
                 .frame(maxWidth: .infinity)

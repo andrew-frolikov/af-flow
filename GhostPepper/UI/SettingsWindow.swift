@@ -33,7 +33,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Ghost Pepper Settings"
+        window.title = "AF Flow Settings"
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 900, height: 680)
@@ -92,7 +92,7 @@ final class SettingsDictationTestController: ObservableObject {
             let buffer = await recorder.stopRecording()
             let text = await transcriber.transcribe(audioBuffer: buffer)
             self.transcript = text
-            self.lastError = text == nil ? "Ghost Pepper could not transcribe that sample." : nil
+            self.lastError = text == nil ? "AF Flow could not transcribe that sample." : nil
             self.isTranscribing = false
         }
     }
@@ -909,7 +909,7 @@ struct SettingsView: View {
                             }
                         )
 
-                        Text("Both permissions are required for hotkeys and pasting to work reliably. If Ghost Pepper does not appear in a privacy list, click + and select it from Applications, then quit and reopen Ghost Pepper.")
+                        Text("Both permissions are required for hotkeys and pasting to work reliably. If AF Flow does not appear in a privacy list, click + and select it from Applications, then quit and reopen AF Flow.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1101,7 +1101,7 @@ struct SettingsView: View {
                         }
                     }
 
-                    Text("When enabled, Ghost Pepper runs local cleanup with the selected cleanup model from the Models section.")
+                    Text("When enabled, AF Flow runs local cleanup with the selected cleanup model from the Models section.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1109,7 +1109,7 @@ struct SettingsView: View {
 
             SettingsCard("Cleanup prompt") {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Ghost Pepper uses this prompt before adding OCR context and correction hints.")
+                    Text("AF Flow uses this prompt before adding OCR context and correction hints.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1179,7 +1179,7 @@ struct SettingsView: View {
                         )
                     )
 
-                    Text("Ghost Pepper uses high-quality OCR on the frontmost window and adds the result to the cleanup prompt. When learning is enabled, Ghost Pepper does a high-quality OCR check about 15 seconds after paste and only keeps narrow, high-confidence corrections.")
+                    Text("AF Flow uses high-quality OCR on the frontmost window and adds the result to the cleanup prompt. When learning is enabled, AF Flow does a high-quality OCR check about 15 seconds after paste and only keeps narrow, high-confidence corrections.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1206,7 +1206,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Text("Ghost Pepper uses this model for speech recognition everywhere in the app.")
+                Text("AF Flow uses this model for speech recognition everywhere in the app.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -1593,7 +1593,7 @@ struct SettingsView: View {
 
     private var recognizedVoicesSection: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Ghost Pepper auto-creates reusable voice prints from speaker-tagged lab reruns. Marking more than one voice print as \"This is me\" is allowed.")
+            Text("AF Flow auto-creates reusable voice prints from speaker-tagged lab reruns. Marking more than one voice print as \"This is me\" is allowed.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1666,7 +1666,7 @@ struct SettingsView: View {
                     ContentUnavailableView(
                         "No Saved Recordings",
                         systemImage: "waveform",
-                        description: Text("Make a few dictations in Ghost Pepper and they will appear here.")
+                        description: Text("Make a few dictations in AF Flow and they will appear here.")
                     )
                     .frame(maxWidth: .infinity, minHeight: 280)
                 } else {
@@ -2281,7 +2281,7 @@ struct SettingsView: View {
                         appState.setupMeetingDetector()
                     }
 
-                    Text("When enabled, Ghost Pepper can detect video calls and offer to transcribe them locally using your microphone. Capturing other participants' system audio is not available in AF Flow.")
+                    Text("When enabled, AF Flow can detect video calls and offer to transcribe them locally using your microphone. Capturing other participants' system audio is not available in AF Flow.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -2334,7 +2334,7 @@ struct SettingsView: View {
                                 panel.canChooseDirectories = true
                                 panel.allowsMultipleSelection = false
                                 panel.canCreateDirectories = true
-                                panel.message = "Choose where to save Ghost Pepper meetings and 2nd Brain files"
+                                panel.message = "Choose where to save AF Flow meetings and 2nd Brain files"
                                 panel.prompt = "Select Folder"
 
                                 if panel.runModal() == .OK, let url = panel.url {
@@ -2511,7 +2511,7 @@ private struct TranscriptionLabSpeakerProfileEditor: View {
             }
 
             if profile.recognizedVoiceID == nil {
-                Text("This speaker only has a recording-local label because Ghost Pepper could not build a reusable voice print from this sample.")
+                Text("This speaker only has a recording-local label because AF Flow could not build a reusable voice print from this sample.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if showsGlobalUpdateButton {

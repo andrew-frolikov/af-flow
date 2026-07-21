@@ -29,7 +29,7 @@ struct MenuBarView: View {
                 }
             }
 
-            Text("Ghost Pepper v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
+            Text("AF Flow v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 14)

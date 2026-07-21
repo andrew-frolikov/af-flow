@@ -1973,12 +1973,12 @@ final class GhostPepperTests: XCTestCase {
         appState.relaunchApp()
 
         XCTAssertEqual(relauncher.relaunchCallCount, 1)
-        XCTAssertEqual(appState.errorMessage, "Failed to relaunch Ghost Pepper: open failed")
+        XCTAssertEqual(appState.errorMessage, "Failed to relaunch AF Flow: open failed")
     }
 
     func testSettingsWindowHostsSwiftUIViaContentViewController() throws {
-        closeWindows(titled: "Ghost Pepper Settings")
-        defer { closeWindows(titled: "Ghost Pepper Settings") }
+        closeWindows(titled: "AF Flow Settings")
+        defer { closeWindows(titled: "AF Flow Settings") }
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let appState = AppState(
@@ -1990,15 +1990,15 @@ final class GhostPepperTests: XCTestCase {
 
         controller.show(appState: appState)
 
-        let window = try XCTUnwrap(NSApp.windows.first(where: { $0.title == "Ghost Pepper Settings" }))
+        let window = try XCTUnwrap(NSApp.windows.first(where: { $0.title == "AF Flow Settings" }))
         defer { window.close() }
 
         XCTAssertNotNil(window.contentViewController)
     }
 
     func testSettingsWindowControllerCloseButtonOrdersWindowOutWithoutClosing() throws {
-        closeWindows(titled: "Ghost Pepper Settings")
-        defer { closeWindows(titled: "Ghost Pepper Settings") }
+        closeWindows(titled: "AF Flow Settings")
+        defer { closeWindows(titled: "AF Flow Settings") }
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let appState = AppState(
@@ -2010,7 +2010,7 @@ final class GhostPepperTests: XCTestCase {
 
         controller.show(appState: appState)
         let window = try XCTUnwrap(
-            NSApp.windows.first(where: { $0.title == "Ghost Pepper Settings" && $0.isVisible })
+            NSApp.windows.first(where: { $0.title == "AF Flow Settings" && $0.isVisible })
         )
 
         let shouldClose = window.delegate?.windowShouldClose?(window)
@@ -2020,15 +2020,15 @@ final class GhostPepperTests: XCTestCase {
 
         controller.show(appState: appState)
         let reopenedWindow = try XCTUnwrap(
-            NSApp.windows.first(where: { $0.title == "Ghost Pepper Settings" && $0.isVisible })
+            NSApp.windows.first(where: { $0.title == "AF Flow Settings" && $0.isVisible })
         )
 
         XCTAssertTrue(window === reopenedWindow)
     }
 
     func testSettingsWindowUsesLargeRoomyFrame() throws {
-        closeWindows(titled: "Ghost Pepper Settings")
-        defer { closeWindows(titled: "Ghost Pepper Settings") }
+        closeWindows(titled: "AF Flow Settings")
+        defer { closeWindows(titled: "AF Flow Settings") }
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let appState = AppState(
@@ -2041,7 +2041,7 @@ final class GhostPepperTests: XCTestCase {
         controller.show(appState: appState)
 
         let window = try XCTUnwrap(
-            NSApp.windows.first(where: { $0.title == "Ghost Pepper Settings" && $0.isVisible })
+            NSApp.windows.first(where: { $0.title == "AF Flow Settings" && $0.isVisible })
         )
 
         XCTAssertGreaterThanOrEqual(window.minSize.width, 900)
@@ -2194,8 +2194,8 @@ final class GhostPepperTests: XCTestCase {
     }
 
     func testAppStateShowSettingsReusesSingleWindow() throws {
-        closeWindows(titled: "Ghost Pepper Settings")
-        defer { closeWindows(titled: "Ghost Pepper Settings") }
+        closeWindows(titled: "AF Flow Settings")
+        defer { closeWindows(titled: "AF Flow Settings") }
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let appState = AppState(
@@ -2207,7 +2207,7 @@ final class GhostPepperTests: XCTestCase {
         appState.showSettings()
         appState.showSettings()
 
-        let windows = NSApp.windows.filter { $0.title == "Ghost Pepper Settings" }
+        let windows = NSApp.windows.filter { $0.title == "AF Flow Settings" }
         defer { windows.forEach { $0.close() } }
 
         XCTAssertEqual(windows.count, 1)
@@ -2264,8 +2264,8 @@ final class GhostPepperTests: XCTestCase {
     }
 
     func testAppStateShowDebugLogHostsSwiftUIViaContentViewController() throws {
-        closeWindows(titled: "Ghost Pepper Debug Log")
-        defer { closeWindows(titled: "Ghost Pepper Debug Log") }
+        closeWindows(titled: "AF Flow Debug Log")
+        defer { closeWindows(titled: "AF Flow Debug Log") }
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let appState = AppState(
@@ -2277,7 +2277,7 @@ final class GhostPepperTests: XCTestCase {
         appState.showDebugLog()
 
         let window = try XCTUnwrap(
-            NSApp.windows.first(where: { $0.title == "Ghost Pepper Debug Log" && $0.isVisible })
+            NSApp.windows.first(where: { $0.title == "AF Flow Debug Log" && $0.isVisible })
         )
         defer { window.close() }
 
@@ -2297,14 +2297,14 @@ final class GhostPepperTests: XCTestCase {
     }
 
     func testDebugLogWindowControllerCloseButtonOrdersWindowOutWithoutClosing() throws {
-        closeWindows(titled: "Ghost Pepper Debug Log")
-        defer { closeWindows(titled: "Ghost Pepper Debug Log") }
+        closeWindows(titled: "AF Flow Debug Log")
+        defer { closeWindows(titled: "AF Flow Debug Log") }
         let controller = DebugLogWindowController()
         let debugLogStore = makeDebugLogStore()
 
         controller.show(debugLogStore: debugLogStore)
         let window = try XCTUnwrap(
-            NSApp.windows.first(where: { $0.title == "Ghost Pepper Debug Log" && $0.isVisible })
+            NSApp.windows.first(where: { $0.title == "AF Flow Debug Log" && $0.isVisible })
         )
 
         let shouldClose = window.delegate?.windowShouldClose?(window)
@@ -2314,15 +2314,15 @@ final class GhostPepperTests: XCTestCase {
 
         controller.show(debugLogStore: debugLogStore)
         let reopenedWindow = try XCTUnwrap(
-            NSApp.windows.first(where: { $0.title == "Ghost Pepper Debug Log" && $0.isVisible })
+            NSApp.windows.first(where: { $0.title == "AF Flow Debug Log" && $0.isVisible })
         )
 
         XCTAssertTrue(window === reopenedWindow)
     }
 
     func testAppStateShowDebugLogReusesSingleWindow() throws {
-        closeWindows(titled: "Ghost Pepper Debug Log")
-        defer { closeWindows(titled: "Ghost Pepper Debug Log") }
+        closeWindows(titled: "AF Flow Debug Log")
+        defer { closeWindows(titled: "AF Flow Debug Log") }
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let appState = AppState(
@@ -2333,12 +2333,12 @@ final class GhostPepperTests: XCTestCase {
 
         appState.showDebugLog()
         let firstWindow = try XCTUnwrap(
-            NSApp.windows.first(where: { $0.title == "Ghost Pepper Debug Log" && $0.isVisible })
+            NSApp.windows.first(where: { $0.title == "AF Flow Debug Log" && $0.isVisible })
         )
         appState.showDebugLog()
 
         let secondWindow = try XCTUnwrap(
-            NSApp.windows.first(where: { $0.title == "Ghost Pepper Debug Log" && $0.isVisible })
+            NSApp.windows.first(where: { $0.title == "AF Flow Debug Log" && $0.isVisible })
         )
         defer { secondWindow.close() }
 
@@ -2385,7 +2385,7 @@ final class GhostPepperTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let seededStore = CorrectionStore(defaults: defaults)
-        seededStore.preferredTranscriptionsText = "Ghost Pepper\nJesse"
+        seededStore.preferredTranscriptionsText = "AF Flow\nJesse"
         seededStore.commonlyMisheardText = "just see -> Jesse"
 
         let appState = AppState(
@@ -2394,7 +2394,7 @@ final class GhostPepperTests: XCTestCase {
             cleanupSettingsDefaults: defaults
         )
 
-        XCTAssertEqual(appState.correctionStore.preferredTranscriptions, ["Ghost Pepper", "Jesse"])
+        XCTAssertEqual(appState.correctionStore.preferredTranscriptions, ["AF Flow", "Jesse"])
         XCTAssertEqual(
             appState.correctionStore.commonlyMisheard,
             [MisheardReplacement(wrong: "just see", right: "Jesse")]
@@ -2409,9 +2409,9 @@ final class GhostPepperTests: XCTestCase {
             chordBindingStore: ChordBindingStore(defaults: defaults),
             cleanupSettingsDefaults: defaults
         )
-        appState.correctionStore.preferredTranscriptionsText = "Ghost Pepper\nJesse"
+        appState.correctionStore.preferredTranscriptionsText = "AF Flow\nJesse"
 
-        XCTAssertEqual(appState.ocrCustomWords, ["Ghost Pepper", "Jesse"])
+        XCTAssertEqual(appState.ocrCustomWords, ["AF Flow", "Jesse"])
     }
 
     func testAppStateLoadsLocalCleanupModelsWhenCleanupIsEnabled() throws {
@@ -2650,7 +2650,7 @@ final class GhostPepperTests: XCTestCase {
 
         await appState.archiveRecordingForLab(
             audioBuffer: Self.makeArchiveableAudioBuffer(),
-            windowContext: OCRContext(windowContents: "Ghost Pepper"),
+            windowContext: OCRContext(windowContents: "AF Flow"),
             rawTranscription: "raw diarized transcription",
             correctedTranscription: "clean diarized transcription",
             cleanupUsedFallback: false,

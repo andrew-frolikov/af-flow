@@ -91,7 +91,7 @@ enum AgentBackend: Equatable {
     ///
     /// AF Flow never stores or accepts an Anthropic API key (CLAUDE.md hard
     /// rule 1), so the default here is local, not Claude. This also covers
-    /// upstream Ghost Pepper's legacy `claudeAPIModel` setting, which AF Flow
+    /// upstream AF Flow's legacy `claudeAPIModel` setting, which AF Flow
     /// no longer reads as a signal to default into a cloud backend.
     static func resolveFromDefaults(_ defaults: UserDefaults = .standard) -> AgentBackend {
         if let stored = defaults.string(forKey: "agentBackend"),

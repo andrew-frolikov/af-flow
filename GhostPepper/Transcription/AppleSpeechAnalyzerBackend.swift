@@ -65,11 +65,11 @@ enum AppleSpeechAnalyzerError: LocalizedError {
         case .missingAudioFormat:
             "Apple SpeechAnalyzer did not provide a compatible audio format."
         case .audioBufferCreationFailed:
-            "Ghost Pepper could not create an audio buffer for Apple SpeechAnalyzer."
+            "AF Flow could not create an audio buffer for Apple SpeechAnalyzer."
         case .audioConverterCreationFailed:
-            "Ghost Pepper could not create an audio converter for Apple SpeechAnalyzer."
+            "AF Flow could not create an audio converter for Apple SpeechAnalyzer."
         case .audioConversionFailed(let error):
-            "Ghost Pepper could not convert audio for Apple SpeechAnalyzer: \(error.localizedDescription)"
+            "AF Flow could not convert audio for Apple SpeechAnalyzer: \(error.localizedDescription)"
         case .assetInstallationFailed(let error):
             "Apple SpeechAnalyzer could not install its language assets: \(error.localizedDescription)"
         case .analysisFailed(let error):

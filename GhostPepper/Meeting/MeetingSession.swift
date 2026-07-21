@@ -475,7 +475,7 @@ final class MeetingSession: ObservableObject {
     }
 
     /// Manually trigger title detection and attendee capture.
-    /// Briefly activates the meeting app so OCR captures its window, not Ghost Pepper's.
+    /// Briefly activates the meeting app so OCR captures its window, not AF Flow's.
     func refreshTitleAndAttendees() {
         // Reset the flag so title detection retries
         hasAutoUpdatedTitle = false
@@ -512,7 +512,7 @@ final class MeetingSession: ObservableObject {
                 print("MeetingSession: Detect found no meeting app to activate")
             }
             await captureAttendees()
-            // Bring Ghost Pepper back to front
+            // Bring AF Flow back to front
             try? await Task.sleep(nanoseconds: 200_000_000)
             NSApp.activate(ignoringOtherApps: true)
         }

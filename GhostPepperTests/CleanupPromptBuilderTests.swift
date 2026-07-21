@@ -83,7 +83,7 @@ final class CleanupPromptBuilderTests: XCTestCase {
         let prompt = builder.buildPrompt(
             basePrompt: "Base prompt",
             windowContext: OCRContext(windowContents: "Frontmost text"),
-            preferredTranscriptions: ["Ghost Pepper", "Jesse"],
+            preferredTranscriptions: ["AF Flow", "Jesse"],
             commonlyMisheard: [
                 MisheardReplacement(wrong: "just see", right: "Jesse"),
                 MisheardReplacement(wrong: "chat gbt", right: "ChatGPT")
@@ -93,7 +93,7 @@ final class CleanupPromptBuilderTests: XCTestCase {
 
         XCTAssertTrue(prompt.contains("<CORRECTION-HINTS>"))
         XCTAssertTrue(prompt.contains("Preferred transcriptions to preserve exactly:"))
-        XCTAssertTrue(prompt.contains("- Ghost Pepper"))
+        XCTAssertTrue(prompt.contains("- AF Flow"))
         XCTAssertTrue(prompt.contains("- Jesse"))
         XCTAssertTrue(prompt.contains("Commonly misheard replacements to prefer:"))
         XCTAssertTrue(prompt.contains("- just see -> Jesse"))
@@ -108,7 +108,7 @@ final class CleanupPromptBuilderTests: XCTestCase {
         let components = builder.buildPromptComponents(
             basePrompt: "Base prompt",
             windowContext: OCRContext(windowContents: "Frontmost text"),
-            preferredTranscriptions: ["Ghost Pepper"],
+            preferredTranscriptions: ["AF Flow"],
             commonlyMisheard: [MisheardReplacement(wrong: "just see", right: "Jesse")],
             includeWindowContext: true
         )
@@ -121,7 +121,7 @@ final class CleanupPromptBuilderTests: XCTestCase {
         XCTAssertEqual(components.fullPrompt, builder.buildPrompt(
             basePrompt: "Base prompt",
             windowContext: OCRContext(windowContents: "Frontmost text"),
-            preferredTranscriptions: ["Ghost Pepper"],
+            preferredTranscriptions: ["AF Flow"],
             commonlyMisheard: [MisheardReplacement(wrong: "just see", right: "Jesse")],
             includeWindowContext: true
         ))
@@ -132,7 +132,7 @@ final class CleanupPromptBuilderTests: XCTestCase {
         let components = builder.buildPromptComponents(
             basePrompt: "Base prompt",
             windowContext: nil,
-            preferredTranscriptions: ["Ghost Pepper"],
+            preferredTranscriptions: ["AF Flow"],
             commonlyMisheard: [],
             includeWindowContext: true
         )

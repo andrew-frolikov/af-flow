@@ -581,7 +581,7 @@ final class TranscriptionLabController: ObservableObject {
         } catch let error as TranscriptionLabRunnerError {
             switch error {
             case .pipelineBusy:
-                errorMessage = "Ghost Pepper is busy with another recording or lab run."
+                errorMessage = "AF Flow is busy with another recording or lab run."
             case .missingAudio:
                 errorMessage = "This saved recording no longer has playable audio."
             case .transcriptionFailed:
@@ -644,11 +644,11 @@ final class TranscriptionLabController: ObservableObject {
         } catch let error as TranscriptionLabRunnerError {
             switch error {
             case .pipelineBusy:
-                errorMessage = "Ghost Pepper is busy with another recording or lab run."
+                errorMessage = "AF Flow is busy with another recording or lab run."
             case .missingAudio:
                 errorMessage = "This saved recording no longer has playable audio."
             case .transcriptionFailed:
-                errorMessage = "Ghost Pepper could not produce input for cleanup."
+                errorMessage = "AF Flow could not produce input for cleanup."
             }
         } catch {
             errorMessage = "The cleanup rerun failed."

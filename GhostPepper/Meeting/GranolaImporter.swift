@@ -1,6 +1,6 @@
 import Foundation
 
-/// Imports meeting notes from Granola's public API into Ghost Pepper's markdown format.
+/// Imports meeting notes from Granola's public API into AF Flow's markdown format.
 @MainActor
 final class GranolaImporter: ObservableObject {
     enum ImportState: Equatable {

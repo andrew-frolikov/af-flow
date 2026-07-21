@@ -8,11 +8,11 @@ final class CorrectionStoreTests: XCTestCase {
         defaults.removePersistentDomain(forName: #function)
 
         let store = CorrectionStore(defaults: defaults)
-        store.preferredTranscriptionsText = "Ghost Pepper\nOpenAI"
+        store.preferredTranscriptionsText = "AF Flow\nOpenAI"
 
         let reloadedStore = CorrectionStore(defaults: defaults)
 
-        XCTAssertEqual(reloadedStore.preferredTranscriptions, ["Ghost Pepper", "OpenAI"])
+        XCTAssertEqual(reloadedStore.preferredTranscriptions, ["AF Flow", "OpenAI"])
     }
 
     func testCommonlyMisheardRoundTripThroughStorePersistence() throws {
@@ -38,9 +38,9 @@ final class CorrectionStoreTests: XCTestCase {
         defaults.removePersistentDomain(forName: #function)
 
         let store = CorrectionStore(defaults: defaults)
-        store.preferredTranscriptionsText = "Ghost Pepper\nJesse"
+        store.preferredTranscriptionsText = "AF Flow\nJesse"
 
-        XCTAssertEqual(store.preferredOCRCustomWords, ["Ghost Pepper", "Jesse"])
+        XCTAssertEqual(store.preferredOCRCustomWords, ["AF Flow", "Jesse"])
     }
 
     func testCommonlyMisheardDraftPreservesIncompleteLine() throws {

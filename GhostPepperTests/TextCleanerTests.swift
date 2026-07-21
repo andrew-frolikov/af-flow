@@ -21,19 +21,19 @@ final class TextCleanerTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let correctionStore = CorrectionStore(defaults: defaults)
-        correctionStore.preferredTranscriptionsText = "Ghost Pepper"
+        correctionStore.preferredTranscriptionsText = "AF Flow"
         let localBackend = SpyCleanupBackend(nextResult: .success("ghost pepper is ready"))
         let cleaner = TextCleaner(
             localBackend: localBackend,
             correctionStore: correctionStore
         )
 
-        let result = await cleaner.clean(text: "Ghost Pepper is ready", prompt: "unused prompt")
+        let result = await cleaner.clean(text: "AF Flow is ready", prompt: "unused prompt")
 
         XCTAssertEqual(result, "ghost pepper is ready")
         XCTAssertEqual(
             localBackend.cleanedInputs.map(\.text),
-            [TextCleaner.formatCleanupInput(userInput: "Ghost Pepper is ready")]
+            [TextCleaner.formatCleanupInput(userInput: "AF Flow is ready")]
         )
     }
 
@@ -135,14 +135,14 @@ final class TextCleanerTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let correctionStore = CorrectionStore(defaults: defaults)
-        correctionStore.preferredTranscriptionsText = "Ghost Pepper"
+        correctionStore.preferredTranscriptionsText = "AF Flow"
         let localBackend = SpyCleanupBackend(nextResult: .success("ghost-pepper is ready"))
         let cleaner = TextCleaner(
             localBackend: localBackend,
             correctionStore: correctionStore
         )
 
-        let result = await cleaner.clean(text: "Ghost Pepper is ready", prompt: "unused prompt")
+        let result = await cleaner.clean(text: "AF Flow is ready", prompt: "unused prompt")
 
         XCTAssertEqual(result, "ghost-pepper is ready")
     }
@@ -260,7 +260,7 @@ final class TextCleanerTests: XCTestCase {
         defaults.removePersistentDomain(forName: #function)
         let correctionStore = CorrectionStore(defaults: defaults)
         correctionStore.commonlyMisheardText = "chat gbt -> ChatGPT"
-        correctionStore.preferredTranscriptionsText = "Ghost Pepper"
+        correctionStore.preferredTranscriptionsText = "AF Flow"
         let localBackend = SpyCleanupBackend(nextResult: .success("ghost-pepper is ready"))
         let cleaner = TextCleaner(
             localBackend: localBackend,
