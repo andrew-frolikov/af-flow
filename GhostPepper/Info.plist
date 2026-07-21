@@ -8,6 +8,8 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleName</key>
 	<string>AF Flow</string>
+	<key>CFBundleDisplayName</key>
+	<string>AF Flow</string>
 	<key>CFBundleShortVersionString</key>
 	<string>2.4.2</string>
 	<key>CFBundleVersion</key>

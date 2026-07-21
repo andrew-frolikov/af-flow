@@ -76,4 +76,5 @@ GhostPepper/Meeting/GranolaSessionSync.swift
 fixtures/*.reference.txt
 fixtures/*.draft-reference.txt
 fixtures/*.hypotheses.json
+fixtures/*.worksheet.md
 fixtures/scores.md
