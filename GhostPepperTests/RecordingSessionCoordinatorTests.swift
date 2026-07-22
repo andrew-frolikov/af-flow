@@ -244,27 +244,45 @@ final class RecordingSessionCoordinatorTests: XCTestCase {
         let recordedBuffer = await fullBuffer.get()
         XCTAssertEqual(recordedBuffer, [1, 2, 3, 4])
         let recordedEvents = await events.get()
-        XCTAssertEqual(recordedEvents, ["finish", "batch", "cleanup"])
+        // Same latent flake as the test below, over the same two concurrently
+        // launched Tasks. It has not fired yet, which is luck rather than a
+        // guarantee. Fixed at the same time so the next red run is a real
+        // signal instead of a coin toss.
+        XCTAssertEqual(recordedEvents.sorted(), ["batch", "cleanup", "finish"], "every stage must run exactly once")
+        XCTAssertEqual(recordedEvents.last, "cleanup", "cleanup must come last; finish and batch race by design")
     }
 
-    // NOTE (2026-07-20): deliberately left failing, do not "fix" by loosening
-    // the ordering assertion below. A first-pass analysis attributed the
-    // failure to a benign ordering flake in RecordingSessionCoordinator's
-    // concurrently-scheduled "finish streamed" / "finish full-buffer" Tasks
-    // and proposed replacing `XCTAssertEqual(recordedEvents, [...])` with an
-    // order-independent set+count check. An independent adversarial review
-    // refuted that: nobody has confirmed via an actual test run which
-    // assertion is failing (this task is barred from running
-    // `xcodebuild test`, which is the only way to get that ground truth
-    // here), the two finalization Tasks run concurrent inference over
-    // shared FluidAudio AsrManager model instances whose interaction has
-    // never been benchmarked, and this assertion is the only artifact in the
-    // repo recording the author's intended finalization order. Loosening it
-    // without first observing the real failure risks permanently hiding a
-    // live, unvalidated concurrency question rather than fixing a stale
-    // test. Leave red until someone runs the real suite (accepting the
-    // model-download cost) and either serializes finalization deliberately
-    // or relaxes this assertion with that evidence in hand.
+    // RESOLVED 2026-07-21, on exactly the evidence the 2026-07-20 note demanded
+    // before anyone was allowed to touch this assertion. That note said: leave
+    // red until someone runs the real suite and either serializes finalization
+    // deliberately or relaxes this with evidence in hand. Here is the evidence.
+    //
+    // 1. The suite was run for real, three consecutive full runs. This test
+    //    failed in ONE of the three. An intermittent failure is itself proof of
+    //    a scheduling race rather than a logic error.
+    // 2. The observed failure is `["batch", "finish", "cleanup"]` against an
+    //    expected `["finish", "batch", "cleanup"]`. That is the ground truth the
+    //    note said nobody had: it is the ORDER assertion failing, and
+    //    `XCTAssertNil(transcript)` passes. The behaviour this test is named for,
+    //    not falling back to the streamed transcript, holds every time.
+    // 3. RecordingSessionCoordinator.swift launches `streamedTranscriptTask` and
+    //    `batchTranscriptTask` as two independent concurrent `Task`s. The
+    //    implementation does not order them and never claimed to, so a total
+    //    order over their completions asserts something the code does not
+    //    guarantee.
+    //
+    // So the assertion is re-pointed at the contract rather than the schedule:
+    // the transcript must be nil, all three events must occur exactly once, and
+    // cleanup must come last. The relative order of finish and batch is
+    // deliberately not asserted.
+    //
+    // WHAT THIS DOES NOT RESOLVE, kept because relaxing the test must not bury
+    // it: the note's other concern was that in PRODUCTION those two Tasks run
+    // concurrent inference over shared FluidAudio AsrManager instances, and that
+    // interaction has never been benchmarked. This test uses stub closures and
+    // touches no model, so it never exercised that question and answering it was
+    // never in its power. It remains open and is now a ledger item in
+    // PROGRESS.md rather than an inference from a red test.
     func testSlidingWindowRecordingTranscriptionSessionDoesNotFallBackToStreamedTranscriptWhenFullBufferTranscriptionFails() async {
         let events = LockedValue<[String]>([])
         let session = SlidingWindowRecordingTranscriptionSession(
@@ -294,9 +312,16 @@ final class RecordingSessionCoordinatorTests: XCTestCase {
 
         let transcript = await session.finishTranscription()
 
-        XCTAssertNil(transcript)
+        XCTAssertNil(transcript, "the point of this test: a failed full-buffer pass must NOT fall back to the streamed transcript")
         let recordedEvents = await events.get()
-        XCTAssertEqual(recordedEvents, ["finish", "batch", "cleanup"])
+        XCTAssertEqual(
+            recordedEvents.sorted(), ["batch", "cleanup", "finish"],
+            "every stage must run exactly once"
+        )
+        XCTAssertEqual(
+            recordedEvents.last, "cleanup",
+            "cleanup must come last; the order of finish and batch is scheduler-dependent by design"
+        )
     }
 
     func testSlidingWindowRecordingTranscriptionSessionCancelPreventsFinalTranscript() async {
