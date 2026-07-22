@@ -541,3 +541,23 @@ final class DeterministicCorrectionsTests: XCTestCase {
         XCTAssertEqual(layer.apply(to: "the fighting face"), "the Hugging Face")
     }
 }
+
+/// Regression tests for the two real defects Codex found on 2026-07-21.
+final class CodexRound1RegressionTests: XCTestCase {
+
+    /// Finding 6: without the underscore in the boundary class, a rule fires
+    /// inside snake_case identifiers and path components. Andrew dictates
+    /// technical vocabulary constantly, so corrupting code-shaped text is a
+    /// live risk, not a theoretical one.
+    func testRulesDoNotFireInsideSnakeCaseOrPaths() {
+        let layer = DeterministicCorrections(
+            preferredTranscriptions: ["Claude"],
+            commonlyMisheard: [MisheardReplacement(wrong: "face", right: "Hugging Face")]
+        )
+        XCTAssertEqual(layer.apply(to: "my_face_thing"), "my_face_thing")
+        XCTAssertEqual(layer.apply(to: "src/face_detect.py"), "src/face_detect.py")
+        XCTAssertEqual(layer.apply(to: "claude_config"), "claude_config")
+        // Still fires on a genuine standalone word.
+        XCTAssertEqual(layer.apply(to: "the face of it"), "the Hugging Face of it")
+    }
+}

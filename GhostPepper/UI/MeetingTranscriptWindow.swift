@@ -1203,7 +1203,16 @@ final class MeetingTranscriptWindowController: NSObject, NSWindowDelegate {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
-        NSApp.setActivationPolicy(.accessory)
+        // The .accessory flip that used to live here is gone. AF Flow is a
+        // permanent Dock app as of 2026-07-21 (Andrew's decision), and this
+        // line would have quietly undone that the first time he closed the
+        // window with the red button, taking the Dock icon away and disabling
+        // minimize again on the next open.
+        //
+        // Found by Codex, not by me: I removed the identical flips from
+        // makeWindow and close() and missed this third one. That is precisely
+        // the failure LOOP.md's five-layer sweep exists to prevent, committed
+        // in the same session I quoted the rule.
         return false
     }
 

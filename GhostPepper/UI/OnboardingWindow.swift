@@ -78,10 +78,15 @@ class OnboardingWindowController {
     func show(appState: AppState, onComplete: @escaping () async -> Void) {
         dismiss()
 
-        // Show in dock/Cmd+Tab during onboarding
-        NSApp.setActivationPolicy(.regular)
-
-        // Delay slightly to let activation policy take effect
+        // The .regular flip that used to live here is gone: AF Flow is a
+        // permanent Dock app as of 2026-07-21, so this was a no-op. Removed
+        // rather than left, because the next person reading it would
+        // reasonably conclude the app's Dock presence is still dynamic.
+        //
+        // Found by the sweep that followed Codex finding 5, not by Codex. Four
+        // call sites managed one global; three are gone and this was the last.
+        // The dispatch below is kept: it also lets the window finish being
+        // built before the view is installed.
         DispatchQueue.main.async {
             let onboardingView = OnboardingView(appState: appState, onComplete: { [weak self] in
                 await onComplete()
