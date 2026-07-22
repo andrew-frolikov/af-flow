@@ -24,9 +24,25 @@ Usage:
     scripts/add-incumbent-transcripts.py <fixtures-dir> <history.json>
 """
 
+import hashlib
 import json
 import pathlib
 import sys
+
+
+def file_sha256(path):
+    """Byte-for-byte identical to what the Swift loader records.
+
+    AudioFixtureLoader shells out to `shasum -a 256` over the FILE, not over
+    decoded samples, deliberately, so the hash is stable across decoding
+    changes. Reproducing it here is what lets the scorer tell an incumbent
+    transcript for THIS clip from one left behind by a previous recording.
+    """
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def main():
@@ -71,6 +87,12 @@ def main():
             # comparable with a local model's transcription wall clock.
             "seconds": round((row.get("e2eLatency") or 0) / 1000.0, 3),
             "audioDuration": row.get("duration") or 0,
+            # Without this the SHA filter in the scorer discards every
+            # incumbent row, and the comparison silently loses the only number
+            # that answers whether AF Flow beats the app it replaces. That
+            # regression shipped for about thirty minutes on 2026-07-21 and was
+            # caught by Codex round 3, not by me.
+            "fixtureSHA": file_sha256(audio),
             "source": "incumbent",
         })
 

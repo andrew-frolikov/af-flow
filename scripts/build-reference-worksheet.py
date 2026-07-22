@@ -22,12 +22,21 @@ Usage:
 """
 
 import difflib
+import hashlib
 import json
 import re
 import sys
 from pathlib import Path
 
 WORD = re.compile(r"\w+(?:'\w+)?|[^\w\s]", re.UNICODE)
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def tokenize(text):
@@ -198,6 +207,21 @@ def main():
             continue
 
         entries = [e for e in json.loads(path.read_text()) if e.get("hypothesis", "").strip()]
+
+        # Discard transcripts produced from DIFFERENT audio. Re-recording a clip
+        # under the same stem would otherwise build a worksheet, and then a
+        # reference, describing speech that is no longer there. Codex round 3.
+        audio = next((fixtures / f"{stem}{ext}" for ext in (".wav", ".m4a", ".mp3", ".caf", ".aiff")
+                      if (fixtures / f"{stem}{ext}").exists()), None)
+        if audio is not None:
+            actual = file_sha256(audio)
+            fresh = [e for e in entries if e.get("fixtureSHA") == actual]
+            if len(fresh) != len(entries):
+                print(f"{stem}: ignored {len(entries) - len(fresh)} transcript(s) from different or unhashed audio")
+            entries = fresh
+        if not entries:
+            print(f"{stem}: no transcripts matching the current audio, nothing to build")
+            continue
         if not entries:
             print(f"{stem}: no usable transcripts")
             continue

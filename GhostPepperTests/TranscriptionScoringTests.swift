@@ -188,6 +188,20 @@ final class TranscriptionScoringTests: XCTestCase {
         try finish(rows: rows, skipped: skipped, fixtures: fixtures)
     }
 
+    /// Writes the report, then checks that the run actually MEASURED what it
+    /// set out to measure.
+    ///
+    /// **The class of bug this closes, named because it produced two separate
+    /// HIGH findings in one review.** Every guard added to this scorer defends
+    /// against bad data: a mismatched hash is discarded, an undecodable file
+    /// reads as empty, a failed transcription is skipped. All correct, and all
+    /// silent. Nothing asserted that the data expected to be there WAS there,
+    /// so a run could drop the incumbent baseline, or produce no rows at all,
+    /// write a `scores.md` and exit green. Discarding is safe; discarding
+    /// silently is not.
+    ///
+    /// So this declares what a complete run looks like and fails when it is
+    /// not, rather than reporting whatever survived.
     private func finish(rows: [ScoreRow], skipped: [String], fixtures: [Fixture]) throws {
         let report = Self.render(rows: rows, skipped: skipped, fixtures: fixtures)
         print(report)
@@ -195,13 +209,45 @@ final class TranscriptionScoringTests: XCTestCase {
         let reportURL = outputDirectory.appendingPathComponent("scores.md")
         try? report.write(to: reportURL, atomically: true, encoding: .utf8)
 
-        try XCTSkipIf(
+        // No fixtures at all is a legitimate skip: Andrew has not written the
+        // reference text yet. Fixtures WITH no scores is a failure.
+        try XCTSkipIf(fixtures.isEmpty, "cannot verify: no fixtures with a corrected reference yet.")
+
+        XCTAssertFalse(
             rows.isEmpty,
             """
-            cannot verify: no model produced a score.
+            FIXTURES EXIST BUT NOTHING WAS SCORED. This is a failed measurement, not a skip.
             \(skipped.map { "  - \($0)" }.joined(separator: "\n"))
             """
         )
+
+        // Per fixture, name every engine that produced no row. A missing engine
+        // is not a smaller table, it is a different comparison.
+        for fixture in fixtures {
+            let present = Set(rows.filter { $0.fixture == fixture.name }.map { "\($0.modelID)|\($0.language)" })
+            var absent: [String] = []
+            for modelName in candidateModels where SpeechModelCatalog.model(named: modelName) != nil {
+                for language in languages {
+                    let key = "\(modelName)|\(language ?? "auto")"
+                    if !present.contains(key) { absent.append(key) }
+                }
+            }
+            XCTAssertTrue(
+                absent.isEmpty,
+                """
+                \(fixture.name) was scored with engines MISSING, so this table is not the comparison it claims to be:
+                \(absent.map { "  - \($0)" }.joined(separator: "\n"))
+                """
+            )
+
+            // The incumbent is optional, because the archive script may not
+            // have been run, but its ABSENCE must be stated rather than left
+            // for the reader to notice. It is the row that answers whether
+            // AF Flow beats the app it replaced.
+            if !rows.contains(where: { $0.fixture == fixture.name && $0.modelID == "wispr-qwen-http" }) {
+                print("NOTE: \(fixture.name) has no incumbent row, so the beat-the-incumbent question is unanswered for it.")
+            }
+        }
     }
 
     // MARK: - Deliberate model prefetch
