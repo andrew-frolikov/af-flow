@@ -608,3 +608,44 @@ extension CodexRound1RegressionTests {
         XCTAssertEqual(layer.apply(to: "about face, then"), "about Hugging Face, then")
     }
 }
+
+/// Codex round 3, finding 4: the last open finding from the review.
+extension CodexRound1RegressionTests {
+
+    func testRulesDoNotFireBeforeNumericOrUnderscoreSuffixes() {
+        let layer = DeterministicCorrections(
+            preferredTranscriptions: [],
+            commonlyMisheard: [MisheardReplacement(wrong: "face", right: "Hugging Face")]
+        )
+        XCTAssertEqual(layer.apply(to: "face.1"), "face.1")
+        XCTAssertEqual(layer.apply(to: "face.2xml"), "face.2xml")
+        XCTAssertEqual(layer.apply(to: "face._internal"), "face._internal")
+    }
+
+    /// Unicode separators that LOOK like a slash but are not. Text arriving
+    /// from other apps carries these, and a boundary class that only knows
+    /// ASCII has a hole exactly the width of a copy and paste.
+    func testRulesDoNotFireInsideUnicodeLookalikePaths() {
+        let layer = DeterministicCorrections(
+            preferredTranscriptions: [],
+            commonlyMisheard: [MisheardReplacement(wrong: "face", right: "Hugging Face")]
+        )
+        XCTAssertEqual(layer.apply(to: "src\u{2215}face\u{2215}detect.py"), "src\u{2215}face\u{2215}detect.py")
+        XCTAssertEqual(layer.apply(to: "a\u{2044}face\u{2044}b"), "a\u{2044}face\u{2044}b")
+        XCTAssertEqual(layer.apply(to: "x\u{FF0F}face\u{FF0F}y"), "x\u{FF0F}face\u{FF0F}y")
+        XCTAssertEqual(layer.apply(to: "face\u{FF0E}py"), "face\u{FF0E}py")
+    }
+
+    /// And the other half again: ordinary sentences must still be corrected,
+    /// including at a sentence end and before ordinary punctuation.
+    func testOrdinarySentencesAreStillCorrectedAfterTheHardening() {
+        let layer = DeterministicCorrections(
+            preferredTranscriptions: ["AF Flow"],
+            commonlyMisheard: [MisheardReplacement(wrong: "face", right: "Hugging Face")]
+        )
+        XCTAssertEqual(layer.apply(to: "I checked face."), "I checked Hugging Face.")
+        XCTAssertEqual(layer.apply(to: "face, then more"), "Hugging Face, then more")
+        XCTAssertEqual(layer.apply(to: "(face)"), "(Hugging Face)")
+        XCTAssertEqual(layer.apply(to: "af flow works"), "AF Flow works")
+    }
+}

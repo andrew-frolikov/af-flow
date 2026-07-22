@@ -152,16 +152,27 @@ struct DeterministicCorrections: Sendable {
     /// mis-transcription the layer exists to fix.
     ///
     /// The trailing `.` is handled asymmetrically on purpose: a term followed
-    /// by `.` plus a LETTER looks like `face.py` and must not match, but a term
-    /// followed by `.` and then a space or end-of-string is just a sentence
-    /// ending and must still match. Getting that backwards would stop the
-    /// dictionary working on the last word of every sentence.
+    /// by `.` plus a letter, DIGIT or underscore looks like `face.py`, `face.1`
+    /// or `face._x` and must not match, but a term followed by `.` and then a
+    /// space or end-of-string is just a sentence ending and must still match.
+    /// Getting that backwards would stop the dictionary working on the last
+    /// word of every sentence.
+    ///
+    /// The Unicode separators are here because Codex round 3 pointed out the
+    /// obvious bypass: `src∕face∕detect.py` uses U+2215 DIVISION SLASH, which
+    /// looks exactly like `/` and is not `/`. Andrew pastes and dictates real
+    /// paths, and text arriving from other apps carries these lookalikes, so a
+    /// boundary class that only knows ASCII is a boundary class with a hole in
+    /// it. Covered: U+2215, U+2044 fraction slash, and the fullwidth forms
+    /// U+FF0F solidus, U+FF0E full stop, U+FF3F low line, U+FF0D hyphen.
     private static func phraseExpression(for phrase: String) -> NSRegularExpression? {
         let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let escaped = NSRegularExpression.escapedPattern(for: trimmed)
         return try? NSRegularExpression(
-            pattern: "(?<![\\p{L}\\p{N}_/.\\-])\(escaped)(?![\\p{L}\\p{N}_/\\-]|\\.\\p{L})",
+            pattern: "(?<![\\p{L}\\p{N}_/.\\-\u{2215}\u{2044}\u{FF0F}\u{FF0E}\u{FF3F}\u{FF0D}])"
+                + escaped
+                + "(?![\\p{L}\\p{N}_/\\-\u{2215}\u{2044}\u{FF0F}\u{FF3F}\u{FF0D}]|[.\u{FF0E}][\\p{L}\\p{N}_])",
             options: [.caseInsensitive]
         )
     }
