@@ -143,19 +143,25 @@ struct DeterministicCorrections: Sendable {
     /// and a non-word character, and a term may begin or end with punctuation
     /// or a digit, which would silently stop it matching.
     ///
-    /// The underscore is in the boundary class deliberately, found by Codex on
-    /// 2026-07-21. Without it, `_` reads as a separator, so a rule for "face"
-    /// would fire inside `my_face_thing` and a rule for a common word would
-    /// rewrite the middle of an identifier or a path component. Andrew dictates
-    /// technical vocabulary constantly, so that is a live risk rather than a
-    /// theoretical one, and silently corrupting code-shaped text would be worse
-    /// than the mis-transcription the layer exists to fix.
+    /// The boundary class carries `_`, `/`, `.` and `-` deliberately, found by
+    /// Codex across rounds 1 and 2 on 2026-07-21. Without them a rule for
+    /// "face" fires inside `my_face_thing`, `src/face/detect.py`, `face.py` and
+    /// `face-detect`, rewriting the middle of an identifier or a path. Andrew
+    /// dictates technical vocabulary constantly, so that is a live risk, and
+    /// silently corrupting code-shaped text would be worse than the
+    /// mis-transcription the layer exists to fix.
+    ///
+    /// The trailing `.` is handled asymmetrically on purpose: a term followed
+    /// by `.` plus a LETTER looks like `face.py` and must not match, but a term
+    /// followed by `.` and then a space or end-of-string is just a sentence
+    /// ending and must still match. Getting that backwards would stop the
+    /// dictionary working on the last word of every sentence.
     private static func phraseExpression(for phrase: String) -> NSRegularExpression? {
         let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let escaped = NSRegularExpression.escapedPattern(for: trimmed)
         return try? NSRegularExpression(
-            pattern: "(?<![\\p{L}\\p{N}_])\(escaped)(?![\\p{L}\\p{N}_])",
+            pattern: "(?<![\\p{L}\\p{N}_/.\\-])\(escaped)(?![\\p{L}\\p{N}_/\\-]|\\.\\p{L})",
             options: [.caseInsensitive]
         )
     }

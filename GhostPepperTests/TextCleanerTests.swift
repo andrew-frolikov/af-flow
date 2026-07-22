@@ -131,20 +131,38 @@ final class TextCleanerTests: XCTestCase {
         )
     }
 
-    func testPreferredTranscriptionsDoNotRewriteCleanupOutput() async throws {
+    /// Two guarantees in one test, and Codex round 2 caught that it was only
+    /// proving one of them: the input it fed was ALREADY canonical, so it could
+    /// not tell whether preferred terms rewrite the input at all. Now the input
+    /// is lower-case, so the canonicalisation is actually exercised.
+    ///
+    /// The original guarantee is kept and still matters: preferred terms must
+    /// normalise what goes IN to the model, and must never rewrite what comes
+    /// OUT. Rewriting the output would let the dictionary silently edit the
+    /// model's finished text, which is a different and worse power than fixing
+    /// terminology before it is read.
+    func testPreferredTranscriptionsRewriteInputButNeverOutput() async throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)
         let correctionStore = CorrectionStore(defaults: defaults)
         correctionStore.preferredTranscriptionsText = "AF Flow"
-        let localBackend = SpyCleanupBackend(nextResult: .success("ghost-pepper is ready"))
+        let localBackend = SpyCleanupBackend(nextResult: .success("af flow is ready"))
         let cleaner = TextCleaner(
             localBackend: localBackend,
             correctionStore: correctionStore
         )
 
-        let result = await cleaner.clean(text: "AF Flow is ready", prompt: "unused prompt")
+        let result = await cleaner.clean(text: "af flow is ready", prompt: "unused prompt")
 
-        XCTAssertEqual(result, "ghost-pepper is ready")
+        XCTAssertEqual(
+            localBackend.cleanedInputs.map(\.text),
+            [TextCleaner.formatCleanupInput(userInput: "AF Flow is ready")],
+            "the model must receive the canonical spelling"
+        )
+        XCTAssertEqual(
+            result, "af flow is ready",
+            "the model's own output must be returned untouched by the dictionary"
+        )
     }
 
     /// RETARGETED 2026-07-21 alongside the test above, but the concern it
@@ -559,5 +577,34 @@ final class CodexRound1RegressionTests: XCTestCase {
         XCTAssertEqual(layer.apply(to: "claude_config"), "claude_config")
         // Still fires on a genuine standalone word.
         XCTAssertEqual(layer.apply(to: "the face of it"), "the Hugging Face of it")
+    }
+}
+
+/// Codex round 2, finding 6: path and dotted contexts.
+extension CodexRound1RegressionTests {
+
+    func testRulesDoNotFireInsidePathsOrDottedTokens() {
+        let layer = DeterministicCorrections(
+            preferredTranscriptions: [],
+            commonlyMisheard: [MisheardReplacement(wrong: "face", right: "Hugging Face")]
+        )
+        XCTAssertEqual(layer.apply(to: "src/face/detect.py"), "src/face/detect.py")
+        XCTAssertEqual(layer.apply(to: "face.py"), "face.py")
+        XCTAssertEqual(layer.apply(to: "face-detect"), "face-detect")
+        XCTAssertEqual(layer.apply(to: "detect-face"), "detect-face")
+    }
+
+    /// The other half of the asymmetry: a term at the end of a sentence is
+    /// followed by a full stop and must STILL be corrected. Getting this
+    /// backwards would silently stop the dictionary working on the last word
+    /// of every sentence, which is a large blind spot in dictated text.
+    func testRulesStillFireAtSentenceEnd() {
+        let layer = DeterministicCorrections(
+            preferredTranscriptions: [],
+            commonlyMisheard: [MisheardReplacement(wrong: "face", right: "Hugging Face")]
+        )
+        XCTAssertEqual(layer.apply(to: "I looked at face."), "I looked at Hugging Face.")
+        XCTAssertEqual(layer.apply(to: "face"), "Hugging Face")
+        XCTAssertEqual(layer.apply(to: "about face, then"), "about Hugging Face, then")
     }
 }

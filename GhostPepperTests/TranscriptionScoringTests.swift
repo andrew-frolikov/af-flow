@@ -103,7 +103,7 @@ final class TranscriptionScoringTests: XCTestCase {
         // text arrive after the transcription run rather than before it.
         var needingLiveTranscription: [Fixture] = []
         for fixture in fixtures {
-            let persisted = persistedHypotheses(for: fixture.name)
+            let persisted = persistedHypotheses(for: fixture.name, audioSHA: fixture.sha256)
             if persisted.isEmpty {
                 needingLiveTranscription.append(fixture)
                 continue
@@ -331,6 +331,10 @@ final class TranscriptionScoringTests: XCTestCase {
         let hypothesis: String
         let seconds: Double
         let audioDuration: Double
+        /// SHA256 of the audio this transcript was produced from. Optional so
+        /// an incumbent row written in by a script without the hash still
+        /// loads; such a row simply never matches a SHA filter.
+        let fixtureSHA: String?
         /// `local` for a model this app runs, `incumbent` for a transcript
         /// carried in from the app being replaced. Only `local` entries are
         /// rewritten by a capture run, so an incumbent row survives re-capture.
@@ -422,6 +426,7 @@ final class TranscriptionScoringTests: XCTestCase {
                         hypothesis: hypothesis,
                         seconds: elapsed,
                         audioDuration: clip.audio.duration,
+                        fixtureSHA: clip.audio.sha256,
                         source: "local"
                     ))
                     print(String(format: "captured %@ [%@] on %@ in %.2fs", descriptor.pickerTitle, label, stem, elapsed))
@@ -447,19 +452,41 @@ final class TranscriptionScoringTests: XCTestCase {
         )
     }
 
-    private func hypothesesURL(for stem: String) -> URL {
+    /// Written to the output directory, which under the sandbox is inside the
+    /// app container. READ from the fixtures directory, which is where the
+    /// wrapper copies results and where a corrected reference lives.
+    ///
+    /// These were the same URL until Codex round 2. That meant a scoring run
+    /// read hypotheses out of a REUSABLE container temp directory rather than
+    /// from the fixtures beside the audio, so a previous run's leftovers could
+    /// be scored as if they were current. Two different jobs, two directories.
+    private func hypothesesWriteURL(for stem: String) -> URL {
         outputDirectory.appendingPathComponent("\(stem).hypotheses.json")
     }
 
-    func persistedHypotheses(for stem: String) -> [PersistedHypothesis] {
-        guard let data = try? Data(contentsOf: hypothesesURL(for: stem)) else { return [] }
-        return (try? JSONDecoder().decode([PersistedHypothesis].self, from: data)) ?? []
+    private func hypothesesReadURL(for stem: String) -> URL {
+        fixturesDirectory.appendingPathComponent("\(stem).hypotheses.json")
+    }
+
+    /// Returns only entries captured from THIS EXACT audio.
+    ///
+    /// Each entry records the SHA256 of the clip it was produced from. Without
+    /// that, any non-empty file suppressed live transcription, so re-recording
+    /// a fixture under the same name would silently score the OLD transcripts
+    /// against the NEW reference and report it as a measurement. Entries with a
+    /// missing or mismatched SHA are discarded, which degrades to live
+    /// transcription rather than to a confident wrong number.
+    func persistedHypotheses(for stem: String, audioSHA: String? = nil) -> [PersistedHypothesis] {
+        guard let data = try? Data(contentsOf: hypothesesReadURL(for: stem)) else { return [] }
+        guard let entries = try? JSONDecoder().decode([PersistedHypothesis].self, from: data) else { return [] }
+        guard let audioSHA else { return entries }
+        return entries.filter { $0.fixtureSHA == audioSHA }
     }
 
     private func writeHypotheses(_ entries: [PersistedHypothesis], for stem: String) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(entries).write(to: hypothesesURL(for: stem), options: .atomic)
+        try encoder.encode(entries).write(to: hypothesesWriteURL(for: stem), options: .atomic)
     }
 
     private func audioWithoutReference() throws -> [URL] {
@@ -562,11 +589,13 @@ final class TranscriptionScoringTests: XCTestCase {
 
         let incumbent = PersistedHypothesis(
             model: "Wispr Flow", modelID: "wispr-qwen-http", language: "ru",
-            hypothesis: "one", seconds: 0.6, audioDuration: 30, source: "incumbent"
+            hypothesis: "one", seconds: 0.6, audioDuration: 30,
+            fixtureSHA: "abc123", source: "incumbent"
         )
         let local = PersistedHypothesis(
             model: "Turbo", modelID: "turbo", language: "ru",
-            hypothesis: "two", seconds: 1.2, audioDuration: 30, source: "local"
+            hypothesis: "two", seconds: 1.2, audioDuration: 30,
+            fixtureSHA: "abc123", source: "local"
         )
         try writeHypotheses([incumbent, local], for: "clip")
 
@@ -585,6 +614,16 @@ final class TranscriptionScoringTests: XCTestCase {
         // A corrupt file must degrade to live transcription, never to a
         // confident zero. This is the project's recurring failure shape: a
         // check that cannot fail reports success.
+        // Transcripts captured from DIFFERENT audio must not be scored as if
+        // they described this clip. Re-recording a fixture under the same name
+        // would otherwise score the old transcripts against the new reference
+        // and report it as a measurement. Codex round 2, finding 1.
+        XCTAssertEqual(persistedHypotheses(for: "clip", audioSHA: "abc123").count, 2)
+        XCTAssertEqual(
+            persistedHypotheses(for: "clip", audioSHA: "DIFFERENT").count, 0,
+            "hypotheses from other audio must be discarded, falling back to live transcription"
+        )
+
         try Data("not json".utf8).write(to: directory.appendingPathComponent("clip.hypotheses.json"))
         XCTAssertEqual(persistedHypotheses(for: "clip").count, 0, "undecodable must read as empty so the fixture falls through to live transcription")
     }

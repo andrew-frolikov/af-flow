@@ -177,13 +177,52 @@ check "no live credential writes outside deferred files" \
 # data types. CalendarEvent is a plain Codable struct with no networking and the
 # meeting UI still passes it around; banning a value type would be theatre while
 # the object that can actually reach the network is the control that does work.
+
+# Runs swift-scan.py and DISTINGUISHES "no hits" from "the scanner failed".
+#
+# Added 2026-07-21 after Codex round 2. Every call site used `|| true`, which
+# collapses those two outcomes into the same empty string, so a scanner that
+# could not run printed `ok` and the sweep reported clean. The self-test above
+# catches a totally broken scanner, but not one that works for the self-test and
+# then fails on a single invocation, which is the shape that would sit here
+# undetected. Codex observed the real thing: `/dev/stderr: Operation not
+# permitted` followed by `ok`.
+#
+# A gate that cannot tell "nothing found" from "I did not look" is the exact
+# class this project has now hit eleven times.
+scan() {
+  local output status
+  output=$(python3 scripts/swift-scan.py "$@" 2>&1)
+  status=$?
+  # swift-scan.py's convention: 0 means no hits, 1 means HITS FOUND, and 2 or
+  # above is a real error. Both 0 and 1 are successful scans. Treating 1 as a
+  # failure was the second bug in this fix, and it turned every normal run red,
+  # which at least failed LOUDLY rather than the silent-green direction.
+  if [ $status -ge 2 ]; then
+    echo "SCANNER FAILED (exit $status) for: swift-scan.py $*" >&2
+    echo "$output" >&2
+    # A SENTINEL FILE, not a variable. Every call site wraps this in $(...),
+    # which runs in a subshell, so `scanner_broken=1` was set in a child and
+    # discarded. The first version of this fix did exactly that and reported
+    # "RESULT: clean" while printing "SCANNER FAILED" three lines above.
+    # Caught by canary before it shipped, which is the entire argument for
+    # canarying a gate rather than reasoning about it.
+    : > "$SCANNER_FAILED_SENTINEL"
+    return $status
+  fi
+  printf '%s' "$output"
+}
+SCANNER_FAILED_SENTINEL="$(mktemp -t afflow-scanner)"
+rm -f "$SCANNER_FAILED_SENTINEL"
+trap 'rm -f "$SCANNER_FAILED_SENTINEL"' EXIT
+
 # Runs through scripts/swift-scan.py in code mode, which yields only real code,
 # because a comment recording that a capability was REMOVED necessarily names
 # it and cannot call anything. On first run the identifier check returned four
 # hits, three of which were exactly such comments.
-cloud_hits=$(python3 scripts/swift-scan.py --mode code \
+cloud_hits=$(scan --mode code \
   '\b(ZoBackend|TrelloBackend|TrelloCommandParser|AirtableImporter|GranolaImporter|GoogleCalendarService|AnthropicProvider|ReaderCapture|ReaderCaptureSheet)\b' \
-  "${SWIFT_PATHS[@]}" --allow "$INERT_CLOUD_SOURCES_PATHS" 2>>/dev/stderr | \
+  "${SWIFT_PATHS[@]}" --allow "$INERT_CLOUD_SOURCES_PATHS" | \
   grep -vE 'GranolaImporter\.extractTranscript' || true)
 if [ -n "$cloud_hits" ]; then
   echo "FAIL  no live reference to a cloud service object"
@@ -216,9 +255,9 @@ cred_hits=$(python3 scripts/credential-scan.py . 2>&1 | grep -v '^note ' || true
 
 # Second pass over Swift only, matching what the COMPILED app builds rather
 # than what the source literally reads: literals concatenated, escapes decoded.
-cred_swift=$(python3 scripts/swift-scan.py --mode string --join \
+cred_swift=$(scan --mode string --join \
   '(sk-ant-[A-Za-z0-9_-]{20,}|zo_sk_[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,})' \
-  "${SWIFT_PATHS[@]}" 2>/dev/null || true)
+  "${SWIFT_PATHS[@]}")
 cred_hits="$cred_hits$cred_swift"
 
 if [ -n "$cred_hits" ]; then
@@ -253,7 +292,7 @@ check "no ScreenCaptureKit in config" 'ScreenCaptureKit' config
 # Excluding comments removes noise, not coverage. Comments are not user-facing.
 literal_check() {
   local label="$1" pattern="$2" hits
-  hits=$(python3 scripts/swift-scan.py --mode string --join "$pattern" "${SWIFT_PATHS[@]}" 2>>/dev/stderr || true)
+  hits=$(scan --mode string --join "$pattern" "${SWIFT_PATHS[@]}")
   if [ -n "$hits" ]; then
     echo "FAIL  $label"
     echo "$hits" | sed 's/^/        /'
@@ -372,7 +411,11 @@ fi
 
 echo ""
 if [ "$fail" -eq 0 ]; then
-  echo "RESULT: clean"
+  if [ -e "$SCANNER_FAILED_SENTINEL" ]; then
+  echo "RESULT: a scanner invocation FAILED, so no check above can be trusted"
+  exit 1
+fi
+echo "RESULT: clean"
 else
   echo "RESULT: banned symbols present, see FAIL lines above"
 fi

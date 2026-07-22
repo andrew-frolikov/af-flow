@@ -101,10 +101,17 @@ trap restore EXIT INT TERM
 # reads like a permissions mistake rather than the sandbox. Results therefore
 # go to a directory inside the app's own container and are copied out here.
 if [ "${AF_FLOW_SCORING:-}" = "1" ] && [ -z "${AF_FLOW_OUTPUT:-}" ]; then
-    AF_FLOW_OUTPUT="$HOME/Library/Containers/$DOMAIN/Data/tmp/af-flow-scoring"
+    # A FRESH directory per run. It used to be one reusable path, so the
+    # copy-out step could pick up a previous run's files and report them as this
+    # run's results, and a run that produced nothing looked identical to one
+    # that worked. Codex round 2, finding 3.
+    AF_FLOW_OUTPUT="$HOME/Library/Containers/$DOMAIN/Data/tmp/af-flow-scoring-$$"
     export AF_FLOW_OUTPUT
 fi
-[ -n "${AF_FLOW_OUTPUT:-}" ] && mkdir -p "$AF_FLOW_OUTPUT"
+if [ -n "${AF_FLOW_OUTPUT:-}" ]; then
+    rm -rf "$AF_FLOW_OUTPUT"
+    mkdir -p "$AF_FLOW_OUTPUT"
+fi
 
 RUNNER_ENV=()
 for name in AF_FLOW_FIXTURES AF_FLOW_OUTPUT AF_FLOW_MODELS AF_FLOW_ALLOW_MODEL_DOWNLOAD AF_FLOW_PREFETCH_MODEL; do
@@ -175,9 +182,20 @@ for name in AF_FLOW_FIXTURES AF_FLOW_OUTPUT AF_FLOW_MODELS AF_FLOW_ALLOW_MODEL_D
     [ -z "$value" ] && continue
     /usr/libexec/PlistBuddy -c "Add $TARGET:EnvironmentVariables:$name string $value" "$XCTESTRUN" 2>/dev/null \
         || /usr/libexec/PlistBuddy -c "Set $TARGET:EnvironmentVariables:$name $value" "$XCTESTRUN"
-    # Read it back. Writing a setting and trusting it took is the exact habit
-    # that cost two runs today.
-    echo "  xctestrun $name = $(/usr/libexec/PlistBuddy -c "Print $TARGET:EnvironmentVariables:$name" "$XCTESTRUN" 2>&1)"
+    # Read back AND COMPARE, then abort on mismatch. Printing the readback was
+    # not enough: a failed Add/Set would print something wrong and the run would
+    # continue, recreating the "env never reached the tests, so the test skipped
+    # and the skip looked like success" hole that cost three runs today. Codex
+    # round 2, finding 4.
+    readback=$(/usr/libexec/PlistBuddy -c "Print $TARGET:EnvironmentVariables:$name" "$XCTESTRUN" 2>&1)
+    if [ "$readback" != "$value" ]; then
+        echo "FAILED to inject $name into the xctestrun." >&2
+        echo "  wanted: $value" >&2
+        echo "  got:    $readback" >&2
+        echo "Refusing to run: the tests would silently use the wrong path." >&2
+        exit 5
+    fi
+    echo "  xctestrun $name = $readback"
 done
 
 if [ "${AF_FLOW_SCORING:-}" = "1" ]; then
@@ -225,12 +243,23 @@ if [ -n "${AF_FLOW_OUTPUT:-}" ] && [ -n "${AF_FLOW_FIXTURES:-}" ] && [ "$AF_FLOW
     echo
     produced=$(find "$AF_FLOW_OUTPUT" -type f \( -name "*.hypotheses.json" -o -name "*.draft-reference.txt" -o -name "scores.md" \) 2>/dev/null | wc -l | tr -d ' ')
     if [ "$produced" -gt 0 ]; then
-        find "$AF_FLOW_OUTPUT" -type f \( -name "*.hypotheses.json" -o -name "*.draft-reference.txt" -o -name "scores.md" \) \
-            -exec cp {} "$AF_FLOW_FIXTURES/" \;
-        echo "copied $produced result file(s) out of the container into $AF_FLOW_FIXTURES"
+        copy_failures=0
+        while IFS= read -r artefact; do
+            cp "$artefact" "$AF_FLOW_FIXTURES/" || copy_failures=$((copy_failures + 1))
+        done < <(find "$AF_FLOW_OUTPUT" -type f \( -name "*.hypotheses.json" -o -name "*.draft-reference.txt" -o -name "scores.md" \))
+        if [ "$copy_failures" -gt 0 ]; then
+            echo "$copy_failures result file(s) FAILED to copy out of the container" >&2
+            STATUS=6
+        else
+            echo "copied $produced result file(s) out of the container into $AF_FLOW_FIXTURES"
+        fi
     else
+        # Non-zero exit, not a warning. A scoring run producing nothing has
+        # failed however green the log looks, and exiting 0 is the same
+        # silent-success shape this script exists to prevent.
         echo "NO RESULT FILES were produced in $AF_FLOW_OUTPUT" >&2
         echo "The run finishing is not the same as the run producing something." >&2
+        STATUS=6
     fi
 fi
 
