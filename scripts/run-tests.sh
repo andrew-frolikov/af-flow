@@ -139,6 +139,22 @@ if [ "$BUILD_STATUS" -ne 0 ]; then
     exit "$BUILD_STATUS"
 fi
 
+# AF_FLOW_REPEAT runs the suite N times inside ONE protected invocation.
+#
+# This exists because of a specific, repeated failure rather than as a
+# convenience. Measuring flakiness needs the suite run several times, and on
+# 2026-07-21 I hand-rolled that loop with raw `xcodebuild test-without-building`
+# calls OUTSIDE this wrapper, on three separate occasions. Every one skipped the
+# defaults snapshot, and twice it left Andrew's live app on an English-only
+# model with the language pinned to French. He had to be told twice that his
+# dictation had been broken by the tool that exists to protect it.
+#
+# The lesson is not "remember the rule": the rule was written and then broken
+# within the hour. The wrapper lacked a capability that was actually needed, so
+# the unsafe path got used, and using it is what removed the protection. Give
+# the safe path the feature and the unsafe path loses its reason to exist.
+REPEAT="${AF_FLOW_REPEAT:-1}"
+
 echo
 echo "running tests"
 
@@ -208,6 +224,9 @@ fi
 
 # -xctestrun requires an explicit -destination; xcodebuild cannot infer one
 # from a test-run file the way it can from a scheme.
+overall=0
+for attempt in $(seq 1 "$REPEAT"); do
+[ "$REPEAT" -gt 1 ] && echo "--- run $attempt of $REPEAT ---"
 xcodebuild test-without-building \
     -xctestrun "$XCTESTRUN" \
     -destination "platform=macOS,arch=arm64" \
@@ -234,7 +253,10 @@ xcodebuild test-without-building \
 # what removes the safety. So the wrapper now shows everything on request. If
 # you ever want raw xcodebuild output, use this flag, never the bare command.
 
-STATUS=${PIPESTATUS[0]}
+RUN_STATUS=${PIPESTATUS[0]}
+[ "$RUN_STATUS" -ne 0 ] && overall=$RUN_STATUS
+done
+STATUS=$overall
 
 # Copy results out of the container. Reported by name and count rather than
 # assumed, because "the run finished" and "the results exist" are different
