@@ -8,9 +8,16 @@ import Foundation
 /// closed with no machine rubric line at all.
 ///
 /// The metric set is chosen against Andrew's stated priorities, in his order:
-/// Russian punctuation first, word endings second. A single WER number would
-/// answer neither question, so this reports five separate things and refuses to
-/// collapse them into one score.
+/// **Russian word endings first, punctuation second.**
+///
+/// That order is corrected, not restated. This file recorded it backwards
+/// until 2026-07-24, when he was asked directly and confirmed endings first.
+/// The consequence was not cosmetic: it is the argument for which column the
+/// report leads with, and for whether C2 can close at all if punctuation turns
+/// out to be unmeasurable on his fixtures, which it nearly was.
+///
+/// A single WER number would answer neither question, so this reports several
+/// separate things and refuses to collapse them into one score.
 enum TextScoring {
 
     // MARK: - Normalisation
@@ -194,9 +201,33 @@ enum TextScoring {
     /// predicted failure. More means splitting, which would be new information.
     static func sentenceBoundaries(hypothesis: String, reference: String) -> BoundaryCount {
         BoundaryCount(
-            hypothesis: hypothesis.filter { sentenceTerminators.contains($0) }.count,
-            reference: reference.filter { sentenceTerminators.contains($0) }.count
+            hypothesis: boundaryCount(in: hypothesis),
+            reference: boundaryCount(in: reference)
         )
+    }
+
+    /// One boundary per RUN of terminators, not per terminator character.
+    ///
+    /// Counting characters made `...` three sentence endings and `?!` two.
+    /// That matters here rather than being pedantic: this metric reports a
+    /// DIRECTION, merged versus split, and it is the project's
+    /// most-confirmed defect. A reference written with an ellipsis against a
+    /// hypothesis written with a single full stop would have reported the
+    /// model as having merged two sentences it never merged, which is a
+    /// false confirmation of the finding the whole voice layer is being
+    /// designed around. Andrew dictates ellipses; the models emit them too.
+    static func boundaryCount(in text: String) -> Int {
+        var count = 0
+        var insideRun = false
+        for character in text {
+            if sentenceTerminators.contains(character) {
+                if !insideRun { count += 1 }
+                insideRun = true
+            } else {
+                insideRun = false
+            }
+        }
+        return count
     }
 
     /// Whether a period is followed by a space.
@@ -228,8 +259,33 @@ enum TextScoring {
     /// at the thing he most needs, however good its WER looks.
     static func latinTermsPreserved(hypothesis: String, reference: String) -> TermPreservation {
         let referenceTerms = latinRuns(in: reference)
-        let hypothesisTerms = Set(latinRuns(in: hypothesis).map { $0.lowercased() })
-        let missing = referenceTerms.filter { !hypothesisTerms.contains($0.lowercased()) }
+
+        // **Counted, not set-membership, and the difference is the whole
+        // metric.** This compared against a `Set`, so one surviving occurrence
+        // of a term covered every occurrence of it. The example this function
+        // was written for is exactly that shape and it scored as a clean pass:
+        // in the C1 clip "prompt" survived in Latin script ONCE and was
+        // Cyrillicised elsewhere in the SAME utterance, which is the finding
+        // the docstring below cites as the reason the metric exists. A set
+        // could never see it.
+        //
+        // Multiset matching makes each reference occurrence consume one
+        // hypothesis occurrence, so two expected and one delivered reports one
+        // lost rather than none.
+        var available: [String: Int] = [:]
+        for term in latinRuns(in: hypothesis) {
+            available[term.lowercased(), default: 0] += 1
+        }
+
+        var missing: [String] = []
+        for term in referenceTerms {
+            let key = term.lowercased()
+            if let remaining = available[key], remaining > 0 {
+                available[key] = remaining - 1
+            } else {
+                missing.append(term)
+            }
+        }
         return TermPreservation(expected: referenceTerms, missing: missing)
     }
 
@@ -254,8 +310,27 @@ enum TextScoring {
         let errors: Int
         let total: Int
 
+        /// **An empty denominator is NOT a perfect score, and it used to print
+        /// as one.** `total` is the reference length, so `total == 0` means the
+        /// reference had nothing of this kind to compare against, not that the
+        /// hypothesis was right. Returning 0 there turned "unmeasurable" into
+        /// "0.0%", which reads as the best possible result.
+        ///
+        /// This was live on the real fixtures, and on the metric Andrew ranked
+        /// second: two of the five drafts carried no punctuation at all, one of
+        /// them across 58 words, so `punctuationErrorRate` would have reported
+        /// every model, and the cloud incumbent, as flawless. An empty
+        /// `.reference.txt` did the same thing to WER and CER at once.
+        var isMeasurable: Bool { total > 0 }
+
         var value: Double { total == 0 ? 0 : Double(errors) / Double(total) }
-        var percent: String { String(format: "%.1f%%", value * 100) }
+
+        /// Never prints a number that was not measured. `n/a` is ugly in a
+        /// table and that is the point: it has to be impossible to skim past.
+        var percent: String {
+            guard isMeasurable else { return errors == 0 ? "n/a" : "n/a (\(errors) unmatched)" }
+            return String(format: "%.1f%%", value * 100)
+        }
     }
 
     /// The WER-to-CER reading, with its own endpoints attached so the number is
@@ -295,7 +370,13 @@ enum TextScoring {
 
         /// Named in the vocabulary the project already uses for this defect,
         /// so the table reads as an answer rather than as three more numbers.
+        ///
+        /// Guards on `isMeasurable` BEFORE `wer.value > 0`. Those differ in
+        /// exactly the case that matters: an empty reference makes `wer.value`
+        /// zero, and reading that as "no errors" would report a clip nobody
+        /// could score as a clip every engine got right.
         var verdict: String {
+            guard wer.isMeasurable else { return "not measurable" }
             guard wer.value > 0 else { return "no errors" }
             if substitutionShare < 0.35 { return "endings" }
             if substitutionShare > 0.65 { return "wrong words" }
@@ -303,6 +384,7 @@ enum TextScoring {
         }
 
         var summary: String {
+            guard wer.isMeasurable else { return "not measurable" }
             guard wer.value > 0 else { return "no errors" }
             return String(format: "%.2f %@", substitutionShare, verdict)
         }

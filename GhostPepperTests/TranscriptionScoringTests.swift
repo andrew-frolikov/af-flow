@@ -265,8 +265,69 @@ final class TranscriptionScoringTests: XCTestCase {
             }
         }
 
-        try finish(rows: rows, skipped: skipped, fixtures: fixtures)
+        try finish(
+            rows: rows,
+            skipped: skipped,
+            fixtures: fixtures,
+            caveats: runCaveats(fixtures: fixtures, rows: rows)
+        )
     }
+
+    /// Everything that makes this run a NARROWER comparison than it appears.
+    ///
+    /// These were all stdout `print` lines, and `run-tests.sh` filters stdout
+    /// through a grep tuned to the happy path, so every one of them was
+    /// invisible in practice. That is the same failure this project has now hit
+    /// four times: a filter matching success turns a warning into silence.
+    /// They go into `scores.md` itself, which survives any filter, and into the
+    /// report a future session will read instead of the terminal.
+    private func runCaveats(fixtures: [Fixture], rows: [ScoreRow]) -> [String] {
+        var caveats: [String] = []
+
+        // Clips with audio but no corrected reference are dropped from the
+        // comparison entirely. Legitimate mid-correction, and invisible: the
+        // report would look complete while covering two clips of five.
+        if let unreferenced = try? audioWithoutReference(), !unreferenced.isEmpty {
+            let names = unreferenced.map { $0.deletingPathExtension().lastPathComponent }
+            caveats.append(
+                "\(names.count) clip(s) have audio but NO corrected reference, so they are "
+                + "not in this comparison at all: \(names.joined(separator: ", ")). "
+                + "Scored \(fixtures.count) of \(fixtures.count + names.count) clips."
+            )
+        }
+
+        // An override narrows the candidate set, and the completeness gate is
+        // derived from that same set, so the gate narrows with it and a
+        // one-model run passes as a full comparison.
+        if let override = ProcessInfo.processInfo.environment["AF_FLOW_MODELS"] {
+            caveats.append(
+                "AF_FLOW_MODELS was set to \"\(override)\", so this run compared only those "
+                + "models AND the completeness check was narrowed to match. This is not the "
+                + "full four-model comparison C2 needs."
+            )
+        }
+
+        // The incumbent answers the only question that decides whether Wispr
+        // can be retired. Its absence must be stated, per clip.
+        let incumbentFixtures = Set(
+            rows.filter { $0.modelID == Self.incumbentModelID }.map(\.fixture)
+        )
+        let withoutIncumbent = fixtures.map(\.name).filter { !incumbentFixtures.contains($0) }
+        if !withoutIncumbent.isEmpty {
+            caveats.append(
+                "No incumbent row for: \(withoutIncumbent.joined(separator: ", ")). "
+                + "For those clips the beat-the-incumbent question is UNANSWERED, which is "
+                + "the question that decides whether the paid app can be retired."
+            )
+        }
+
+        return caveats
+    }
+
+    /// The incumbent's modelID, written once. It was a bare string literal at
+    /// its only comparison site, which is how a rename becomes a silently
+    /// missing baseline rather than a compile error.
+    static let incumbentModelID = "wispr-qwen-http"
 
     /// Writes the report, then checks that the run actually MEASURED what it
     /// set out to measure.
@@ -282,8 +343,13 @@ final class TranscriptionScoringTests: XCTestCase {
     ///
     /// So this declares what a complete run looks like and fails when it is
     /// not, rather than reporting whatever survived.
-    private func finish(rows: [ScoreRow], skipped: [String], fixtures: [Fixture]) throws {
-        let report = Self.render(rows: rows, skipped: skipped, fixtures: fixtures)
+    private func finish(
+        rows: [ScoreRow],
+        skipped: [String],
+        fixtures: [Fixture],
+        caveats: [String] = []
+    ) throws {
+        let report = Self.render(rows: rows, skipped: skipped, fixtures: fixtures, caveats: caveats)
         print(report)
 
         let reportURL = outputDirectory.appendingPathComponent("scores.md")
@@ -328,6 +394,10 @@ final class TranscriptionScoringTests: XCTestCase {
                 """
             )
 
+            // NOTE: the per-clip incumbent check below is retained, but the
+            // authoritative statement now lives in the report's CAVEATS block,
+            // because a `print` here is filtered out of the wrapper's output.
+            //
             // The incumbent is optional, because the archive script may not
             // have been run, but its ABSENCE must be stated rather than left
             // for the reader to notice. It is the row that answers whether
@@ -473,6 +543,30 @@ final class TranscriptionScoringTests: XCTestCase {
         /// carried in from the app being replaced. Only `local` entries are
         /// rewritten by a capture run, so an incumbent row survives re-capture.
         let source: String
+
+        /// The engine ran and returned nothing.
+        ///
+        /// **A recorded answer, not a missing one, and the distinction is what
+        /// lets C2 terminate.** Capture used to `continue` past an engine that
+        /// produced no text, which left the pair permanently absent from
+        /// coverage. Once coverage became the thing that gates completeness,
+        /// that turned a deterministic failure into an infinite loop: the pair
+        /// is required, capture can never produce it, and every run reports the
+        /// clip incomplete forever. `turbo 954 [auto]` does exactly this on
+        /// `ru-20260712-73d9fbc1`.
+        ///
+        /// It is also the honest score. An engine that returns nothing for 29
+        /// seconds of speech has not been skipped, it has failed completely,
+        /// and a 100 percent error rate is the correct entry in a table that
+        /// decides which engine to ship. Silently omitting the row would let
+        /// the worst possible result look like an absence of data.
+        ///
+        /// Detected from the text rather than stored as a flag, because a
+        /// successful transcription is never empty and a second field could
+        /// disagree with the first.
+        var producedNoText: Bool {
+            hypothesis.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 
     /// Runs the candidate models against every clip whose transcript coverage
@@ -595,22 +689,33 @@ final class TranscriptionScoringTests: XCTestCase {
                     let hypothesis = await manager.transcribe(audioBuffer: clip.audio.samples, language: language)
                     let elapsed = Date().timeIntervalSince(started)
 
-                    guard let hypothesis, !hypothesis.isEmpty else {
-                        skipped.append("\(descriptor.pickerTitle) [\(label)] on \(stem): returned no text")
-                        continue
+                    // An engine returning nothing is RECORDED, not skipped. See
+                    // PersistedHypothesis.producedNoText: skipping it left the
+                    // pair permanently uncoverable, so a deterministic failure
+                    // became a run that could never complete. It is also the
+                    // honest score, because returning nothing for real speech
+                    // is the worst possible result rather than the absence of
+                    // one.
+                    let text = hypothesis ?? ""
+                    if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        skipped.append("\(descriptor.pickerTitle) [\(label)] on \(stem): RETURNED NO TEXT, recorded as a total failure")
                     }
 
                     captured[stem, default: []].append(PersistedHypothesis(
                         model: descriptor.pickerTitle,
                         modelID: modelName,
                         language: label,
-                        hypothesis: hypothesis,
+                        hypothesis: text,
                         seconds: elapsed,
                         audioDuration: clip.audio.duration,
                         fixtureSHA: clip.audio.sha256,
                         source: "local"
                     ))
-                    print(String(format: "captured %@ [%@] on %@ in %.2fs", descriptor.pickerTitle, label, stem, elapsed))
+                    print(String(
+                        format: "captured %@ [%@] on %@ in %.2fs%@",
+                        descriptor.pickerTitle, label, stem, elapsed,
+                        text.isEmpty ? "  <-- NO TEXT" : ""
+                    ))
                 }
             }
         }
@@ -662,6 +767,34 @@ final class TranscriptionScoringTests: XCTestCase {
             captured.isEmpty,
             "No transcript was captured for any clip:\n" + skipped.map { "  - \($0)" }.joined(separator: "\n")
         )
+
+        // **Capture worked out exactly which pairs it had to produce, and then
+        // never checked that it produced them.** It reported whatever survived
+        // and called that a run, which is the project's signature error aimed
+        // at the one step whose entire job is filling gaps: a model that fails
+        // to load, or a clip that errors, would leave the gap open and the run
+        // would still exit green having printed "wrote".
+        //
+        // The list of required pairs is already computed above, so asserting
+        // against it costs nothing and closes the loop.
+        for (stem, wanted) in missingByStem.sorted(by: { $0.key < $1.key }) {
+            let produced = Set(
+                (captured[stem] ?? []).map { Self.coverageKey(modelID: $0.modelID, language: $0.language) }
+            )
+            let stillMissing = wanted
+                .map { Self.coverageKey(modelID: $0.modelID, language: $0.language) }
+                .filter { !produced.contains($0) }
+            XCTAssertTrue(
+                stillMissing.isEmpty,
+                """
+                \(stem): capture set out to produce \(wanted.count) pair(s) and did not produce all of them.
+                Still missing:
+                \(stillMissing.map { "  - \($0)" }.joined(separator: "\n"))
+                Reasons reported by this run:
+                \(skipped.isEmpty ? "  (none reported, which is itself the bug)" : skipped.map { "  - \($0)" }.joined(separator: "\n"))
+                """
+            )
+        }
     }
 
     /// Written to the output directory, which under the sandbox is inside the
@@ -786,6 +919,76 @@ final class TranscriptionScoringTests: XCTestCase {
         )
         XCTAssertEqual(preserved.missing, ["prompt"])
         XCTAssertEqual(preserved.preserved, 0)
+    }
+
+    /// The four scoring defects an independent audit confirmed on 2026-07-24,
+    /// each pinned by the case that exposed it.
+    ///
+    /// Grouped deliberately: all four share one shape, which is a metric that
+    /// reports SUCCESS when it has measured nothing. That is this project's
+    /// signature error moved from the guards into the arithmetic, and it was
+    /// live on the real fixtures on the day Andrew was asked to correct them.
+    func testMetricsNeverReportSuccessWhenNothingWasMeasured() {
+        // 1. A reference with NO punctuation. Two of the five real drafts were
+        //    like this, one across 58 words. Dividing by a zero mark count
+        //    returned 0.0 percent, a flawless score, for every engine and for
+        //    the cloud incumbent, on the metric he ranked second.
+        let noPunctuation = TextScoring.punctuationErrorRate(
+            hypothesis: "\u{043F}\u{0440}\u{0438}\u{0432}\u{0435}\u{0442}, \u{043C}\u{0438}\u{0440}!",
+            reference: "\u{043F}\u{0440}\u{0438}\u{0432}\u{0435}\u{0442} \u{043C}\u{0438}\u{0440}"
+        )
+        XCTAssertFalse(noPunctuation.isMeasurable)
+        XCTAssertTrue(
+            noPunctuation.percent.hasPrefix("n/a"),
+            "a zero denominator must never print as a percentage, got \(noPunctuation.percent)"
+        )
+
+        // 2. An EMPTY reference, which is how this task starts if the file is
+        //    created before the text is pasted in. Every metric divided by
+        //    zero at once and the whole clip read as nine engines tied at
+        //    perfect. loadFixtures now refuses it outright; this pins the
+        //    arithmetic underneath so the two cannot drift apart.
+        let empty = TextScoring.inflectionDiagnostic(
+            hypothesis: "\u{043F}\u{0440}\u{0438}\u{0432}\u{0435}\u{0442} \u{043C}\u{0438}\u{0440}",
+            reference: ""
+        )
+        XCTAssertEqual(empty.verdict, "not measurable", "an empty reference is not a clean transcript")
+        XCTAssertTrue(empty.wer.percent.hasPrefix("n/a"))
+        XCTAssertTrue(empty.cer.percent.hasPrefix("n/a"))
+
+        // 3. THE EXACT CASE THIS METRIC WAS WRITTEN FOR, which it failed.
+        //    In the C1 clip "prompt" survived in Latin script once and was
+        //    Cyrillicised elsewhere in the same utterance. Set membership saw
+        //    one survivor and reported the term fully preserved, so the
+        //    code-switching metric scored a clean pass on the only failure it
+        //    was built to detect.
+        let terms = TextScoring.latinTermsPreserved(
+            hypothesis: "\u{044F} \u{0445}\u{043E}\u{0447}\u{0443} prompt \u{0438} \u{0435}\u{0449}\u{0435} \u{043F}\u{0440}\u{043E}\u{043C}\u{043F}\u{0443}\u{0442}",
+            reference: "\u{044F} \u{0445}\u{043E}\u{0447}\u{0443} prompt \u{0438} \u{0435}\u{0449}\u{0435} prompt"
+        )
+        XCTAssertEqual(terms.expected.count, 2)
+        XCTAssertEqual(terms.missing, ["prompt"], "one occurrence lost of two must count as one lost")
+        XCTAssertEqual(terms.preserved, 1)
+
+        // 4. An ellipsis is ONE sentence ending, not three. This metric reports
+        //    a DIRECTION, merged versus split, and it is the project's
+        //    most-confirmed defect, so a miscount here manufactures evidence
+        //    for the finding the whole voice layer is being designed around.
+        XCTAssertEqual(TextScoring.boundaryCount(in: "\u{0410}... \u{0411}."), 2)
+        let ellipsis = TextScoring.sentenceBoundaries(
+            hypothesis: "\u{0410}... \u{0411}.",
+            reference: "\u{0410}. \u{0411}."
+        )
+        XCTAssertEqual(ellipsis.delta, 0)
+        XCTAssertEqual(ellipsis.verdict, "matches", "spelling a pause as an ellipsis is not a split sentence")
+
+        // The genuine merge case must still be detected, or fixing the false
+        // positive would have removed the signal along with the noise.
+        let merged = TextScoring.sentenceBoundaries(
+            hypothesis: "\u{0410} \u{0411} \u{0412}.",
+            reference: "\u{0410}. \u{0411}. \u{0412}."
+        )
+        XCTAssertEqual(merged.verdict, "merged 2")
     }
 
     /// The coverage arithmetic, which is now the single definition of "this
@@ -1046,6 +1249,27 @@ final class TranscriptionScoringTests: XCTestCase {
 
     // MARK: - Support
 
+    /// Thrown rather than skipped, so the run stops at the input instead of
+    /// reporting a perfect score against nothing.
+    struct EmptyReferenceError: Error, CustomStringConvertible {
+        let stem: String
+        let path: String
+
+        var description: String {
+            """
+            \(stem).reference.txt exists but is EMPTY.
+
+            An empty reference is not a perfect transcription, it is an
+            unusable input. Scoring against it would divide by zero in every
+            metric and report every engine at 0.0 percent error.
+
+            Either paste the corrected text into it, or delete the file so the
+            clip is treated as not yet corrected.
+              \(path)
+            """
+        }
+    }
+
     struct Fixture {
         let name: String
         let samples: [Float]
@@ -1092,6 +1316,23 @@ final class TranscriptionScoringTests: XCTestCase {
                 let reference = try String(contentsOf: referenceURL, encoding: .utf8)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
+                // **An empty reference is a broken input, not a perfect one,
+                // and every gate in this file used to pass it.** The guard
+                // above checks that the FILE EXISTS, which is not the same as
+                // the reference being present: a zero-byte or whitespace-only
+                // `.reference.txt` produced `total == 0` in every Rate, and
+                // `Rate.value` returned 0 for a zero denominator, so WER, CER
+                // and punctuation all printed 0.0 percent. Nine engines tied at
+                // a flawless score on a clip nobody had corrected, `scores.md`
+                // written, exit zero.
+                //
+                // Reachable by ordinary use: creating the file before pasting
+                // into it, or saving an empty buffer, is exactly how someone
+                // starts this task. He is creating five of these by hand today.
+                guard !reference.isEmpty else {
+                    throw EmptyReferenceError(stem: stem, path: referenceURL.path)
+                }
+
                 return Fixture(
                     name: stem,
                     samples: audio.samples,
@@ -1103,16 +1344,36 @@ final class TranscriptionScoringTests: XCTestCase {
             }
     }
 
-    static func render(rows: [ScoreRow], skipped: [String], fixtures: [Fixture]) -> String {
+    static func render(
+        rows: [ScoreRow],
+        skipped: [String],
+        fixtures: [Fixture],
+        caveats: [String] = []
+    ) -> String {
         var out = "# C2 model scores\n\n"
         out += "Generated by TranscriptionScoringTests. WER and CER are punctuation-blind\n"
         out += "and case-folded; punctuation and boundaries are measured separately, because\n"
         out += "averaging them into one number hides exactly the defects C2 exists to fix.\n\n"
 
+        // FIRST, before any number. Everything here makes the table below a
+        // narrower comparison than it looks, and all of it used to be a stdout
+        // line that the test wrapper's grep filtered away.
+        if !caveats.isEmpty {
+            out += "## READ THIS BEFORE THE NUMBERS\n\n"
+            for caveat in caveats { out += "- \(caveat)\n" }
+            out += "\n"
+        }
+
         out += "## Fixture manifest\n\n"
-        out += "| Fixture | Duration | Source rate | SHA256 |\n|---|---|---|---|\n"
+        out += "| Fixture | Duration | Source rate | Reference words | Punct marks | SHA256 |\n"
+        out += "|---|---|---|---|---|---|\n"
         for fixture in fixtures {
-            out += "| \(fixture.name) | \(String(format: "%.1fs", fixture.duration)) | \(String(format: "%.0f Hz", fixture.sourceSampleRate)) | `\(fixture.sha256.prefix(16))` |\n"
+            // Reference shape is in the manifest because an empty or truncated
+            // reference is the failure mode that scores every engine perfect,
+            // and the manifest was the one place a reader would have looked.
+            let words = fixture.reference.split(separator: " ").count
+            let marks = fixture.reference.filter { TextScoring.isPunctuation($0) }.count
+            out += "| \(fixture.name) | \(String(format: "%.1fs", fixture.duration)) | \(String(format: "%.0f Hz", fixture.sourceSampleRate)) | \(words) | \(marks)\(marks == 0 ? " **NONE**" : "") | `\(fixture.sha256.prefix(16))` |\n"
         }
 
         if !rows.isEmpty {
