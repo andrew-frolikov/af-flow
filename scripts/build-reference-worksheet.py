@@ -8,17 +8,35 @@ because he has to re-read every word to find the few that are wrong. And it is
 biased, because whatever he does not notice stays in the reference, quietly
 rigging the comparison in favour of whichever engine wrote the draft.
 
-Several independent engines transcribed the same audio. Where they all agree,
-the text is almost certainly right and he can skim it. Where they disagree is
-exactly where his ear is needed, and that is a small fraction of the words. So
-this prints the agreed text as a draft and lists only the disputed spots.
+Several independent engines transcribed the same audio, so where they disagree
+is where his ear is most needed, and this prints those spans explicitly.
+
+WHAT THIS DOES NOT DO, corrected 2026-07-24 after an audit found the earlier
+claim was not just unearned but backwards. This used to tell him that where the
+engines agree "it is very likely already correct" and that he could skim it.
+Six of the engine rows are Whisper-family. Where they share a mistake they
+agree, the span is never flagged, and the shared mistake is presented to him as
+consensus. So the disputed list finds DISAGREEMENT and is structurally blind to
+a wrong CONSENSUS, which is the one error that a majority vote cannot catch and
+that then becomes the answer key.
+
+Worse, the spans are computed against a spine that is one engine's verbatim
+output, and on the real fixtures that spine is the app's current default model
+on three clips of five. Every word he did not change was therefore about to be
+scored against text that model wrote itself.
+
+The worksheet now asks him to read the whole draft. The disputed list is a
+priority order for his attention, not a permission to skip the rest.
 
 It never prints transcript content to a terminal that a session can read. It
 writes files beside the audio and reports counts only. The content is his real
 speech and the archive rules say it does not travel.
 
 Usage:
-    scripts/build-reference-worksheet.py <fixtures-dir>
+    scripts/build-reference-worksheet.py <fixtures-dir> [--force]
+
+    --force regenerates a draft he has already edited. Without it, an edited
+    draft is left alone, because that text exists nowhere else.
 """
 
 import difflib
@@ -90,6 +108,41 @@ def drop_wrong_script(entries):
     return (keep, dropped) if keep else (entries, [])
 
 
+def dedupe_opinions(entries):
+    """Collapse engines that produced BYTE-IDENTICAL text into one voter.
+
+    Measured on the real fixtures 2026-07-24: Parakeet v3 and Qwen3-ASR return
+    exactly the same string in `auto` and in `ru` on all five clips, because
+    the FluidAudio backend ignores the language argument entirely. Whisper does
+    respond to it. So "Engines compared: 9" counted two engines twice and
+    described a comparison that does not exist.
+
+    It also corrupted the disagreement threshold, which requires two dissenters
+    before a span is worth Andrew's attention. A lone dissent from Parakeet
+    arrived as two identical votes and cleared the bar by itself, so the
+    "at least two engines" rule was not the rule being applied.
+
+    Deliberately keyed on the exact text rather than on the backend, so this
+    stays true if a future model starts honouring the language argument.
+    """
+    by_text = {}
+    for entry in entries:
+        by_text.setdefault(entry["hypothesis"], []).append(entry)
+    opinions = []
+    for group in by_text.values():
+        primary = dict(group[0])
+        primary["voters"] = [f"{e['model']} [{e['language']}]" for e in group]
+        opinions.append(primary)
+    return opinions
+
+
+def opinion_label(entry):
+    voters = entry.get("voters") or [f"{entry['model']} [{entry['language']}]"]
+    if len(voters) == 1:
+        return voters[0]
+    return f"{voters[0]} (identical: {', '.join(voters[1:])})"
+
+
 def most_central(hypotheses):
     """The spine is the transcript closest to all the others.
 
@@ -129,7 +182,7 @@ def disagreements(spine, others):
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
             if tag == "equal":
                 continue
-            label = f"{other['model']} [{other['language']}]"
+            label = opinion_label(other)
             heard = " ".join(other_tokens[j1:j2]) or "(nothing)"
             spans.setdefault((i1, i2), {})[label] = heard
 
@@ -142,27 +195,52 @@ def disagreements(spine, others):
     return sorted((span, heard) for span, heard in spans.items() if len(heard) >= 2)
 
 
-def render(stem, spine, entries, spans, dropped=()):
+def render(stem, spine, entries, spans, dropped=(), unflagged_share=None):
     spine_tokens = tokenize(spine["hypothesis"])
+    marks = sum(1 for c in spine["hypothesis"] if c in ".,!?;:…")
+    terminators = sum(1 for c in spine["hypothesis"] if c in ".!?…")
     lines = [
         f"# Correction worksheet: {stem}",
         "",
         "HOW TO USE THIS",
         "",
-        "1. Read the DRAFT below and edit it into exactly what you said, including",
-        "   any fillers. It is what you said, not what you wish you had said, and",
-        "   not the cleaned-up version you would want pasted.",
-        "2. The DISPUTED SPOTS list is where the engines disagreed with each other.",
-        "   Those are the places worth your ear. Everywhere else they agreed, so it",
-        "   is very likely already correct.",
-        f"3. Save the corrected draft as {stem}.reference.txt in this same folder.",
+        "1. Play the audio and read the WHOLE draft against it. Correct every word",
+        "   that is wrong, not only the ones listed under DISPUTED SPOTS.",
         "",
-        f"Engines compared: {len(entries)}. Disputed spots: {len(spans)}.",
+        "   This instruction changed on 2026-07-24 and the reason matters. The draft",
+        "   below is ONE engine's output verbatim. Anything you do not change stays",
+        "   in the reference, and that engine is then scored against text it wrote",
+        "   itself, so it scores near zero on those words by construction. Six of",
+        "   the engine rows are Whisper-family, so where they share a mistake they",
+        "   AGREE, the span is never flagged, and the shared mistake becomes the",
+        "   answer key. The disputed list finds disagreement; it cannot find a wrong",
+        "   consensus. Only your ear can.",
+        "",
+        "2. WORDS: exactly what you said, fillers included. Not what you wish you",
+        "   had said, and not the cleaned-up version you would want pasted.",
+        "",
+        "3. PUNCTUATION: place full stops, question marks and commas where written",
+        "   Russian would have them. This is scored, and right now the draft's",
+        "   punctuation is that one engine's guess rather than anything you said.",
+        f"   This draft has {marks} punctuation mark(s) and {terminators} sentence",
+        "   ending(s) across "
+        f"{len(spine['hypothesis'].split())} words."
+        + ("  <-- almost certainly too few; the models under-punctuate Russian badly"
+           if terminators <= max(1, len(spine["hypothesis"].split()) // 40) else ""),
+        "",
+        f"4. Save the corrected text as {stem}.reference.txt in this same folder.",
+        "   Leave the .draft-reference.txt file alone; it is regenerated.",
+        "",
+        f"Independent engine opinions compared: {len(entries)}. Disputed spots: {len(spans)}.",
+        *([f"Not flagged as disputed: {unflagged_share:.0f}% of the words. That is not a",
+           "claim that they are correct, only that the engines agreed about them."]
+          if unflagged_share is not None else []),
         *([f"EXCLUDED as wrong-alphabet output, a language-detection failure rather",
-           f"than a transcription one: " + ", ".join(f"{e['model']} [{e['language']}]" for e in dropped)]
+           f"than a transcription one: " + ", ".join(opinion_label(e) for e in dropped)]
           if dropped else []),
-        f"Draft spine: {spine['model']} [{spine['language']}], chosen as the transcript",
-        "closest to all the others rather than by which engine we favour.",
+        f"Draft spine: {opinion_label(spine)}, chosen as the transcript",
+        "closest to all the others rather than by which engine we favour. It is",
+        "still one engine's text, which is what step 1 is about.",
         "",
         "## DRAFT",
         "",
@@ -189,11 +267,15 @@ def render(stem, spine, entries, spans, dropped=()):
 
 
 def main():
-    if len(sys.argv) != 2:
+    positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+    unknown = [a for a in sys.argv[1:] if a.startswith("--") and a != "--force"]
+    if len(positional) != 1 or unknown:
+        if unknown:
+            print(f"unknown option(s): {' '.join(unknown)}\n", file=sys.stderr)
         print(__doc__)
         return 2
 
-    fixtures = Path(sys.argv[1]).expanduser()
+    fixtures = Path(positional[0]).expanduser()
     if not fixtures.is_dir():
         print(f"not a directory: {fixtures}", file=sys.stderr)
         return 1
@@ -229,13 +311,13 @@ def main():
             print(f"{stem}: only 1 transcript, so nothing can be cross-checked. "
                   "Correct it with full attention rather than skimming.")
 
+        raw_count = len(entries)
         entries, dropped = drop_wrong_script(entries)
+        entries = dedupe_opinions(entries)
+        dropped = dedupe_opinions(dropped) if dropped else []
         spine = most_central(entries)
         others = [e for e in entries if e is not spine]
         spans = disagreements(spine, others)
-
-        (fixtures / f"{stem}.worksheet.md").write_text(render(stem, spine, entries, spans, dropped))
-        (fixtures / f"{stem}.draft-reference.txt").write_text(spine["hypothesis"].strip() + "\n")
 
         # Count each disputed token once. Summing span widths double-counted
         # overlapping spans and could exceed the token count, which is why the
@@ -244,9 +326,29 @@ def main():
         touched = set()
         for (start, end), _ in spans:
             touched.update(range(start, max(end, start + 1)))
-        agreement = f", engines agree on {100 * (1 - len(touched) / total):.0f}% of words" if total else ""
+        unflagged = 100 * (1 - len(touched) / total) if total else None
+
+        # Never clobber text he has already edited. The draft is regenerable by
+        # definition, but only while it still IS the generated text: once he has
+        # typed into it, overwriting is destroying work that exists nowhere else.
+        draft_path = fixtures / f"{stem}.draft-reference.txt"
+        fresh_draft = spine["hypothesis"].strip() + "\n"
+        if draft_path.exists() and draft_path.read_text() != fresh_draft and "--force" not in sys.argv:
+            print(f"{stem}: draft has been EDITED since it was generated. Leaving it alone.")
+            print("        Re-run with --force to discard those edits and regenerate.")
+            continue
+
+        (fixtures / f"{stem}.worksheet.md").write_text(
+            render(stem, spine, entries, spans, dropped, unflagged)
+        )
+        draft_path.write_text(fresh_draft)
+
+        agreement = f", {unflagged:.0f}% of words not flagged" if unflagged is not None else ""
         note = f", {len(dropped)} dropped for wrong script" if dropped else ""
-        print(f"{stem}: {len(entries)} transcripts{note}, {len(spans)} disputed spots{agreement}")
+        collapsed = raw_count - len(entries) - len(dropped)
+        dedup = f", {collapsed} collapsed as identical" if collapsed > 0 else ""
+        print(f"{stem}: {len(entries)} independent opinions{note}{dedup}, "
+              f"{len(spans)} disputed spots{agreement}")
         written += 1
 
     print(f"\n{written} worksheet(s) written to {fixtures}")

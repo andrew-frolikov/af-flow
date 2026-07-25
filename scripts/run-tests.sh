@@ -132,6 +132,36 @@ if [ "${AF_FLOW_SCORING:-}" = "1" ] && [ -z "${AF_FLOW_OUTPUT:-}" ]; then
     export AF_FLOW_OUTPUT
 fi
 if [ -n "${AF_FLOW_OUTPUT:-}" ]; then
+    # REFUSE to recursively delete a directory holding irreplaceable input.
+    #
+    # `rm -rf "$AF_FLOW_OUTPUT"` was unconditional, and AF_FLOW_OUTPUT is a
+    # caller-supplied path. The Swift side DEFAULTS its output directory to the
+    # fixtures directory, so pointing the two at the same place is not an exotic
+    # mistake, it is the arrangement the code documents as normal. Doing it here
+    # would have deleted Andrew's hand-corrected `.reference.txt` files, the
+    # captured transcripts, and the clip audio, before the run that was supposed
+    # to read them.
+    #
+    # The audio survives elsewhere: all five fixture clips are byte-identical to
+    # copies in `wispr-archive/`, verified by SHA. The reference text does not.
+    # It is 20 to 30 minutes of listening that only he can redo, and it is the
+    # one input in this project with no second copy anywhere.
+    if [ -n "${AF_FLOW_FIXTURES:-}" ] && [ "$AF_FLOW_OUTPUT" = "$AF_FLOW_FIXTURES" ]; then
+        echo "REFUSING TO RUN: AF_FLOW_OUTPUT is the same directory as AF_FLOW_FIXTURES." >&2
+        echo "  $AF_FLOW_OUTPUT" >&2
+        echo "This script wipes the output directory before every run, so that would" >&2
+        echo "delete the corrected reference text and the captured transcripts." >&2
+        exit 7
+    fi
+    if compgen -G "$AF_FLOW_OUTPUT/*.reference.txt" >/dev/null 2>&1 \
+        || compgen -G "$AF_FLOW_OUTPUT/*.wav" >/dev/null 2>&1 \
+        || compgen -G "$AF_FLOW_OUTPUT/*.worksheet.md" >/dev/null 2>&1; then
+        echo "REFUSING TO RUN: AF_FLOW_OUTPUT holds fixture input, not just results." >&2
+        echo "  $AF_FLOW_OUTPUT" >&2
+        echo "Wiping it would destroy audio, worksheets, or corrected reference text." >&2
+        echo "Point AF_FLOW_OUTPUT at a scratch directory, or leave it unset." >&2
+        exit 7
+    fi
     rm -rf "$AF_FLOW_OUTPUT"
     mkdir -p "$AF_FLOW_OUTPUT"
 fi
