@@ -129,6 +129,51 @@ enum TextScoring {
         return Rate(errors: editDistance(hyp, ref), total: ref.count)
     }
 
+    /// Is this model hearing the WRONG WORDS, or the RIGHT words with the WRONG
+    /// ENDINGS? Andrew's first question about Russian, and neither WER nor CER
+    /// answers it alone.
+    ///
+    /// **Why the raw "WER minus CER gap" is unreadable, and why reporting it as
+    /// the answer would have been a trap.** CER is smaller than WER for a
+    /// reason that has nothing to do with quality: a Russian word runs five or
+    /// six characters, so any error at all is a smaller fraction of the
+    /// characters than of the words. A model scoring WER 30 and CER 8 looks
+    /// like it has "a large gap", but so does every model, always, including a
+    /// model whose every error is a completely different word. The gap is an
+    /// artefact of the units, and a decision taken on it would be taken on
+    /// arithmetic rather than on the audio.
+    ///
+    /// The readable signal is the RATIO `CER/WER`, placed between two endpoints
+    /// computed from the reference itself:
+    ///
+    /// - **floor**, `N/M`: what the ratio reads when every error is a single
+    ///   wrong character inside an otherwise correct word. Pure inflection.
+    /// - **ceiling**, `(M-N+1)/M`: what it reads when every error is a whole
+    ///   word replaced by an unrelated word of typical length. Pure
+    ///   substitution.
+    ///
+    /// where `N` is reference words and `M` is reference characters after the
+    /// same normalisation WER and CER use. `substitutionShare` places the
+    /// observed ratio between them: **0 is pure inflection, 1 is pure
+    /// substitution.** That number is the C2 decision, because inflection needs
+    /// a better acoustic model and nothing else, while substitution is much
+    /// cheaper to attack in the dictionary layer.
+    static func inflectionDiagnostic(hypothesis: String, reference: String) -> InflectionDiagnostic {
+        let wer = wordErrorRate(hypothesis: hypothesis, reference: reference)
+        let cer = characterErrorRate(hypothesis: hypothesis, reference: reference)
+
+        let normalisedReference = normalise(reference, stripPunctuation: true, foldCase: true)
+        let words = normalisedReference.split(separator: " ").count
+        let characters = normalisedReference.count
+
+        return InflectionDiagnostic(
+            wer: wer,
+            cer: cer,
+            referenceWords: words,
+            referenceCharacters: characters
+        )
+    }
+
     /// Punctuation error rate over the ordered sequence of marks.
     ///
     /// Andrew's first priority. Scored as a sequence rather than as counts,
@@ -211,6 +256,56 @@ enum TextScoring {
 
         var value: Double { total == 0 ? 0 : Double(errors) / Double(total) }
         var percent: String { String(format: "%.1f%%", value * 100) }
+    }
+
+    /// The WER-to-CER reading, with its own endpoints attached so the number is
+    /// interpretable without the reader redoing the arithmetic.
+    struct InflectionDiagnostic {
+        let wer: Rate
+        let cer: Rate
+        let referenceWords: Int
+        let referenceCharacters: Int
+
+        /// What CER/WER reads when every error is one wrong character.
+        var inflectionFloor: Double {
+            referenceCharacters == 0 ? 0 : Double(referenceWords) / Double(referenceCharacters)
+        }
+
+        /// What CER/WER reads when every error is a whole unrelated word.
+        /// Derives the mean word length from the reference rather than assuming
+        /// one, because Andrew's Russian and his English differ on it.
+        var substitutionCeiling: Double {
+            guard referenceCharacters > 0 else { return 0 }
+            return Double(referenceCharacters - referenceWords + 1) / Double(referenceCharacters)
+        }
+
+        var ratio: Double { wer.value == 0 ? 0 : cer.value / wer.value }
+
+        /// 0 = every error is an ending, 1 = every error is a different word.
+        ///
+        /// Clamped, because insertions and deletions of whole words, or wrong
+        /// words much longer than the reference average, can push the raw ratio
+        /// past the ceiling. `ratio` is reported alongside so the clamp is
+        /// visible rather than silently absorbed.
+        var substitutionShare: Double {
+            let span = substitutionCeiling - inflectionFloor
+            guard wer.value > 0, span > 0 else { return 0 }
+            return min(1, max(0, (ratio - inflectionFloor) / span))
+        }
+
+        /// Named in the vocabulary the project already uses for this defect,
+        /// so the table reads as an answer rather than as three more numbers.
+        var verdict: String {
+            guard wer.value > 0 else { return "no errors" }
+            if substitutionShare < 0.35 { return "endings" }
+            if substitutionShare > 0.65 { return "wrong words" }
+            return "mixed"
+        }
+
+        var summary: String {
+            guard wer.value > 0 else { return "no errors" }
+            return String(format: "%.2f %@", substitutionShare, verdict)
+        }
     }
 
     struct BoundaryCount {

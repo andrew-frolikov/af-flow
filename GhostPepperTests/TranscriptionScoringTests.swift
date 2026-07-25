@@ -78,6 +78,67 @@ final class TranscriptionScoringTests: XCTestCase {
     /// `ru` does not beat auto-detect on these clips, that is a finding.
     private let languages: [String?] = [nil, "ru"]
 
+    // MARK: - One definition of "complete", shared by capture and scoring
+
+    /// The `(modelID, language)` pairs a complete capture must contain for one
+    /// clip.
+    ///
+    /// **Why this exists, and it is the same class of bug this project keeps
+    /// paying for.** Capture and scoring each carried their OWN definition of
+    /// done, and the two disagreed. Capture asked "does a `.reference.txt`
+    /// exist for this clip"; scoring asked "did every model and language
+    /// produce a row". Neither predicate is wrong on its own. Together they
+    /// left a hole with no floor: on 2026-07-22 the clip `ru-20260712-73d9fbc1`
+    /// held 7 of its 8 required local rows, because
+    /// `openai_whisper-large-v3_turbo_954MB` in `auto` returned no text, and
+    /// **the repair window closed at the exact moment the input arrived.** The
+    /// moment Andrew saved the references, capture would skip every clip and
+    /// the missing row could never be filled, so scoring would fail forever on
+    /// an incompleteness nothing could repair.
+    ///
+    /// The fix is not to widen one predicate. It is to delete one of them: both
+    /// sides now read coverage from here, so they cannot drift apart again.
+    /// The accompanying test asserts that they agree, which is what makes this
+    /// a control rather than a convention.
+    func requiredCoverage() -> [(modelID: String, language: String?)] {
+        candidateModels
+            .filter { SpeechModelCatalog.model(named: $0) != nil }
+            .flatMap { name in languages.map { (modelID: name, language: $0) } }
+    }
+
+    /// The stable key for one `(modelID, language)` pair. Written once so the
+    /// two sides cannot format it differently, which is exactly how the last
+    /// pair of predicates drifted.
+    static func coverageKey(modelID: String, language: String?) -> String {
+        "\(modelID)|\(language ?? "auto")"
+    }
+
+    /// Which required pairs are absent for this clip, against THIS audio.
+    ///
+    /// Scoped by `audioSHA` deliberately: a transcript captured from different
+    /// audio under the same name is not coverage, it is a stale row that would
+    /// be scored against the new reference. Treating it as missing degrades to
+    /// re-transcription rather than to a confident wrong number.
+    func missingCoverage(for stem: String, audioSHA: String) -> [(modelID: String, language: String?)] {
+        Self.missingCoverage(
+            required: requiredCoverage(),
+            present: persistedHypotheses(for: stem, audioSHA: audioSHA)
+        )
+    }
+
+    /// The set arithmetic, split out with no filesystem and no environment so
+    /// it can be tested directly. `fixturesDirectory` is resolved from an
+    /// environment variable, so the instance method above cannot be pointed at
+    /// a temporary directory from within a test, and an untested gate is how
+    /// this project got here.
+    static func missingCoverage(
+        required: [(modelID: String, language: String?)],
+        present: [PersistedHypothesis]
+    ) -> [(modelID: String, language: String?)] {
+        let keys = Set(present.map { coverageKey(modelID: $0.modelID, language: $0.language) })
+        return required.filter { !keys.contains(coverageKey(modelID: $0.modelID, language: $0.language)) }
+    }
+
     // MARK: - The scoring run
 
     @MainActor
@@ -101,14 +162,19 @@ final class TranscriptionScoringTests: XCTestCase {
         // any fixture whose transcripts were already captured is scored here
         // without touching a model at all, which is what lets the reference
         // text arrive after the transcription run rather than before it.
-        var needingLiveTranscription: [Fixture] = []
+        //
+        // **Missing coverage is per PAIR, not per clip.** This used to read
+        // `if persisted.isEmpty`, which treats a clip holding 7 of its 8
+        // required rows as fully captured, scores it, and then fails the
+        // completeness assertion at the end with nothing able to repair it.
+        // A clip now contributes live work for exactly the pairs it lacks.
+        var missingByFixture: [(fixture: Fixture, pairs: [(modelID: String, language: String?)])] = []
         for fixture in fixtures {
-            let persisted = persistedHypotheses(for: fixture.name, audioSHA: fixture.sha256)
-            if persisted.isEmpty {
-                needingLiveTranscription.append(fixture)
-                continue
+            let missing = missingCoverage(for: fixture.name, audioSHA: fixture.sha256)
+            if !missing.isEmpty {
+                missingByFixture.append((fixture: fixture, pairs: missing))
             }
-            for entry in persisted {
+            for entry in persistedHypotheses(for: fixture.name, audioSHA: fixture.sha256) {
                 rows.append(ScoreRow(
                     model: entry.model,
                     modelID: entry.modelID,
@@ -127,7 +193,7 @@ final class TranscriptionScoringTests: XCTestCase {
             }
         }
 
-        guard !needingLiveTranscription.isEmpty else {
+        guard !missingByFixture.isEmpty else {
             try finish(rows: rows, skipped: skipped, fixtures: fixtures)
             return
         }
@@ -135,6 +201,12 @@ final class TranscriptionScoringTests: XCTestCase {
         for modelName in candidateModels {
             guard let descriptor = SpeechModelCatalog.model(named: modelName) else {
                 skipped.append("\(modelName): not in the catalog on this OS")
+                continue
+            }
+
+            // Do not pay for a model load nothing needs. Loading is the
+            // expensive step, so the filter goes above it, not below.
+            guard missingByFixture.contains(where: { $0.pairs.contains { $0.modelID == modelName } }) else {
                 continue
             }
 
@@ -146,6 +218,14 @@ final class TranscriptionScoringTests: XCTestCase {
 
             for language in languages {
                 let label = language ?? "auto"
+
+                let needing = missingByFixture
+                    .filter { entry in
+                        entry.pairs.contains { $0.modelID == modelName && $0.language == language }
+                    }
+                    .map(\.fixture)
+                guard !needing.isEmpty else { continue }
+
                 await manager.loadModel(name: modelName, language: language)
 
                 guard manager.isReady else {
@@ -153,7 +233,7 @@ final class TranscriptionScoringTests: XCTestCase {
                     continue
                 }
 
-                for fixture in needingLiveTranscription {
+                for fixture in needing {
                     let started = Date()
                     let hypothesis = await manager.transcribe(
                         audioBuffer: fixture.samples,
@@ -224,19 +304,27 @@ final class TranscriptionScoringTests: XCTestCase {
         // Per fixture, name every engine that produced no row. A missing engine
         // is not a smaller table, it is a different comparison.
         for fixture in fixtures {
-            let present = Set(rows.filter { $0.fixture == fixture.name }.map { "\($0.modelID)|\($0.language)" })
-            var absent: [String] = []
-            for modelName in candidateModels where SpeechModelCatalog.model(named: modelName) != nil {
-                for language in languages {
-                    let key = "\(modelName)|\(language ?? "auto")"
-                    if !present.contains(key) { absent.append(key) }
-                }
-            }
+            let present = Set(
+                rows.filter { $0.fixture == fixture.name }
+                    .map { Self.coverageKey(modelID: $0.modelID, language: $0.language) }
+            )
+            // Read from the SAME definition the capture harness uses. These
+            // were two hand-rolled loops that agreed by coincidence until they
+            // did not; see `requiredCoverage()` for what that cost.
+            let absent = requiredCoverage()
+                .map { Self.coverageKey(modelID: $0.modelID, language: $0.language) }
+                .filter { !present.contains($0) }
             XCTAssertTrue(
                 absent.isEmpty,
                 """
                 \(fixture.name) was scored with engines MISSING, so this table is not the comparison it claims to be:
                 \(absent.map { "  - \($0)" }.joined(separator: "\n"))
+
+                REPAIR: run the capture test. It now targets exactly the missing
+                pairs and no longer requires the reference to be absent, so this
+                is fixable in place rather than only before the reference lands:
+                  AF_FLOW_SCORING=1 AF_FLOW_FIXTURES=... ./scripts/run-tests.sh \\
+                    -only-testing:GhostPepperTests/TranscriptionScoringTests/testCaptureAllCandidateTranscriptsForUnreferencedAudio
                 """
             )
 
@@ -387,8 +475,22 @@ final class TranscriptionScoringTests: XCTestCase {
         let source: String
     }
 
-    /// Runs every candidate model against every clip that has no reference yet,
-    /// and writes the transcripts beside the audio.
+    /// Runs the candidate models against every clip whose transcript coverage
+    /// is INCOMPLETE, and writes the transcripts beside the audio.
+    ///
+    /// **The driver used to be "clips that have no reference yet", and that was
+    /// a trap with no floor.** It meant the repair window closed at the exact
+    /// moment the input arrived: once Andrew saved the five `.reference.txt`
+    /// files, this test found nothing pending and skipped, so a clip that was
+    /// missing one engine could never be completed, and the scoring run would
+    /// fail forever on an incompleteness nothing could repair. That was live on
+    /// 2026-07-22, one row short on `ru-20260712-73d9fbc1`.
+    ///
+    /// It is now driven by `missingCoverage(for:audioSHA:)`, the same
+    /// definition the scoring assertion reads. That subsumes the old behaviour
+    /// exactly: a clip with no transcripts at all is missing every pair, so it
+    /// is captured in full as before. A clip missing one pair now captures one
+    /// pair, which is the case that previously had no path at all.
     ///
     /// **Why this exists, and it is a scheduling fix rather than a technical
     /// one.** Transcribing requires the app to be quit, because the test host
@@ -413,29 +515,53 @@ final class TranscriptionScoringTests: XCTestCase {
         // was "TEST EXECUTE SUCCEEDED". A capture that silently did nothing was
         // indistinguishable from one that worked. The diagnostic has to come
         // before the guard it diagnoses.
-        let pending = try audioWithoutReference()
+        let allAudio = try audioFixtureURLs()
         print("fixtures directory: \(fixturesDirectory.path)")
-        print("clips awaiting a reference: \(pending.count)")
+        print("audio clips found: \(allAudio.count)")
+
+        // Loaded before the pending check, because coverage is scoped to the
+        // audio's SHA and there is no way to ask what is missing for a clip
+        // without first knowing which audio it is.
+        let clips = try allAudio.map { (url: $0, audio: try AudioFixtureLoader.load($0)) }
+
+        var missingByStem: [String: [(modelID: String, language: String?)]] = [:]
+        for clip in clips {
+            let stem = clip.url.deletingPathExtension().lastPathComponent
+            let missing = missingCoverage(for: stem, audioSHA: clip.audio.sha256)
+            guard !missing.isEmpty else { continue }
+            missingByStem[stem] = missing
+            print("  \(stem): missing \(missing.count) of \(requiredCoverage().count) -> "
+                + missing.map { Self.coverageKey(modelID: $0.modelID, language: $0.language) }.joined(separator: ", "))
+        }
+        let pending = clips.filter { missingByStem[$0.url.deletingPathExtension().lastPathComponent] != nil }
+        print("clips with incomplete coverage: \(pending.count)")
 
         try XCTSkipIf(
             pending.isEmpty,
             """
-            No audio awaiting a reference in \(fixturesDirectory.path).
-            If that is not the directory you meant, AF_FLOW_FIXTURES did not
-            reach this process. Note that `test-without-building` runs from a
-            pre-generated .xctestrun, so TEST_RUNNER_ variables have to be set
-            on the `build-for-testing` invocation that generates it, not on the
-            run itself.
+            Every clip in \(fixturesDirectory.path) already has complete coverage,
+            so there is nothing to capture. That is a legitimate no-op.
+            If you expected work here, check that AF_FLOW_FIXTURES reached this
+            process: `test-without-building` runs from a pre-generated
+            .xctestrun, so TEST_RUNNER_ variables have to be set on the
+            `build-for-testing` invocation that generates it, not on the run
+            itself. `audio clips found: 0` above means the path is wrong.
             """
         )
 
         var captured: [String: [PersistedHypothesis]] = [:]
         var skipped: [String] = []
-        let clips = try pending.map { (url: $0, audio: try AudioFixtureLoader.load($0)) }
 
         for modelName in candidateModels {
             guard let descriptor = SpeechModelCatalog.model(named: modelName) else {
                 skipped.append("\(modelName): not in the catalog on this OS")
+                continue
+            }
+
+            // Do not pay for a model load nothing needs. A one-pair repair run
+            // must not reload all four models, or the cheap path is not cheap
+            // and the expensive path gets used instead.
+            guard missingByStem.values.contains(where: { $0.contains { $0.modelID == modelName } }) else {
                 continue
             }
 
@@ -447,6 +573,15 @@ final class TranscriptionScoringTests: XCTestCase {
 
             for language in languages {
                 let label = language ?? "auto"
+
+                let needing = pending.filter { clip in
+                    let stem = clip.url.deletingPathExtension().lastPathComponent
+                    return missingByStem[stem]?.contains {
+                        $0.modelID == modelName && $0.language == language
+                    } ?? false
+                }
+                guard !needing.isEmpty else { continue }
+
                 await manager.loadModel(name: modelName, language: language)
 
                 guard manager.isReady else {
@@ -454,7 +589,7 @@ final class TranscriptionScoringTests: XCTestCase {
                     continue
                 }
 
-                for clip in clips {
+                for clip in needing {
                     let stem = clip.url.deletingPathExtension().lastPathComponent
                     let started = Date()
                     let hypothesis = await manager.transcribe(audioBuffer: clip.audio.samples, language: language)
@@ -481,11 +616,42 @@ final class TranscriptionScoringTests: XCTestCase {
         }
 
         for (stem, entries) in captured {
-            // Merge rather than overwrite, so an incumbent transcript written
-            // in from the Wispr archive is not destroyed by a re-capture.
-            let preserved = persistedHypotheses(for: stem).filter { $0.source != "local" }
-            try writeHypotheses(preserved + entries, for: stem)
-            print("wrote \(preserved.count + entries.count) transcripts to \(stem).hypotheses.json")
+            // **Upsert by coverage key, NOT "replace every local row".**
+            //
+            // The previous line was `persistedHypotheses(for: stem).filter
+            // { $0.source != "local" }` plus the new entries, which is correct
+            // only while a capture run always produces EVERY local row. The
+            // moment capture became targeted, that line became a data-loss
+            // path: repairing one missing pair would have written back one
+            // local row and silently destroyed the other seven, turning a
+            // one-row gap into a seven-row gap while printing "wrote".
+            //
+            // Keyed replacement has neither failure. Rows this run re-captured
+            // are replaced; every other row on disk survives, including the
+            // incumbent, whose key is never in the candidate set.
+            let capturedKeys = Set(entries.map { Self.coverageKey(modelID: $0.modelID, language: $0.language) })
+            let existing = persistedHypotheses(for: stem)
+            let kept = existing.filter {
+                !capturedKeys.contains(Self.coverageKey(modelID: $0.modelID, language: $0.language))
+            }
+            let merged = kept + entries
+
+            // The invariant, asserted rather than trusted: a capture may add
+            // rows and may replace rows, and may never REDUCE what is on disk.
+            // This is the canary for a future edit reverting to wholesale
+            // replacement, which is the shape that just had to be fixed.
+            XCTAssertGreaterThanOrEqual(
+                merged.count,
+                existing.count,
+                """
+                capture would REDUCE \(stem).hypotheses.json from \(existing.count) to \(merged.count) rows.
+                A capture adds or replaces; it never removes. Refusing to treat this as success.
+                """
+            )
+
+            try writeHypotheses(merged, for: stem)
+            print("wrote \(merged.count) transcripts to \(stem).hypotheses.json "
+                + "(\(kept.count) kept, \(entries.count) captured this run)")
         }
 
         if !skipped.isEmpty {
@@ -535,19 +701,31 @@ final class TranscriptionScoringTests: XCTestCase {
         try encoder.encode(entries).write(to: hypothesesWriteURL(for: stem), options: .atomic)
     }
 
-    private func audioWithoutReference() throws -> [URL] {
+    /// Every audio clip in the fixtures directory, referenced or not.
+    ///
+    /// Split out from `audioWithoutReference()` because the two callers want
+    /// genuinely different sets and used to share one. Draft generation wants
+    /// clips with no reference, because producing a draft for a clip that
+    /// already has a corrected reference would be pointless. Capture wants ALL
+    /// clips, because transcript coverage and reference existence are unrelated
+    /// facts, and conflating them is what closed the repair window.
+    func audioFixtureURLs() throws -> [URL] {
         let manager = FileManager.default
         guard manager.fileExists(atPath: fixturesDirectory.path) else { return [] }
         let audioExtensions: Set<String> = ["wav", "m4a", "mp3", "aiff", "caf"]
         return try manager.contentsOfDirectory(at: fixturesDirectory, includingPropertiesForKeys: nil)
             .filter { audioExtensions.contains($0.pathExtension.lowercased()) }
-            .filter {
-                let stem = $0.deletingPathExtension().lastPathComponent
-                return !manager.fileExists(
-                    atPath: fixturesDirectory.appendingPathComponent("\(stem).reference.txt").path
-                )
-            }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    private func audioWithoutReference() throws -> [URL] {
+        let manager = FileManager.default
+        return try audioFixtureURLs().filter {
+            let stem = $0.deletingPathExtension().lastPathComponent
+            return !manager.fileExists(
+                atPath: fixturesDirectory.appendingPathComponent("\(stem).reference.txt").path
+            )
+        }
     }
 
     // MARK: - The scorer's own correctness
@@ -608,6 +786,159 @@ final class TranscriptionScoringTests: XCTestCase {
         )
         XCTAssertEqual(preserved.missing, ["prompt"])
         XCTAssertEqual(preserved.preserved, 0)
+    }
+
+    /// The coverage arithmetic, which is now the single definition of "this
+    /// clip is fully captured" that both the capture harness and the scoring
+    /// assertion read.
+    ///
+    /// **This test exists because the bug it guards was live and unrepairable.**
+    /// On 2026-07-22 `ru-20260712-73d9fbc1` held 7 of its 8 required local rows.
+    /// Capture asked "does a reference exist" and scoring asked "did every
+    /// engine produce a row", and because those are different questions the
+    /// clip was simultaneously "done" to one side and "incomplete" to the
+    /// other, with no code path able to move it. The partial case is therefore
+    /// the case this test is built around; a clip with nothing and a clip with
+    /// everything were never the hard part.
+    func testPartialCoverageIsReportedAsIncomplete() {
+        let required: [(modelID: String, language: String?)] = [
+            (modelID: "turbo632", language: nil),
+            (modelID: "turbo632", language: "ru"),
+            (modelID: "turbo954", language: nil),
+            (modelID: "turbo954", language: "ru"),
+        ]
+
+        func row(_ modelID: String, _ language: String) -> PersistedHypothesis {
+            PersistedHypothesis(
+                model: modelID, modelID: modelID, language: language,
+                hypothesis: "x", seconds: 1, audioDuration: 1,
+                fixtureSHA: "sha", source: "local"
+            )
+        }
+
+        // Nothing captured: everything is missing. The old predicate got this
+        // one right, which is why the bug survived.
+        XCTAssertEqual(
+            Self.missingCoverage(required: required, present: []).count,
+            4
+        )
+
+        // Everything captured: nothing is missing.
+        let complete = [row("turbo632", "auto"), row("turbo632", "ru"),
+                        row("turbo954", "auto"), row("turbo954", "ru")]
+        XCTAssertTrue(Self.missingCoverage(required: required, present: complete).isEmpty)
+
+        // THE CASE THAT BROKE. Three of four present. A predicate asking only
+        // "is this empty" calls this complete; this one names the gap.
+        let partial = [row("turbo632", "auto"), row("turbo632", "ru"), row("turbo954", "ru")]
+        let missing = Self.missingCoverage(required: required, present: partial)
+        XCTAssertEqual(missing.count, 1, "a clip missing one engine must not read as captured")
+        XCTAssertEqual(
+            missing.map { Self.coverageKey(modelID: $0.modelID, language: $0.language) },
+            ["turbo954|auto"]
+        )
+
+        // The incumbent is not a candidate model, so it can never satisfy
+        // coverage and can never be mistaken for a local row.
+        let incumbentOnly = [PersistedHypothesis(
+            model: "Wispr Flow (cloud incumbent)", modelID: "wispr-qwen-http", language: "ru",
+            hypothesis: "x", seconds: 1, audioDuration: 1, fixtureSHA: "sha", source: "incumbent"
+        )]
+        XCTAssertEqual(
+            Self.missingCoverage(required: required, present: incumbentOnly).count,
+            4,
+            "an incumbent row must not be counted as coverage of a candidate model"
+        )
+
+        // The `nil` language and the string "auto" are the SAME pair. They are
+        // written differently on the two sides of the pipeline, and one
+        // formatting difference here is the whole class of bug this replaced.
+        XCTAssertEqual(
+            Self.coverageKey(modelID: "m", language: nil),
+            Self.coverageKey(modelID: "m", language: "auto")
+        )
+    }
+
+    /// The WER-to-CER reading, which is the number that decides which model
+    /// AF Flow runs, so it gets known-answer cases rather than trust.
+    ///
+    /// **The assertion that matters is the last one.** Both cases below score
+    /// an identical WER of 100 percent, so WER cannot tell them apart, and the
+    /// raw "WER minus CER gap" the report used to recommend cannot either: both
+    /// have a large gap, because a Russian word is five or six characters and
+    /// that alone makes CER smaller. Only the normalised share separates
+    /// "wrong ending" from "wrong word", and separating them is the entire C2
+    /// question.
+    func testInflectionDiagnosticSeparatesEndingsFromWrongWords() {
+        // 11 words, 68 characters after normalisation. Deliberately a realistic
+        // sentence rather than a two-word toy: with 2 words the share can only
+        // land on a few values and the thresholds sit inside the rounding.
+        let reference = "\u{043F}\u{043E}\u{043C}\u{0435}\u{043D}\u{044F}\u{0442}\u{044C} \u{0438}\u{043D}\u{0442}\u{0435}\u{0440}\u{0444}\u{0435}\u{0439}\u{0441} \u{043F}\u{0440}\u{0438}\u{043B}\u{043E}\u{0436}\u{0435}\u{043D}\u{0438}\u{044F} \u{0438} \u{0442}\u{0430}\u{043A}\u{0436}\u{0435} \u{043E}\u{0442}\u{0432}\u{0435}\u{0442}\u{044C} \u{043C}\u{043E}\u{0436}\u{0435}\u{043C} \u{043B}\u{0438} \u{043C}\u{044B} \u{044D}\u{0442}\u{043E} \u{0441}\u{0434}\u{0435}\u{043B}\u{0430}\u{0442}\u{044C}"
+
+        // Right words, wrong endings. BOTH errors here are real, dated
+        // observations from his own dictation on 2026-07-20, recorded in
+        // voice-observations.md: a genitive lost after a verb, and an
+        // imperative flattened to an infinitive. Not invented strings.
+        let endings = TextScoring.inflectionDiagnostic(
+            hypothesis: "\u{043F}\u{043E}\u{043C}\u{0435}\u{043D}\u{044F}\u{0442}\u{044C} \u{0438}\u{043D}\u{0442}\u{0435}\u{0440}\u{0444}\u{0435}\u{0439}\u{0441} \u{043F}\u{0440}\u{0438}\u{043B}\u{043E}\u{0436}\u{0435}\u{043D}\u{0438}\u{0435} \u{0438} \u{0442}\u{0430}\u{043A}\u{0436}\u{0435} \u{043E}\u{0442}\u{0432}\u{0435}\u{0442}\u{0438}\u{0442}\u{044C} \u{043C}\u{043E}\u{0436}\u{0435}\u{043C} \u{043B}\u{0438} \u{043C}\u{044B} \u{044D}\u{0442}\u{043E} \u{0441}\u{0434}\u{0435}\u{043B}\u{0430}\u{0442}\u{044C}",
+            reference: reference
+        )
+
+        // **Exactly the same two words wrong, but wrong by SUBSTITUTION rather
+        // than by inflection.** This is the "\u{0432}\u{0435}\u{0440}\u{0438}\u{043B}\u{0438}\u{0441}\u{044C}" class from 2026-07-20,
+        // where a real Russian word replaces a different real Russian word and
+        // the sentence stops meaning anything. No dictionary can reach it,
+        // because both words are legitimate elsewhere.
+        //
+        // The pairing is the point: WER is IDENTICAL to the case above, 2 words
+        // of 11, so WER cannot tell these two apart and neither can a raw
+        // WER-minus-CER gap. Only the normalised share can.
+        let substitution = TextScoring.inflectionDiagnostic(
+            hypothesis: "\u{043F}\u{043E}\u{043C}\u{0435}\u{043D}\u{044F}\u{0442}\u{044C} \u{0438}\u{043D}\u{0442}\u{0435}\u{0440}\u{0444}\u{0435}\u{0439}\u{0441} \u{043A}\u{0430}\u{0440}\u{0442}\u{043E}\u{0448}\u{043A}\u{0430} \u{0438} \u{0442}\u{0430}\u{043A}\u{0436}\u{0435} \u{0437}\u{0430}\u{0431}\u{0443}\u{0434}\u{044C} \u{043C}\u{043E}\u{0436}\u{0435}\u{043C} \u{043B}\u{0438} \u{043C}\u{044B} \u{044D}\u{0442}\u{043E} \u{0441}\u{0434}\u{0435}\u{043B}\u{0430}\u{0442}\u{044C}",
+            reference: reference
+        )
+
+        XCTAssertEqual(endings.referenceWords, 11)
+        XCTAssertEqual(endings.referenceCharacters, 68)
+        XCTAssertEqual(endings.inflectionFloor, 11.0 / 68.0, accuracy: 0.0001)
+        XCTAssertEqual(endings.substitutionCeiling, 58.0 / 68.0, accuracy: 0.0001)
+
+        // Hand-computed, then independently reproduced before being written
+        // down, because an expected value nobody checked is not a known answer.
+        // endings: WER 2/11, CER 3/68, ratio 0.24, share 0.12.
+        // substitution: WER 2/11, CER 14/68, ratio 1.13, clamped share 1.00.
+        XCTAssertEqual(endings.wer.errors, 2)
+        XCTAssertEqual(endings.cer.errors, 3)
+        XCTAssertEqual(substitution.wer.errors, 2)
+        XCTAssertEqual(substitution.cer.errors, 14)
+
+        XCTAssertEqual(endings.substitutionShare, 0.117, accuracy: 0.01)
+        XCTAssertEqual(endings.verdict, "endings")
+
+        XCTAssertEqual(substitution.substitutionShare, 1.0, accuracy: 0.01)
+        XCTAssertEqual(substitution.verdict, "wrong words")
+
+        // The clamp fires here and must stay VISIBLE: the raw ratio exceeds the
+        // ceiling because the replacement words differ in length from the ones
+        // they replaced. Reporting only the clamped share would hide that.
+        XCTAssertGreaterThan(substitution.ratio, substitution.substitutionCeiling)
+
+        // A clean transcript must not be reported as a defect.
+        let perfect = TextScoring.inflectionDiagnostic(hypothesis: reference, reference: reference)
+        XCTAssertEqual(perfect.verdict, "no errors")
+        XCTAssertEqual(perfect.substitutionShare, 0)
+
+        // THE POINT, and the reason this metric exists at all. IDENTICAL WER,
+        // opposite diagnosis. If this assertion ever fails, the report has gone
+        // back to being numbers nobody can act on, and the C2 model decision
+        // goes back to being a guess.
+        XCTAssertEqual(
+            endings.wer.value,
+            substitution.wer.value,
+            accuracy: 0.0001,
+            "the pair must be WER-matched or it proves nothing"
+        )
+        XCTAssertLessThan(endings.substitutionShare, substitution.substitutionShare)
     }
 
     /// The persistence layer that lets capture and scoring happen on different
@@ -785,18 +1116,33 @@ final class TranscriptionScoringTests: XCTestCase {
         }
 
         if !rows.isEmpty {
+            var referenceByFixture: [String: String] = [:]
+            for fixture in fixtures { referenceByFixture[fixture.name] = fixture.reference }
+
             out += "\n## Scores\n\n"
-            out += "| Model | Lang | Fixture | WER | CER | Punct | Boundaries | No-space | Latin terms | Time | RTF |\n"
-            out += "|---|---|---|---|---|---|---|---|---|---|---|\n"
+            out += "| Model | Lang | Fixture | WER | CER | Errors are | Punct | Boundaries | No-space | Latin terms | Time | RTF |\n"
+            out += "|---|---|---|---|---|---|---|---|---|---|---|---|\n"
             for row in rows {
-                out += "| \(row.model) | \(row.language) | \(row.fixture) | \(row.wer.percent) | \(row.cer.percent) | \(row.punctuation.percent) | \(row.boundaries.hypothesis)/\(row.boundaries.reference) \(row.boundaries.verdict) | \(row.missingSpaces) | \(row.latinTerms.summary) | \(String(format: "%.2fs", row.seconds)) | \(String(format: "%.2fx", row.realtimeFactor)) |\n"
+                let errorKind = referenceByFixture[row.fixture].map {
+                    TextScoring.inflectionDiagnostic(hypothesis: row.hypothesis, reference: $0).summary
+                } ?? "n/a"
+                out += "| \(row.model) | \(row.language) | \(row.fixture) | \(row.wer.percent) | \(row.cer.percent) | \(errorKind) | \(row.punctuation.percent) | \(row.boundaries.hypothesis)/\(row.boundaries.reference) \(row.boundaries.verdict) | \(row.missingSpaces) | \(row.latinTerms.summary) | \(String(format: "%.2fs", row.seconds)) | \(String(format: "%.2fx", row.realtimeFactor)) |\n"
             }
 
             out += "\n### How to read this\n\n"
-            out += "- **WER minus CER gap.** A large gap means the model hears the right words\n"
-            out += "  with wrong endings, which is the Russian inflection problem and is fixed\n"
-            out += "  by a better model. A small gap means it mishears words outright, which a\n"
-            out += "  dictionary layer fixes far more cheaply.\n"
+            out += "- **Errors are** is the WER-to-CER reading, and it is the column to read\n"
+            out += "  first. It is a share from 0.00 to 1.00: **0 means every error is a wrong\n"
+            out += "  ENDING on a correctly heard word, 1 means every error is a completely\n"
+            out += "  different word.** Endings are the Russian inflection problem, they need a\n"
+            out += "  better acoustic model, and neither the dictionary nor the cleanup prompt\n"
+            out += "  can touch them. Wrong words are much cheaper to attack.\n"
+            out += "- **Do not read the raw WER minus CER gap.** This report used to tell you\n"
+            out += "  to, and it was wrong. CER is smaller than WER for a reason that has\n"
+            out += "  nothing to do with quality: a Russian word is five or six characters, so\n"
+            out += "  every error is a smaller share of characters than of words. Every model\n"
+            out += "  shows a large gap, always, including one whose every error is a different\n"
+            out += "  word. The share above normalises that away by computing both endpoints\n"
+            out += "  from the reference itself.\n"
             out += "- **Boundaries** is hypothesis over reference. \"merged N\" is the predicted\n"
             out += "  defect, already confirmed three independent ways.\n"
             out += "- **Latin terms** is the code-switching test. Lost terms mean the model\n"

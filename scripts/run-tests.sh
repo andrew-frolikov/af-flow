@@ -38,7 +38,27 @@ TEAM="Q4HNX2JLKT"
 DERIVED="${AF_FLOW_DERIVED:-build/run-derived}"
 BACKUP="$(mktemp -t afflow-defaults).plist"
 
-if pgrep -x GhostPepper >/dev/null 2>&1; then
+# AF_FLOW_BUILD_ONLY compiles both targets and stops, without executing anything.
+#
+# The third capability added to this wrapper rather than worked around, and the
+# reason is the same every time. Typechecking a Swift change is the single most
+# common thing anyone needs from this script, and it was the one thing the
+# script could not do: every path ran the suite, running the suite launches a
+# second copy of the app as the test host, and that requires Andrew to quit the
+# dictation tool he uses all day. So "I only want to know if it compiles"
+# carried the full cost of interrupting his work, and the cheap way to dodge
+# that cost was a bare `xcodebuild` call, which is exactly what corrupted his
+# settings three times on 2026-07-21.
+#
+# Skipping the refuse-while-running guard is sound HERE and nowhere else:
+# `build-for-testing` compiles and signs, and never executes the host app. No
+# second instance, no microphone contention, no writes to the defaults domain.
+# The snapshot and restore below still run regardless, because a guard that is
+# conditional is a guard that will eventually be wrong.
+if [ "${AF_FLOW_BUILD_ONLY:-}" = "1" ]; then
+    echo "BUILD-ONLY MODE: compiling both targets, running nothing."
+    echo "The app may stay open; nothing here launches a test host."
+elif pgrep -x GhostPepper >/dev/null 2>&1; then
     cat >&2 <<'RUNNING'
 REFUSING TO RUN: AF Flow is currently open.
 
@@ -47,6 +67,9 @@ now would leave two instances competing for the microphone, and Andrew uses
 this app for all of his dictation.
 
 Quit AF Flow, run this again, and relaunch it afterwards.
+
+If you only want to know whether the code COMPILES, you do not need to quit
+anything: re-run with AF_FLOW_BUILD_ONLY=1.
 RUNNING
     exit 2
 fi
@@ -137,6 +160,18 @@ BUILD_STATUS=${PIPESTATUS[0]}
 if [ "$BUILD_STATUS" -ne 0 ]; then
     echo "BUILD FAILED (exit $BUILD_STATUS). Not running tests." >&2
     exit "$BUILD_STATUS"
+fi
+
+# Reported explicitly rather than by silence. A build-only run that printed
+# nothing would be indistinguishable from a suite that passed, which is the
+# failure shape this script has hit three times: a filter tuned to success
+# turning a skip into no output at all.
+if [ "${AF_FLOW_BUILD_ONLY:-}" = "1" ]; then
+    echo
+    echo "BUILD-ONLY: both targets compiled. NO TESTS WERE RUN."
+    echo "This is not a pass. Run without AF_FLOW_BUILD_ONLY, with AF Flow quit,"
+    echo "to actually execute the suite."
+    exit 0
 fi
 
 # AF_FLOW_REPEAT runs the suite N times inside ONE protected invocation.
