@@ -259,7 +259,7 @@ restore() {
         value=$(defaults read "$DOMAIN" "$key" 2>/dev/null || echo "(absent)")
         echo "  $key = $value"
     done
-    unregister_test_hosts
+    remove_test_hosts
 }
 
 # `xcodebuild test` launches its own copy of GhostPepper.app as the test host,
@@ -279,17 +279,37 @@ restore() {
 # failed or was interrupted. Per-run tidiness is never enough, because the
 # failing run is exactly the one that would skip it.
 #
+# Unregistering alone is NOT enough, and believing it was is the mistake this
+# comment exists to stop the next person repeating. `lsregister -u` was tried
+# first on 2026-07-26 and both copies re-registered themselves within minutes
+# with no suite run in between: LaunchServices rescans app bundles that exist
+# on disk and re-adopts them. A bundle that exists is a bundle that claims the
+# identity. So the test host is DELETED, not merely deregistered.
+#
+# The cost is one relink on the next run, and it is worth it. The alternative
+# is his dictation silently breaking again on a schedule nobody controls.
+#
 # Anchored to what this script OWNS rather than to a list of paths someone
-# imagined: every app bundle under the repo's own build directory was put
-# there by a build of ours, so all of them get unregistered. The app Andrew
-# actually launches lives in DerivedData and is never touched.
-unregister_test_hosts() {
-    local lsregister claimants left
+# imagined, and confirmed rather than assumed before anything is removed: the
+# search is confined to the repo's own build directory, and each candidate
+# must actually BE our app bundle, carrying `com.frolikov.afflow` in its
+# Info.plist and an executable at the expected path. Anything else under
+# build/ is reported and left alone. The app Andrew launches lives in
+# DerivedData, outside this directory, and is never a candidate.
+remove_test_hosts() {
+    local lsregister claimants left id
     lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-    [ -x "$lsregister" ] || { echo "  lsregister missing, cannot unregister test hosts" >&2; return; }
+    [ -x "$lsregister" ] || { echo "  lsregister missing, cannot clean up test hosts" >&2; return; }
 
     while IFS= read -r bundle; do
-        "$lsregister" -u "$bundle" 2>/dev/null && echo "  unregistered test host $bundle"
+        id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$bundle/Contents/Info.plist" 2>/dev/null)
+        if [ "$id" != "$DOMAIN" ] || [ ! -x "$bundle/Contents/MacOS/GhostPepper" ]; then
+            echo "  left alone, not our app bundle: $bundle" >&2
+            continue
+        fi
+        "$lsregister" -u "$bundle" 2>/dev/null
+        rm -rf "$bundle"
+        echo "  removed test host $bundle"
     done < <(find "$PWD/build" -maxdepth 6 -name "GhostPepper.app" -type d 2>/dev/null)
 
     # Report the surviving claimants rather than assuming the unregister took.
