@@ -469,13 +469,23 @@ class AppState: ObservableObject {
         } else {
             self.playSounds = cleanupSettingsDefaults.bool(forKey: Self.playSoundsDefaultsKey)
         }
-        // One-time migration: enable meeting transcription for existing users on update
-        if UserDefaults.standard.object(forKey: "meetingTranscriptEnabled") == nil,
-           UserDefaults.standard.object(forKey: "selectedCleanupModelKind") != nil {
-            // User has used the app before (has a cleanup model selected) but never saw
-            // the meeting transcript setting → this is an update, enable it
-            meetingTranscriptEnabled = true
-        }
+        // REMOVED 2026-07-25: a one-time migration that force-enabled meeting
+        // transcription for "existing users on update".
+        //
+        // It fired for Andrew, because its test is "has a cleanup model been
+        // selected", and his is `qwen35_0_8b_q4_k_m`. That is why his menu bar
+        // offered "Stop Meeting" and "IDE...", and it is a large part of what
+        // he meant by "the design there sucks and it's not usable". It also
+        // armed meeting auto-detect, which can raise a transcription window on
+        // its own: an app that opens windows during a screen-share.
+        //
+        // AF Flow does not transcribe meetings. It is a dictation tool. The
+        // whole surface is scheduled for deletion in the C6 removal
+        // immediately after the demo; killing the migration is what takes it
+        // out of sight tonight without touching 9850 lines the night before.
+        //
+        // Inherited behaviour, not a decision anyone made for this product,
+        // which is why it goes without needing a waiver.
         Self.migrateEnglishOnlySpeechModel()
         self.transcriber = SpeechTranscriber(modelManager: self.modelManager)
         self.textCleaner = TextCleaner(

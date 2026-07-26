@@ -111,6 +111,25 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// The sections AF Flow actually has, as opposed to the ones the fork had.
+    ///
+    /// Three of the seven belong to Ghost Pepper, the meeting-transcription and
+    /// wiki tool this was forked from, and none of them do anything AF Flow
+    /// needs: a paste-a-prompt model playground, reusable speaker voice prints,
+    /// and meeting auto-detect. Andrew opened his dictation app and found them,
+    /// which is most of what "the design sucks and it's not usable" meant.
+    ///
+    /// **Hidden here rather than deleted, and that is a deadline decision
+    /// rather than the right one.** Deleting is correct and is scheduled as the
+    /// first work after the demo, when the whole fork surface goes at once.
+    /// Removing a 4032-line file's sections the night before a screen-share
+    /// risks an app that does not build at 13:00 tomorrow, and this project's
+    /// own rule is to prefer the change whose outcome the compiler guarantees
+    /// over the clever one. Nobody opens what has no entry point.
+    static var visible: [SettingsSection] {
+        [.general, .cleanup, .models, .transcriptionLab]
+    }
+
     var title: String {
         switch self {
         case .general: "General"
@@ -317,7 +336,7 @@ struct SettingsView: View {
         HSplitView {
             ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(SettingsSection.allCases) { section in
+                ForEach(SettingsSection.visible) { section in
                     Button {
                         selectedSection = section
                     } label: {

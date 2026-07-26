@@ -170,6 +170,22 @@ enum SpeechModelCatalog {
         availableModels.filter { $0.backend == .whisperKit }
     }
 
+    /// What the home screen shows as the model in use.
+    ///
+    /// Resolved through the same `speechModel` key `@AppStorage` reads, with
+    /// the same absent-means-default rule, so the front door cannot claim one
+    /// model while the engine runs another. Falls back to the variant name
+    /// rather than the picker title, because "Recommended" tells a viewer
+    /// nothing and "large-v3-turbo" tells them what it is.
+    static var currentDisplayName: String {
+        let stored = UserDefaults.standard.string(forKey: "speechModel")
+        let name = stored ?? defaultModelID
+        guard let descriptor = model(named: name) ?? model(named: defaultModelID) else {
+            return "unknown model"
+        }
+        return descriptor.variantName
+    }
+
     static func model(named name: String) -> SpeechModelDescriptor? {
         availableModels.first { $0.name == name }
     }
