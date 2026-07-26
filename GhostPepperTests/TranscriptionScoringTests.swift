@@ -1019,6 +1019,74 @@ final class TranscriptionScoringTests: XCTestCase {
         XCTAssertEqual(merged.verdict, "merged 2")
     }
 
+    /// **The class, not the instance.** Every metric in this pipeline divides
+    /// by something derived from the reference, and every one of them returned
+    /// a value that reads as GOOD when the reference had nothing to divide by.
+    ///
+    /// Four separate sites, found across two Codex rounds and one audit, each
+    /// fixed on its own before anyone noticed they were one bug: `Rate` printed
+    /// 0.0 percent, `BoundaryCount` printed "matches", `TermPreservation`
+    /// printed 0/0, and `realtimeFactor` printed 0.00x, which is the fastest
+    /// value there is. Fixing them one at a time is what let the fourth ship.
+    ///
+    /// This test takes a fully degenerate row, empty reference and zero
+    /// duration, and asserts that NOTHING in the rendered output reads as a
+    /// result. It is deliberately written against the rendered strings rather
+    /// than the properties, because the rendered string is what Andrew decides
+    /// on, and it will fail on a fifth site that nobody thought to add a
+    /// property for.
+    func testNoMetricReportsAGoodValueForAnUnmeasurableInput() {
+        let empty = ""
+        let hypothesis = "\u{043F}\u{0440}\u{0438}\u{0432}\u{0435}\u{0442} \u{043C}\u{0438}\u{0440} prompt"
+
+        let row = ScoreRow(
+            model: "M", modelID: "m", language: "ru", fixture: "clip",
+            hypothesis: hypothesis,
+            wer: TextScoring.wordErrorRate(hypothesis: hypothesis, reference: empty),
+            cer: TextScoring.characterErrorRate(hypothesis: hypothesis, reference: empty),
+            punctuation: TextScoring.punctuationErrorRate(hypothesis: hypothesis, reference: empty),
+            boundaries: TextScoring.sentenceBoundaries(hypothesis: hypothesis, reference: empty),
+            missingSpaces: TextScoring.missingSpaceAfterPeriod(in: hypothesis),
+            latinTerms: TextScoring.latinTermsPreserved(hypothesis: hypothesis, reference: empty),
+            seconds: 1.5,
+            audioDuration: 0
+        )
+
+        // Each rendered cell, named, so a failure says WHICH one regressed.
+        let cells: [(String, String)] = [
+            ("WER", row.wer.percent),
+            ("CER", row.cer.percent),
+            ("punctuation", row.punctuation.percent),
+            ("boundaries", row.boundaries.verdict),
+            ("latin terms", row.latinTerms.summary),
+            ("realtime factor", row.realtimeFactorSummary),
+            ("errors are", TextScoring.inflectionDiagnostic(hypothesis: hypothesis, reference: empty).summary),
+        ]
+
+        for (name, rendered) in cells {
+            XCTAssertTrue(
+                rendered == "n/a" || rendered.hasPrefix("n/a") || rendered == "not measurable",
+                """
+                \(name) rendered "\(rendered)" for a reference with nothing to measure.
+
+                Every metric here divides by something derived from the reference.
+                When the reference is empty the answer is "not measurable", never a
+                number, and never a word like "matches" that reads as success. This
+                has now been fixed four separate times as four separate bugs; if you
+                are reading this because it failed, you have found the fifth.
+                """
+            )
+        }
+
+        // And the inverse, so the fix did not simply blank the report: a real
+        // reference must still produce real numbers.
+        let real = "\u{043F}\u{0440}\u{0438}\u{0432}\u{0435}\u{0442}, \u{043C}\u{0438}\u{0440}. prompt"
+        XCTAssertTrue(TextScoring.wordErrorRate(hypothesis: hypothesis, reference: real).percent.hasSuffix("%"))
+        XCTAssertTrue(TextScoring.punctuationErrorRate(hypothesis: hypothesis, reference: real).percent.hasSuffix("%"))
+        XCTAssertEqual(TextScoring.latinTermsPreserved(hypothesis: hypothesis, reference: real).summary, "1/1")
+        XCTAssertNotEqual(TextScoring.sentenceBoundaries(hypothesis: hypothesis, reference: real).verdict, "n/a")
+    }
+
     /// The coverage arithmetic, which is now the single definition of "this
     /// clip is fully captured" that both the capture harness and the scoring
     /// assertion read.
@@ -1341,7 +1409,22 @@ final class TranscriptionScoringTests: XCTestCase {
         let seconds: Double
         let audioDuration: Double
 
-        var realtimeFactor: Double { audioDuration == 0 ? 0 : seconds / audioDuration }
+        /// The same zero-denominator shape a fourth time, now in the speed
+        /// column: a zero or missing `audioDuration` rendered `0.00x`, which is
+        /// the FASTEST possible value and therefore the most flattering one a
+        /// model could be given for a measurement that never happened.
+        ///
+        /// **Stop patching instances.** This is the fourth site in two files:
+        /// `Rate`, `BoundaryCount`, `TermPreservation` and here. Every one
+        /// divides by something derived from the input and every one returned a
+        /// value that reads as good when the input was absent. They are covered
+        /// together by `testNoMetricReportsAGoodValueForAnUnmeasurableInput`,
+        /// which is written to fail if a FIFTH is ever added.
+        var isSpeedMeasurable: Bool { audioDuration > 0 }
+        var realtimeFactor: Double { audioDuration <= 0 ? 0 : seconds / audioDuration }
+        var realtimeFactorSummary: String {
+            isSpeedMeasurable ? String(format: "%.2fx", realtimeFactor) : "n/a"
+        }
     }
 
     private func loadFixtures() throws -> [Fixture] {
@@ -1434,7 +1517,7 @@ final class TranscriptionScoringTests: XCTestCase {
                 let errorKind = referenceByFixture[row.fixture].map {
                     TextScoring.inflectionDiagnostic(hypothesis: row.hypothesis, reference: $0).summary
                 } ?? "n/a"
-                out += "| \(row.model) | \(row.language) | \(row.fixture) | \(row.wer.percent) | \(row.cer.percent) | \(errorKind) | \(row.punctuation.percent) | \(row.boundaries.hypothesis)/\(row.boundaries.reference) \(row.boundaries.verdict) | \(row.missingSpaces) | \(row.latinTerms.summary) | \(String(format: "%.2fs", row.seconds)) | \(String(format: "%.2fx", row.realtimeFactor)) |\n"
+                out += "| \(row.model) | \(row.language) | \(row.fixture) | \(row.wer.percent) | \(row.cer.percent) | \(errorKind) | \(row.punctuation.percent) | \(row.boundaries.hypothesis)/\(row.boundaries.reference) \(row.boundaries.verdict) | \(row.missingSpaces) | \(row.latinTerms.summary) | \(String(format: "%.2fs", row.seconds)) | \(row.realtimeFactorSummary) |\n"
             }
 
             out += "\n### How to read this\n\n"

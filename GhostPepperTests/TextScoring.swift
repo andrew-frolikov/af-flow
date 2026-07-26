@@ -423,8 +423,17 @@ enum TextScoring {
         let missing: [String]
 
         var preserved: Int { expected.count - missing.count }
+
+        /// The fourth site in this file with the same shape. See the note on
+        /// `Rate.isMeasurable`: a reference containing no Latin terms at all
+        /// rendered `0/0`, which reads as "kept everything" when nothing was
+        /// asked for. Most of Andrew's Russian clips have few borrowed terms
+        /// and some have none, so this is the common case rather than the edge.
+        var isMeasurable: Bool { !expected.isEmpty }
+
         var summary: String {
-            missing.isEmpty
+            guard isMeasurable else { return "n/a" }
+            return missing.isEmpty
                 ? "\(preserved)/\(expected.count)"
                 : "\(preserved)/\(expected.count), lost: \(missing.joined(separator: ", "))"
         }

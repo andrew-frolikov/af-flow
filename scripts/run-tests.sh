@@ -115,9 +115,9 @@ validate_output_directory() {
     # read were formats this guard could not see.
     local found
     found="$(find "$out_real" \
-        \( -name '*.reference.txt' -o -name '*.worksheet.md' \
-           -o -name '*.wav' -o -name '*.m4a' -o -name '*.mp3' \
-           -o -name '*.aiff' -o -name '*.caf' \) 2>/dev/null | head -5)"
+        \( -iname '*.reference.txt' -o -iname '*.worksheet.md' \
+           -o -iname '*.wav' -o -iname '*.m4a' -o -iname '*.mp3' \
+           -o -iname '*.aiff' -o -iname '*.caf' \) 2>/dev/null | head -5)"
     if [ -n "$found" ]; then
         echo "REFUSING TO RUN: AF_FLOW_OUTPUT holds fixture input, not just results." >&2
         echo "  $out_real" >&2
