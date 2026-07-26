@@ -355,6 +355,23 @@ final class TranscriptionScoringTests: XCTestCase {
         let reportURL = outputDirectory.appendingPathComponent("scores.md")
         try? report.write(to: reportURL, atomically: true, encoding: .utf8)
 
+        // The verbatim transcripts, written beside the scores rather than
+        // inside them. See the note in `render()`: the scores file is read
+        // whole by anyone who wants a number, and his speech should not be
+        // carried along with it by default.
+        if !rows.isEmpty {
+            var transcripts = "# C2 transcripts\n\n"
+            transcripts += "Verbatim engine output on Andrew's own recordings. This is raw personal\n"
+            transcripts += "speech: it stays in this folder, which is outside every git repository\n"
+            transcripts += "and outside the vault, per fixtures/README.md. Read it when comparing\n"
+            transcripts += "what the engines heard; do not paste it anywhere.\n\n"
+            for row in rows {
+                transcripts += "**\(row.model) [\(row.language)] on \(row.fixture)**\n\n> \(row.hypothesis)\n\n"
+            }
+            let transcriptsURL = outputDirectory.appendingPathComponent("transcripts.md")
+            try? transcripts.write(to: transcriptsURL, atomically: true, encoding: .utf8)
+        }
+
         // No fixtures at all is a legitimate skip: Andrew has not written the
         // reference text yet. Fixtures WITH no scores is a failure.
         try XCTSkipIf(fixtures.isEmpty, "cannot verify: no fixtures with a corrected reference yet.")
@@ -1542,10 +1559,28 @@ final class TranscriptionScoringTests: XCTestCase {
             out += "- **RTF** is transcription time over audio duration, and it feeds the empty\n"
             out += "  latency actuals table. Under 1.0 is faster than real time.\n"
 
+            // **The transcripts do NOT go in this file.** They used to, and
+            // that put roughly forty verbatim renderings of Andrew's private
+            // speech into the one artefact a future session reads wholesale to
+            // find the numbers. `fixtures/README.md` is explicit that derived
+            // lessons may travel and raw rows never do, and this was the single
+            // largest hole in that rule: not a leak out of the machine, but a
+            // file designed to be read into a context window in full, every
+            // time anyone wants a WER figure.
+            //
+            // Found by reading the report during a dry run rather than by
+            // review, which is its own small lesson: the privacy shape of an
+            // artefact is visible when you look at the artefact, not when you
+            // look at the code that writes it.
+            //
+            // They still get written, because comparing what the engines
+            // actually heard is the whole point of a correction pass. They go
+            // beside it, so reading the scores is not the same act as reading
+            // his speech.
             out += "\n## Transcripts\n\n"
-            for row in rows {
-                out += "**\(row.model) [\(row.language)] on \(row.fixture)**\n\n> \(row.hypothesis)\n\n"
-            }
+            out += "Not here, deliberately. See `transcripts.md` in the same folder.\n"
+            out += "This file is read whole by anyone wanting the numbers, and his\n"
+            out += "verbatim speech does not belong in something read that casually.\n"
         }
 
         if !skipped.isEmpty {

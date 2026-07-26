@@ -430,12 +430,12 @@ STATUS=$overall
 # claims and this project has confused them before.
 if [ -n "${AF_FLOW_OUTPUT:-}" ] && [ -n "${AF_FLOW_FIXTURES:-}" ] && [ "$AF_FLOW_OUTPUT" != "$AF_FLOW_FIXTURES" ]; then
     echo
-    produced=$(find "$AF_FLOW_OUTPUT" -type f \( -name "*.hypotheses.json" -o -name "*.draft-reference.txt" -o -name "scores.md" \) 2>/dev/null | wc -l | tr -d ' ')
+    produced=$(find "$AF_FLOW_OUTPUT" -type f \( -name "*.hypotheses.json" -o -name "*.draft-reference.txt" -o -name "scores.md" -o -name "transcripts.md" \) 2>/dev/null | wc -l | tr -d ' ')
     if [ "$produced" -gt 0 ]; then
         copy_failures=0
         while IFS= read -r artefact; do
             cp "$artefact" "$AF_FLOW_FIXTURES/" || copy_failures=$((copy_failures + 1))
-        done < <(find "$AF_FLOW_OUTPUT" -type f \( -name "*.hypotheses.json" -o -name "*.draft-reference.txt" -o -name "scores.md" \))
+        done < <(find "$AF_FLOW_OUTPUT" -type f \( -name "*.hypotheses.json" -o -name "*.draft-reference.txt" -o -name "scores.md" -o -name "transcripts.md" \))
         if [ "$copy_failures" -gt 0 ]; then
             echo "$copy_failures result file(s) FAILED to copy out of the container" >&2
             STATUS=6
