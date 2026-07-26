@@ -36,6 +36,35 @@ cd "$(dirname "$0")/.." || exit 1
 DOMAIN="com.frolikov.afflow"
 TEAM="Q4HNX2JLKT"
 DERIVED="${AF_FLOW_DERIVED:-build/run-derived}"
+
+# The derived-data root must stay inside the repo, and this is a safety
+# constraint rather than a tidiness one. Codex round 1 of 2026-07-26, finding 2:
+# `AF_FLOW_DERIVED` could put the test-host app bundle anywhere on the disk
+# while the cleanup that deletes it only ever looked under the repo. The result
+# would be a second bundle claiming com.frolikov.afflow that nothing removes,
+# which is exactly the defect the cleanup exists to prevent, reintroduced by the
+# knob. Refused outright rather than papered over, the same way a relative
+# AF_FLOW_OUTPUT is refused: there is no legitimate reason to build this
+# project's test host outside its own build directory.
+CLEANUP_FAILED=0
+REPO_ROOT="$(pwd -P)"
+mkdir -p "$DERIVED" 2>/dev/null
+DERIVED_REAL="$( ( cd -P "$DERIVED" 2>/dev/null && pwd -P ) || printf '%s' "$DERIVED" )"
+case "$DERIVED_REAL" in
+    "$REPO_ROOT"/*) : ;;
+    *)
+        echo "REFUSING TO RUN: AF_FLOW_DERIVED resolves outside the repository." >&2
+        echo "  given:    $DERIVED" >&2
+        echo "  resolves: $DERIVED_REAL" >&2
+        echo "  repo:     $REPO_ROOT" >&2
+        echo >&2
+        echo "The test host is a second app bundle carrying $DOMAIN. Cleanup can" >&2
+        echo "only delete it if it is somewhere this script owns, and a bundle" >&2
+        echo "that survives will compete with Andrew's app for its Input" >&2
+        echo "Monitoring permission and silently break his dictation." >&2
+        exit 8
+        ;;
+esac
 BACKUP="$(mktemp -t afflow-defaults).plist"
 
 # The marker that makes a directory deletable by this script. Written on every
@@ -260,6 +289,16 @@ restore() {
         echo "  $key = $value"
     done
     remove_test_hosts
+    # A cleanup failure fails the run. Codex round 1 of 2026-07-26, finding 3
+    # and finding 4: a warning nobody has to act on is how a leftover bundle
+    # survives to break his dictation days later. Exiting from inside an EXIT
+    # trap sets the status without re-entering the trap.
+    if [ "${CLEANUP_FAILED:-0}" -ne 0 ]; then
+        echo
+        echo "EXITING NON-ZERO: the suite ran, but cleanup left the system in a" >&2
+        echo "state that can break Andrew's dictation. Read the lines above." >&2
+        exit 9
+    fi
 }
 
 # `xcodebuild test` launches its own copy of GhostPepper.app as the test host,
@@ -297,10 +336,20 @@ restore() {
 # build/ is reported and left alone. The app Andrew launches lives in
 # DerivedData, outside this directory, and is never a candidate.
 remove_test_hosts() {
-    local lsregister claimants left id
+    local lsregister id left claimant
     lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-    [ -x "$lsregister" ] || { echo "  lsregister missing, cannot clean up test hosts" >&2; return; }
+    if [ ! -x "$lsregister" ]; then
+        echo "  CLEANUP FAILED: lsregister missing, cannot audit bundle claimants." >&2
+        CLEANUP_FAILED=1
+        return
+    fi
 
+    # Scoped to THIS invocation's derived-data root, not to the whole build
+    # directory. Codex round 1 of 2026-07-26, finding 1: scanning `build/**`
+    # deleted any bundle carrying the live identity, including ones this run
+    # never created. `$DERIVED_REAL` is where xcodebuild was told to put the
+    # test host minutes earlier and is constrained to the repo at the top of
+    # this script, so it is the one path this invocation can prove it owns.
     while IFS= read -r bundle; do
         id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$bundle/Contents/Info.plist" 2>/dev/null)
         if [ "$id" != "$DOMAIN" ] || [ ! -x "$bundle/Contents/MacOS/GhostPepper" ]; then
@@ -309,19 +358,38 @@ remove_test_hosts() {
         fi
         "$lsregister" -u "$bundle" 2>/dev/null
         rm -rf "$bundle"
-        echo "  removed test host $bundle"
-    done < <(find "$PWD/build" -maxdepth 6 -name "GhostPepper.app" -type d 2>/dev/null)
+        # Verify the removal instead of announcing it. Codex round 1 finding 3:
+        # both commands could fail and the script still printed "removed", which
+        # is the same false-pass shape as a gate that cannot fail.
+        if [ -e "$bundle" ]; then
+            echo "  CLEANUP FAILED: could not remove test host $bundle" >&2
+            CLEANUP_FAILED=1
+        else
+            echo "  removed test host $bundle"
+        fi
+    done < <(find "$DERIVED_REAL" -maxdepth 4 -name "GhostPepper.app" -type d 2>/dev/null)
 
-    # Report the surviving claimants rather than assuming the unregister took.
-    # "I ran the command" and "the identity is unambiguous again" are different
-    # claims, and this project has confused those before.
-    left=$("$lsregister" -dump 2>/dev/null | grep "path:" | grep -c "GhostPepper.app" || true)
-    claimants=$("$lsregister" -dump 2>/dev/null | grep "path:" | grep "GhostPepper.app" | sed 's/^[[:space:]]*path:[[:space:]]*//' | sort -u)
-    if [ "$left" -le 1 ]; then
-        echo "  bundle id claimants: $left"
+    # Audit the survivors by IDENTITY, not by filename. Codex round 1 finding 4:
+    # counting paths ending in GhostPepper.app answers a different question from
+    # "how many bundles claim com.frolikov.afflow", and the second is the one
+    # that decides whether his hotkey permission lands on the right app.
+    left=0
+    while IFS= read -r claimant; do
+        [ -z "$claimant" ] && continue
+        id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$claimant/Contents/Info.plist" 2>/dev/null)
+        if [ "$id" = "$DOMAIN" ]; then
+            left=$((left + 1))
+            echo "  claimant: $claimant"
+        fi
+    done < <("$lsregister" -dump 2>/dev/null | sed -n 's/^[[:space:]]*path:[[:space:]]*\(.*\.app\)\( ([^)]*)\)\{0,1\}$/\1/p' | sort -u)
+
+    if [ "$left" -gt 1 ]; then
+        echo "  CLEANUP FAILED: $left bundles claim $DOMAIN. His Input Monitoring" >&2
+        echo "  permission can attach to the wrong one and his dictation will stop" >&2
+        echo "  working with no error on screen. Delete the extras above." >&2
+        CLEANUP_FAILED=1
     else
-        echo "  WARNING: $left bundles still claim $DOMAIN. His hotkey permission may attach to the wrong one:" >&2
-        echo "$claimants" >&2
+        echo "  bundles claiming $DOMAIN: $left"
     fi
 }
 trap restore EXIT INT TERM
