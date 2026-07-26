@@ -38,6 +38,10 @@ TEAM="Q4HNX2JLKT"
 DERIVED="${AF_FLOW_DERIVED:-build/run-derived}"
 BACKUP="$(mktemp -t afflow-defaults).plist"
 
+# The marker that makes a directory deletable by this script. Written on every
+# output directory this script creates, and required before any `rm -rf`.
+OUTPUT_SENTINEL=".af-flow-scratch"
+
 # Validate a caller-supplied AF_FLOW_OUTPUT before anything else happens.
 #
 # **Placed first on purpose, and the reason is a testing one as much as a
@@ -109,22 +113,32 @@ validate_output_directory() {
         fi
     fi
 
-    # Scan RECURSIVELY and for every extension the loader accepts. The first
-    # version globbed the top level for `*.wav` only, while AudioFixtureLoader
-    # takes wav, m4a, mp3, aiff and caf, so four of the five formats it can
-    # read were formats this guard could not see.
-    local found
-    found="$(find "$out_real" \
-        \( -iname '*.reference.txt' -o -iname '*.worksheet.md' \
-           -o -iname '*.wav' -o -iname '*.m4a' -o -iname '*.mp3' \
-           -o -iname '*.aiff' -o -iname '*.caf' \) 2>/dev/null | head -5)"
-    if [ -n "$found" ]; then
-        echo "REFUSING TO RUN: AF_FLOW_OUTPUT holds fixture input, not just results." >&2
+    # **ONLY DELETE WHAT THIS SCRIPT CREATED AND MARKED.**
+    #
+    # Everything before this line was a BLOCKLIST: it enumerated what looks
+    # precious, reference text and worksheets and five audio extensions, and
+    # deleted anything that did not match. That design has now failed here
+    # three times in three review rounds, each time on a spelling nobody had
+    # imagined: a trailing slash, then a symlink, then a capital `.M4A`. And it
+    # would still have wiped a directory of Andrew's notes without hesitating,
+    # because notes are not on the list.
+    #
+    # LOOP.md already says why: a check like this only catches what its author
+    # already imagined, and the author is the worst-placed person to find the
+    # gap. The fix is not a fourth entry on the list. It is to stop asking
+    # "does this look precious" and start asking "did I make this", which is a
+    # question with a ground truth rather than a guess.
+    #
+    # So the directory must either not exist yet, or carry a sentinel file this
+    # script wrote itself. Nothing else is ever deleted, whatever it contains.
+    if [ -e "$out_real" ] && [ ! -f "$out_real/$OUTPUT_SENTINEL" ]; then
+        echo "REFUSING TO RUN: AF_FLOW_OUTPUT exists and this script did not create it." >&2
         echo "  $out_real" >&2
-        echo "Wiping it would destroy audio, worksheets, or corrected reference text." >&2
-        echo "Found, for example:" >&2
-        printf '  %s\n' $found >&2
-        echo "Point AF_FLOW_OUTPUT at a scratch directory, or leave it unset." >&2
+        echo "This script wipes the output directory before every run, and it only" >&2
+        echo "ever wipes a directory carrying its own marker file:" >&2
+        echo "  $OUTPUT_SENTINEL" >&2
+        echo "Point AF_FLOW_OUTPUT at a new or previously-used scratch path, or leave" >&2
+        echo "it unset and the script will choose one inside the app container." >&2
         exit 7
     fi
 }
@@ -284,10 +298,21 @@ if [ -n "${AF_FLOW_OUTPUT:-}" ]; then
     # one input in this project with no second copy anywhere.
     # The decision was made by validate_output_directory() at the top of this
     # script, before any other branch, so it is enforced on every path and can
-    # be canaried without quitting the app. Only the deletion happens here.
+    # be canaried without quitting the app. Re-checked here rather than trusted,
+    # because between the two points the script has run a build, and a guard
+    # that holds only at the moment it was evaluated is a guard with a window.
     validate_output_directory
     rm -rf "$AF_FLOW_OUTPUT"
     mkdir -p "$AF_FLOW_OUTPUT"
+    # Written IMMEDIATELY after creation, so the directory is deletable by the
+    # next run. A scratch path that loses its marker becomes undeletable rather
+    # than dangerous, which is the correct direction for this to fail in.
+    cat > "$AF_FLOW_OUTPUT/$OUTPUT_SENTINEL" <<'SENTINEL'
+Created by scripts/run-tests.sh. This directory is WIPED at the start of every
+run, and this file is what marks it as safe to wipe. Do not put anything here
+you want to keep, and do not copy this file into a directory that holds
+anything you care about.
+SENTINEL
 fi
 
 RUNNER_ENV=()

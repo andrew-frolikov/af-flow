@@ -265,12 +265,7 @@ final class TranscriptionScoringTests: XCTestCase {
             }
         }
 
-        try finish(
-            rows: rows,
-            skipped: skipped,
-            fixtures: fixtures,
-            caveats: runCaveats(fixtures: fixtures, rows: rows)
-        )
+        try finish(rows: rows, skipped: skipped, fixtures: fixtures)
     }
 
     /// Everything that makes this run a NARROWER comparison than it appears.
@@ -343,12 +338,27 @@ final class TranscriptionScoringTests: XCTestCase {
     ///
     /// So this declares what a complete run looks like and fails when it is
     /// not, rather than reporting whatever survived.
-    private func finish(
-        rows: [ScoreRow],
-        skipped: [String],
-        fixtures: [Fixture],
-        caveats: [String] = []
-    ) throws {
+    private func finish(rows: [ScoreRow], skipped: [String], fixtures: [Fixture]) throws {
+        // **Computed HERE, not passed in, and the parameter is deliberately
+        // gone.** It was `caveats: [String] = []` with the value supplied at
+        // the call sites, and there are two call sites: the normal one passed
+        // `runCaveats(...)`, and the early return taken when every clip already
+        // has full coverage passed nothing and silently defaulted to empty.
+        //
+        // That early return is the branch Andrew's REAL scoring run takes,
+        // because coverage was completed on 2026-07-25. So the run that decides
+        // which model AF Flow ships would have produced a `scores.md` with no
+        // caveats block at all, and a report missing its warnings does not look
+        // degraded, it looks clean. The specific warning being dropped is the
+        // missing-incumbent line, which is the one that says whether the
+        // "does AF Flow beat the app we are paying for" question was answered.
+        //
+        // Two call sites coordinating on a value is the same defect as two
+        // predicates coordinating on a definition, which is what
+        // `requiredCoverage()` exists to prevent. The fix is the same shape:
+        // delete one of them. There is now nowhere to pass this from, so a
+        // third exit path cannot forget to.
+        let caveats = runCaveats(fixtures: fixtures, rows: rows)
         let report = Self.render(rows: rows, skipped: skipped, fixtures: fixtures, caveats: caveats)
         print(report)
 
@@ -441,7 +451,7 @@ final class TranscriptionScoringTests: XCTestCase {
             // have been run, but its ABSENCE must be stated rather than left
             // for the reader to notice. It is the row that answers whether
             // AF Flow beats the app it replaced.
-            if !rows.contains(where: { $0.fixture == fixture.name && $0.modelID == "wispr-qwen-http" }) {
+            if !rows.contains(where: { $0.fixture == fixture.name && $0.modelID == Self.incumbentModelID }) {
                 print("NOTE: \(fixture.name) has no incumbent row, so the beat-the-incumbent question is unanswered for it.")
             }
         }
