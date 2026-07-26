@@ -29,6 +29,17 @@ enum OverlayMessage: Equatable {
         }
     }
 
+    /// Whether the app is still working on something, as opposed to reporting a
+    /// result. Drives the pulse in `OverlayPillView`.
+    var isInProgress: Bool {
+        switch self {
+        case .recording, .modelLoading, .cleaningUp, .transcribing:
+            return true
+        case .clipboardFallback, .noSoundDetected, .learnedCorrection:
+            return false
+        }
+    }
+
     var secondaryText: String? {
         switch self {
         case .clipboardFallback:
@@ -36,7 +47,7 @@ enum OverlayMessage: Equatable {
         case .noSoundDetected:
             return "Check your mic in Settings → Recording"
         case .learnedCorrection(let replacement):
-            return "\(replacement.wrong) -> \(replacement.right)"
+            return "\(replacement.wrong) → \(replacement.right)"
         default:
             return nil
         }
@@ -160,14 +171,20 @@ struct OverlayPillView: View {
         AppTheme.resolve(selectedThemeID)
     }
 
+    /// True when the pill is wearing AF Flow's own look rather than one of the
+    /// two novelty skins inherited from the fork. Everything brand-specific
+    /// below is gated on this, so the skins keep working untouched.
+    private var isBrand: Bool { appTheme.id == .current }
+
     private var textColor: Color {
-        appTheme.usesDarkText ? .black : .white
+        if isBrand { return AFFlowPalette.overlayText }
+        return appTheme.usesDarkText ? .black : .white
     }
 
     private var pillFill: Color {
         switch appTheme.id {
         case .current:
-            return .black.opacity(0.85)
+            return AFFlowPalette.overlayFill.opacity(0.94)
         case .windows95:
             return Color(red: 0.78, green: 0.78, blue: 0.72).opacity(0.96)
         case .space:
@@ -175,18 +192,23 @@ struct OverlayPillView: View {
         }
     }
 
+    /// One tint per state, drawn from the same palette the home window uses, so
+    /// the pill that appears while he speaks looks like it came from the same
+    /// app as the window he opened.
     private var dotColor: Color {
         switch message {
         case .recording:
-            return .red
+            return isBrand ? AFFlowPalette.red : .red
         case .modelLoading:
-            return appTheme.accent
-        case .cleaningUp, .transcribing, .clipboardFallback:
-            return appTheme.id == .current ? .blue : appTheme.accent
+            return isBrand ? AFFlowPalette.gold : appTheme.accent
+        case .cleaningUp, .transcribing:
+            return isBrand ? AFFlowPalette.gold : appTheme.accent
+        case .clipboardFallback:
+            return isBrand ? AFFlowPalette.teal : appTheme.accent
         case .noSoundDetected:
-            return appTheme.accent
+            return isBrand ? AFFlowPalette.red : appTheme.accent
         case .learnedCorrection:
-            return .green
+            return isBrand ? AFFlowPalette.teal : .green
         }
     }
 
@@ -199,13 +221,22 @@ struct OverlayPillView: View {
             } else if case .learnedCorrection = message {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(isBrand ? AFFlowPalette.teal : .green)
             } else {
+                // The pulse means "this is still happening". It used to run on
+                // every message, including the ones that are already finished,
+                // so a completed paste blinked at him as if it were still
+                // working. Now only the in-progress states move.
                 Circle()
                     .fill(dotColor)
                     .frame(width: 10, height: 10)
-                    .opacity(isPulsing ? 0.4 : 1.0)
-                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isPulsing)
+                    .opacity(isPulsing && message.isInProgress ? 0.4 : 1.0)
+                    .animation(
+                        message.isInProgress
+                            ? .easeInOut(duration: 0.6).repeatForever(autoreverses: true)
+                            : .default,
+                        value: isPulsing
+                    )
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -226,7 +257,16 @@ struct OverlayPillView: View {
         .background(
             Capsule()
                 .fill(pillFill)
-                .overlay(Capsule().stroke(appTheme.accent.opacity(appTheme.id == .current ? 0 : 0.7), lineWidth: appTheme.id == .current ? 0 : 1))
+                // The brand pill gets a hairline too. Without one it is a
+                // shape-less dark blob against a dark app; with one it reads as
+                // a deliberate object, which is what it has to look like on a
+                // screen share.
+                .overlay(
+                    Capsule().stroke(
+                        isBrand ? AFFlowPalette.overlayRule.opacity(0.55) : appTheme.accent.opacity(0.7),
+                        lineWidth: 1
+                    )
+                )
         )
         .onAppear { isPulsing = true }
         .onTapGesture {

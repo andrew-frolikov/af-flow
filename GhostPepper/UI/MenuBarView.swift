@@ -7,6 +7,16 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            // First item, and it did not exist before 2026-07-26. Once the home
+            // window was closed the only way back to it was a Dock click, which
+            // is not a thing anyone thinks to try, and on a screen share it
+            // looks like the app has no window at all.
+            Button("Open AF Flow") {
+                appState.showHomeWindow()
+            }
+
+            Divider()
+
             Button("Settings...") {
                 appState.showSettings()
             }

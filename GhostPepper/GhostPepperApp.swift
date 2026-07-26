@@ -25,19 +25,23 @@ struct GhostPepperApp: App {
                 MenuBarView(appState: appState)
             }
         } label: {
+            // Every state wears Andrew's own mark. Two of them used to swap it
+            // for a stock SF symbol, an orange `ellipsis.circle` and a yellow
+            // `exclamationmark.triangle`, so the menu bar stopped showing his
+            // brand at exactly the moments he is most likely to be looking at
+            // it. The coloured variants of the mark already existed in the
+            // asset catalogue and were simply never wired up.
             Group {
                 switch appState.status {
                 case .recording:
+                    Image("MenuBarIconRed")
+                        .renderingMode(.original)
+                case .loading, .transcribing, .cleaningUp:
+                    Image("MenuBarIconOrange")
+                        .renderingMode(.original)
+                case .error:
                     Image("MenuBarIconRedDim")
                         .renderingMode(.original)
-                case .loading:
-                    Image(systemName: "ellipsis.circle")
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.orange)
-                case .error:
-                    Image(systemName: "exclamationmark.triangle")
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.yellow)
                 default:
                     Image("MenuBarIcon")
                         .renderingMode(.template)
