@@ -65,6 +65,38 @@ case "$DERIVED_REAL" in
         exit 8
         ;;
 esac
+
+# And being inside the repo is not enough to make it deletable. Codex round 2,
+# finding 4: `AF_FLOW_DERIVED` can point at an existing in-repo directory this
+# script never created, and the trap would then delete matching app bundles out
+# of it. Same answer as the output directory got in session 5, for the same
+# reason: **only delete what you created and marked.** The marker has a ground
+# truth behind it; "this looks like a build directory" is a guess.
+#
+# A directory that is empty or absent is adopted and marked. A non-empty one
+# without the marker is refused, because this script cannot show it made it.
+DERIVED_SENTINEL="$DERIVED_REAL/.af-flow-derived"
+if [ ! -e "$DERIVED_SENTINEL" ]; then
+    if [ -z "$(ls -A "$DERIVED_REAL" 2>/dev/null)" ]; then
+        cat > "$DERIVED_SENTINEL" <<'SENTINEL'
+Created by scripts/run-tests.sh. This marks the directory as a scratch
+derived-data root that the script is allowed to delete build products from,
+specifically the GhostPepper.app test host, which otherwise competes with
+Andrew's real app for its Input Monitoring permission.
+
+Delete this file and the script will refuse to clean the directory.
+SENTINEL
+    else
+        echo "REFUSING TO RUN: the derived-data root is not one this script created." >&2
+        echo "  $DERIVED_REAL" >&2
+        echo >&2
+        echo "It has contents but no $DERIVED_SENTINEL marker, so the cleanup that" >&2
+        echo "deletes the test-host app bundle cannot prove the directory is its" >&2
+        echo "own. Point AF_FLOW_DERIVED at a new or previously-used scratch path," >&2
+        echo "or leave it unset to use build/run-derived." >&2
+        exit 8
+    fi
+fi
 BACKUP="$(mktemp -t afflow-defaults).plist"
 
 # The marker that makes a directory deletable by this script. Written on every
@@ -344,6 +376,16 @@ remove_test_hosts() {
         return
     fi
 
+    # Refuse to delete anything from a derived root this script cannot prove it
+    # created. The marker is written at startup, so if it is missing by now,
+    # something is wrong enough to stop rather than to guess.
+    if [ ! -e "${DERIVED_SENTINEL:-/nonexistent}" ]; then
+        echo "  CLEANUP SKIPPED: $DERIVED_REAL carries no scratch marker, so the" >&2
+        echo "  test host was left in place. Remove it before he next dictates." >&2
+        CLEANUP_FAILED=1
+        return
+    fi
+
     # Scoped to THIS invocation's derived-data root, not to the whole build
     # directory. Codex round 1 of 2026-07-26, finding 1: scanning `build/**`
     # deleted any bundle carrying the live identity, including ones this run
@@ -356,7 +398,15 @@ remove_test_hosts() {
             echo "  left alone, not our app bundle: $bundle" >&2
             continue
         fi
-        "$lsregister" -u "$bundle" 2>/dev/null
+        # Both commands are checked. Codex round 2 finding 1: an unregister that
+        # failed while the delete succeeded printed "removed" and left a stale
+        # LaunchServices record pointing at a path that no longer exists, which
+        # the identity audit below cannot see because it reads the Info.plist of
+        # a bundle this loop just deleted.
+        if ! "$lsregister" -u "$bundle" 2>/dev/null; then
+            echo "  CLEANUP FAILED: could not deregister $bundle" >&2
+            CLEANUP_FAILED=1
+        fi
         rm -rf "$bundle"
         # Verify the removal instead of announcing it. Codex round 1 finding 3:
         # both commands could fail and the script still printed "removed", which
@@ -369,19 +419,52 @@ remove_test_hosts() {
         fi
     done < <(find "$DERIVED_REAL" -maxdepth 4 -name "GhostPepper.app" -type d 2>/dev/null)
 
+    # The dump is captured and CHECKED before it is parsed. Codex round 2
+    # finding 2: inside a process substitution a failing `lsregister -dump` is
+    # invisible, the loop reads nothing, and "no claimants found" is reported as
+    # a clean result. An audit that reports perfect when it could not run is the
+    # zero-denominator bug of session 5 wearing different clothes.
+    local dump
+    dump="$(mktemp -t afflow-lsdump)"
+    if ! "$lsregister" -dump > "$dump" 2>/dev/null || [ ! -s "$dump" ]; then
+        echo "  CLEANUP FAILED: could not read the LaunchServices database, so" >&2
+        echo "  the claimant audit did not run. Treating that as a failure rather" >&2
+        echo "  than as a clean result." >&2
+        CLEANUP_FAILED=1
+        rm -f "$dump"
+        return
+    fi
+
     # Audit the survivors by IDENTITY, not by filename. Codex round 1 finding 4:
     # counting paths ending in GhostPepper.app answers a different question from
     # "how many bundles claim com.frolikov.afflow", and the second is the one
     # that decides whether his hotkey permission lands on the right app.
+    #
+    # And WHICH one survives matters, not just how many. Codex round 2 finding
+    # 3: a lone surviving test host passes a "one claimant" test whenever his
+    # real app happens to be unregistered, and then becomes the second claimant
+    # the moment he launches it. So the rule is stated as ground truth about
+    # this repository rather than as a count: no bundle inside this repo may
+    # claim his identity, ever. The app he launches lives in DerivedData and
+    # cannot trip it.
     left=0
     while IFS= read -r claimant; do
         [ -z "$claimant" ] && continue
         id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$claimant/Contents/Info.plist" 2>/dev/null)
-        if [ "$id" = "$DOMAIN" ]; then
-            left=$((left + 1))
-            echo "  claimant: $claimant"
-        fi
-    done < <("$lsregister" -dump 2>/dev/null | sed -n 's/^[[:space:]]*path:[[:space:]]*\(.*\.app\)\( ([^)]*)\)\{0,1\}$/\1/p' | sort -u)
+        [ "$id" = "$DOMAIN" ] || continue
+        left=$((left + 1))
+        echo "  claimant: $claimant"
+        case "$claimant" in
+            "$REPO_ROOT"/*)
+                echo "  CLEANUP FAILED: a bundle inside this repository claims $DOMAIN." >&2
+                echo "  $claimant" >&2
+                echo "  It will compete with his app for Input Monitoring and his" >&2
+                echo "  dictation will stop working with no error on screen." >&2
+                CLEANUP_FAILED=1
+                ;;
+        esac
+    done < <(sed -n 's/^[[:space:]]*path:[[:space:]]*\(.*\.app\)\( ([^)]*)\)\{0,1\}$/\1/p' "$dump" | sort -u)
+    rm -f "$dump"
 
     if [ "$left" -gt 1 ]; then
         echo "  CLEANUP FAILED: $left bundles claim $DOMAIN. His Input Monitoring" >&2
