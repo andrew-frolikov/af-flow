@@ -38,7 +38,114 @@ TEAM="Q4HNX2JLKT"
 DERIVED="${AF_FLOW_DERIVED:-build/run-derived}"
 BACKUP="$(mktemp -t afflow-defaults).plist"
 
-# AF_FLOW_BUILD_ONLY compiles both targets and stops, without executing anything.
+# Validate a caller-supplied AF_FLOW_OUTPUT before anything else happens.
+#
+# **Placed first on purpose, and the reason is a testing one as much as a
+# safety one.** It used to sit next to the `rm -rf` it protects, which put it
+# behind both the build-only branch and the refuse-while-running guard. That
+# made it unreachable, and therefore uncanaryable, whenever Andrew's app was
+# open, which is most of the time. A guard nobody can exercise is a guard
+# nobody has checked.
+#
+# It is pure validation with no side effects, so running it always costs
+# nothing and it now applies on every path. The `rm -rf` itself stays where it
+# was; only the decision moved.
+validate_output_directory() {
+    [ -z "${AF_FLOW_OUTPUT:-}" ] && return 0
+
+    # RELATIVE PATHS ARE REFUSED, and this one was found by canarying the fix
+    # rather than by reasoning about it, which is the third time on this project
+    # that a guard's own canary has caught the guard.
+    #
+    # Line 34 does `cd "$(dirname "$0")/.."`, so by the time anything here runs
+    # the working directory is the REPO ROOT, not wherever the caller was
+    # standing. A relative `AF_FLOW_OUTPUT` therefore silently means something
+    # different from what the person typing it meant, and the canonicalisation
+    # above cannot help: `cd -P` on a path that does not exist under the repo
+    # root fails, the fallback returns the literal string, no comparison
+    # matches, and the whole guard falls through to `rm -rf` on a path resolved
+    # against a directory the caller never mentioned.
+    #
+    # There is no legitimate reason to pass a relative output directory here,
+    # so the ambiguity is removed rather than resolved.
+    for var in AF_FLOW_OUTPUT AF_FLOW_FIXTURES; do
+        value="${!var:-}"
+        [ -z "$value" ] && continue
+        case "$value" in
+            /*) ;;
+            *)
+                echo "REFUSING TO RUN: $var must be an absolute path." >&2
+                echo "  $var=$value" >&2
+                echo "This script changes directory to the repo root before doing anything," >&2
+                echo "so a relative path here resolves against the repo, not against you." >&2
+                exit 7
+                ;;
+        esac
+    done
+
+    # CANONICALISE BOTH SIDES BEFORE COMPARING. String equality was the first
+    # version and Codex was right that it is not a guard at all: a trailing
+    # slash, a relative path, a `..`, or a symlink all spell the same directory
+    # differently and every one of them walked straight past it into `rm -rf`.
+    canonical() {
+        ( cd -P "$1" 2>/dev/null && pwd -P ) || printf '%s' "$1"
+    }
+    local out_real fix_real
+    out_real="$(canonical "$AF_FLOW_OUTPUT")"
+
+    if [ -n "${AF_FLOW_FIXTURES:-}" ]; then
+        fix_real="$(canonical "$AF_FLOW_FIXTURES")"
+        # Equal, OR the output is an ANCESTOR of the fixtures, which is worse:
+        # `rm -rf` on a parent takes the fixtures with it and an equality test
+        # would have said nothing at all.
+        if [ "$out_real" = "$fix_real" ] \
+            || case "$fix_real/" in "$out_real"/*) true ;; *) false ;; esac; then
+            echo "REFUSING TO RUN: AF_FLOW_OUTPUT is, or contains, AF_FLOW_FIXTURES." >&2
+            echo "  output:   $out_real" >&2
+            echo "  fixtures: $fix_real" >&2
+            echo "This script wipes the output directory before every run, so that would" >&2
+            echo "delete the corrected reference text and the captured transcripts." >&2
+            exit 7
+        fi
+    fi
+
+    # Scan RECURSIVELY and for every extension the loader accepts. The first
+    # version globbed the top level for `*.wav` only, while AudioFixtureLoader
+    # takes wav, m4a, mp3, aiff and caf, so four of the five formats it can
+    # read were formats this guard could not see.
+    local found
+    found="$(find "$out_real" \
+        \( -name '*.reference.txt' -o -name '*.worksheet.md' \
+           -o -name '*.wav' -o -name '*.m4a' -o -name '*.mp3' \
+           -o -name '*.aiff' -o -name '*.caf' \) 2>/dev/null | head -5)"
+    if [ -n "$found" ]; then
+        echo "REFUSING TO RUN: AF_FLOW_OUTPUT holds fixture input, not just results." >&2
+        echo "  $out_real" >&2
+        echo "Wiping it would destroy audio, worksheets, or corrected reference text." >&2
+        echo "Found, for example:" >&2
+        printf '  %s\n' $found >&2
+        echo "Point AF_FLOW_OUTPUT at a scratch directory, or leave it unset." >&2
+        exit 7
+    fi
+}
+validate_output_directory
+
+build_for_testing() {
+    xcodebuild build-for-testing \
+        -project GhostPepper.xcodeproj \
+        -scheme GhostPepper \
+        -configuration Debug \
+        -derivedDataPath "$DERIVED" \
+        -skipMacroValidation \
+        DEVELOPMENT_TEAM="$TEAM" \
+        CODE_SIGN_IDENTITY="Apple Development" \
+        CODE_SIGN_STYLE=Automatic \
+        "$@" \
+        2>&1 | grep -E "error:|warning: .*never be executed|TEST BUILD SUCCEEDED|BUILD FAILED"
+    return "${PIPESTATUS[0]}"
+}
+
+# AF_FLOW_BUILD_ONLY compiles both targets and stops, TOUCHING NOTHING ELSE.
 #
 # The third capability added to this wrapper rather than worked around, and the
 # reason is the same every time. Typechecking a Swift change is the single most
@@ -50,15 +157,44 @@ BACKUP="$(mktemp -t afflow-defaults).plist"
 # that cost was a bare `xcodebuild` call, which is exactly what corrupted his
 # settings three times on 2026-07-21.
 #
-# Skipping the refuse-while-running guard is sound HERE and nowhere else:
-# `build-for-testing` compiles and signs, and never executes the host app. No
-# second instance, no microphone contention, no writes to the defaults domain.
-# The snapshot and restore below still run regardless, because a guard that is
-# conditional is a guard that will eventually be wrong.
+# THIS BRANCH RETURNS BEFORE EVERYTHING ELSE, and the first version did not.
+# Codex, reviewing the commit that added it, found that build-only skipped the
+# refuse-while-running guard and then went on to `defaults export`, `defaults
+# delete` and `defaults import` against Andrew's LIVE domain, plus `rm -rf` on
+# the output directory, while his app was open. So the mode whose entire purpose
+# was to avoid disturbing a running app was reaching for the exact trap door
+# this wrapper exists to keep shut: a delete-and-reimport racing a live app can
+# lose any setting it writes in between.
+#
+# The reasoning that produced the bug is worth recording, because it is subtle
+# and it was mine. I checked the thing the guard's comment talks about, the test
+# host, confirmed `build-for-testing` never launches one, and concluded the
+# whole path was inert. The guard's comment is not the guard's blast radius.
+# **When you exempt something from a check, enumerate what the check was
+# protecting, not what its documentation mentions.**
 if [ "${AF_FLOW_BUILD_ONLY:-}" = "1" ]; then
     echo "BUILD-ONLY MODE: compiling both targets, running nothing."
-    echo "The app may stay open; nothing here launches a test host."
-elif pgrep -x GhostPepper >/dev/null 2>&1; then
+    echo "Touches no defaults, no output directory, and launches no test host,"
+    echo "so the app may stay open."
+    echo
+    build_for_testing
+    BUILD_ONLY_STATUS=$?
+    echo
+    if [ "$BUILD_ONLY_STATUS" -ne 0 ]; then
+        echo "BUILD FAILED (exit $BUILD_ONLY_STATUS)." >&2
+        exit "$BUILD_ONLY_STATUS"
+    fi
+    # Reported explicitly rather than by silence. A build-only run that printed
+    # nothing would be indistinguishable from a suite that passed, which is the
+    # failure shape this script has hit repeatedly: a filter tuned to success
+    # turning a skip into no output at all.
+    echo "BUILD-ONLY: both targets compiled. NO TESTS WERE RUN."
+    echo "This is not a pass. Run without AF_FLOW_BUILD_ONLY, with AF Flow quit,"
+    echo "to actually execute the suite."
+    exit 0
+fi
+
+if pgrep -x GhostPepper >/dev/null 2>&1; then
     cat >&2 <<'RUNNING'
 REFUSING TO RUN: AF Flow is currently open.
 
@@ -146,22 +282,10 @@ if [ -n "${AF_FLOW_OUTPUT:-}" ]; then
     # copies in `wispr-archive/`, verified by SHA. The reference text does not.
     # It is 20 to 30 minutes of listening that only he can redo, and it is the
     # one input in this project with no second copy anywhere.
-    if [ -n "${AF_FLOW_FIXTURES:-}" ] && [ "$AF_FLOW_OUTPUT" = "$AF_FLOW_FIXTURES" ]; then
-        echo "REFUSING TO RUN: AF_FLOW_OUTPUT is the same directory as AF_FLOW_FIXTURES." >&2
-        echo "  $AF_FLOW_OUTPUT" >&2
-        echo "This script wipes the output directory before every run, so that would" >&2
-        echo "delete the corrected reference text and the captured transcripts." >&2
-        exit 7
-    fi
-    if compgen -G "$AF_FLOW_OUTPUT/*.reference.txt" >/dev/null 2>&1 \
-        || compgen -G "$AF_FLOW_OUTPUT/*.wav" >/dev/null 2>&1 \
-        || compgen -G "$AF_FLOW_OUTPUT/*.worksheet.md" >/dev/null 2>&1; then
-        echo "REFUSING TO RUN: AF_FLOW_OUTPUT holds fixture input, not just results." >&2
-        echo "  $AF_FLOW_OUTPUT" >&2
-        echo "Wiping it would destroy audio, worksheets, or corrected reference text." >&2
-        echo "Point AF_FLOW_OUTPUT at a scratch directory, or leave it unset." >&2
-        exit 7
-    fi
+    # The decision was made by validate_output_directory() at the top of this
+    # script, before any other branch, so it is enforced on every path and can
+    # be canaried without quitting the app. Only the deletion happens here.
+    validate_output_directory
     rm -rf "$AF_FLOW_OUTPUT"
     mkdir -p "$AF_FLOW_OUTPUT"
 fi
@@ -175,33 +299,11 @@ done
 echo
 echo "building for testing"
 [ ${#RUNNER_ENV[@]} -gt 0 ] && printf 'forwarding to the test process: %s\n' "${RUNNER_ENV[*]}"
-xcodebuild build-for-testing \
-    -project GhostPepper.xcodeproj \
-    -scheme GhostPepper \
-    -configuration Debug \
-    -derivedDataPath "$DERIVED" \
-    -skipMacroValidation \
-    DEVELOPMENT_TEAM="$TEAM" \
-    CODE_SIGN_IDENTITY="Apple Development" \
-    CODE_SIGN_STYLE=Automatic \
-    ${RUNNER_ENV[@]+"${RUNNER_ENV[@]}"} \
-    2>&1 | grep -E "error:|warning: .*never be executed|TEST BUILD SUCCEEDED|BUILD FAILED"
-BUILD_STATUS=${PIPESTATUS[0]}
+build_for_testing ${RUNNER_ENV[@]+"${RUNNER_ENV[@]}"}
+BUILD_STATUS=$?
 if [ "$BUILD_STATUS" -ne 0 ]; then
     echo "BUILD FAILED (exit $BUILD_STATUS). Not running tests." >&2
     exit "$BUILD_STATUS"
-fi
-
-# Reported explicitly rather than by silence. A build-only run that printed
-# nothing would be indistinguishable from a suite that passed, which is the
-# failure shape this script has hit three times: a filter tuned to success
-# turning a skip into no output at all.
-if [ "${AF_FLOW_BUILD_ONLY:-}" = "1" ]; then
-    echo
-    echo "BUILD-ONLY: both targets compiled. NO TESTS WERE RUN."
-    echo "This is not a pass. Run without AF_FLOW_BUILD_ONLY, with AF Flow quit,"
-    echo "to actually execute the suite."
-    exit 0
 fi
 
 # AF_FLOW_REPEAT runs the suite N times inside ONE protected invocation.

@@ -359,6 +359,28 @@ final class TranscriptionScoringTests: XCTestCase {
         // reference text yet. Fixtures WITH no scores is a failure.
         try XCTSkipIf(fixtures.isEmpty, "cannot verify: no fixtures with a corrected reference yet.")
 
+        // **A narrowed run must not be able to PASS as a C2 verdict.**
+        //
+        // `AF_FLOW_MODELS` overrides the candidate list, and the completeness
+        // gate is derived from that same list, so the gate narrows with it: a
+        // one-model run satisfied "every required pair is present" trivially
+        // and exited green with three of the four C2 models absent. Writing the
+        // narrowing into the report as a caveat was the first fix and Codex was
+        // right that it is not enough, because a caveat is prose and a green
+        // exit is a verdict.
+        //
+        // Skip rather than fail: a narrowed run is a legitimate debugging tool.
+        // It just cannot be the thing that closes C2. The report is already
+        // written above, so the numbers survive; only the verdict is withheld.
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["AF_FLOW_MODELS"] != nil,
+            """
+            cannot verify full C2 coverage: AF_FLOW_MODELS narrowed the candidate set,
+            and it narrows the completeness gate with it. scores.md was still written.
+            Re-run without AF_FLOW_MODELS for a result that can close the chunk.
+            """
+        )
+
         XCTAssertFalse(
             rows.isEmpty,
             """
@@ -741,18 +763,24 @@ final class TranscriptionScoringTests: XCTestCase {
             }
             let merged = kept + entries
 
-            // The invariant, asserted rather than trusted: a capture may add
-            // rows and may replace rows, and may never REDUCE what is on disk.
-            // This is the canary for a future edit reverting to wholesale
+            // The invariant, ENFORCED rather than merely asserted: a capture may
+            // add rows and may replace rows, and may never REDUCE what is on
+            // disk. This is the canary for a future edit reverting to wholesale
             // replacement, which is the shape that just had to be fixed.
-            XCTAssertGreaterThanOrEqual(
-                merged.count,
-                existing.count,
-                """
-                capture would REDUCE \(stem).hypotheses.json from \(existing.count) to \(merged.count) rows.
-                A capture adds or replaces; it never removes. Refusing to treat this as success.
-                """
-            )
+            //
+            // It was an `XCTAssertGreaterThanOrEqual` and Codex was right that
+            // this made it decorative. An XCTAssert RECORDS a failure and
+            // returns; it does not stop the function. So the run went straight
+            // on to `writeHypotheses` and destroyed the rows anyway, and the
+            // only difference the guard made was a red test next to a truncated
+            // file. A data-loss guard has to be control flow, not a report.
+            guard merged.count >= existing.count else {
+                throw CaptureWouldLoseRowsError(
+                    stem: stem,
+                    before: existing.count,
+                    after: merged.count
+                )
+            }
 
             try writeHypotheses(merged, for: stem)
             print("wrote \(merged.count) transcripts to \(stem).hypotheses.json "
@@ -1248,6 +1276,25 @@ final class TranscriptionScoringTests: XCTestCase {
     }
 
     // MARK: - Support
+
+    /// Thrown, not asserted, because the write happens on the next line and an
+    /// XCTAssert does not stop it.
+    struct CaptureWouldLoseRowsError: Error, CustomStringConvertible {
+        let stem: String
+        let before: Int
+        let after: Int
+
+        var description: String {
+            """
+            REFUSING TO WRITE \(stem).hypotheses.json: the merge would reduce it
+            from \(before) rows to \(after).
+
+            A capture adds rows or replaces them. It never removes them. This is
+            the wholesale-replacement bug returning, and the file on disk is
+            still intact because nothing was written.
+            """
+        }
+    }
 
     /// Thrown rather than skipped, so the run stops at the input instead of
     /// reporting a perfect score against nothing.

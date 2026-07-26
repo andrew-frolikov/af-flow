@@ -396,9 +396,23 @@ enum TextScoring {
 
         var delta: Int { hypothesis - reference }
 
+        /// The same zero-denominator trap as `Rate`, one level over, and it
+        /// survived the fix to `Rate` because that fix was aimed at the
+        /// instance rather than the class. Codex found it in the very next
+        /// review: with a reference carrying no sentence endings at all, this
+        /// rendered `0/0 matches`, and "matches" reads as the model having got
+        /// it right when nothing was compared. Two of the five real drafts had
+        /// zero terminators.
+        ///
+        /// This is LOOP.md's own rule turned on the person applying it: when a
+        /// gate is widened in response to a finding, ask what the widened gate
+        /// still does not observe.
+        var isMeasurable: Bool { reference > 0 }
+
         /// Named rather than inferred at the call site, so the merging finding
         /// is reported in the vocabulary the project already uses for it.
         var verdict: String {
+            guard isMeasurable else { return "n/a" }
             if delta == 0 { return "matches" }
             return delta < 0 ? "merged \(-delta)" : "split \(delta)"
         }
