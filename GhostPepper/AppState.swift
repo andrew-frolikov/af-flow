@@ -1204,6 +1204,9 @@ class AppState: ObservableObject {
     private let cleanupTranscriptWindowController = CleanupTranscriptWindowController()
     private let debugLogWindowController = DebugLogWindowController()
     private let pepperChatWindowController = PepperChatWindowController()
+    /// AF Flow's front door. See `UI/HomeWindow.swift` for why it exists and why
+    /// it is not the fork's meeting window.
+    private let homeWindowController = HomeWindowController()
     private lazy var meetingTranscriptWindowController: MeetingTranscriptWindowController = {
         let controller = MeetingTranscriptWindowController()
         controller.shouldFloatWhileRecording = { [weak self] in
@@ -1767,6 +1770,14 @@ class AppState: ObservableObject {
             sourceURL: sourceURL,
             detectedMeeting: detectedMeeting
         )
+    }
+
+    /// Opens AF Flow's own window. This is what launching the app and clicking
+    /// the Dock icon do as of 2026-07-26; before that both opened
+    /// `showMeetingTranscriptWindow()`, so opening a dictation app handed
+    /// Andrew the fork's 9850-line meeting and wiki surface instead.
+    func showHomeWindow() {
+        homeWindowController.show(appState: self)
     }
 
     func showMeetingTranscriptWindow() {

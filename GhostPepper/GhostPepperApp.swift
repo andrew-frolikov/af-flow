@@ -47,24 +47,27 @@ struct GhostPepperApp: App {
                 ProcessInfo.processInfo.disableAutomaticTermination(Self.automaticTerminationReason)
                 guard !hasInitialized else { return }
                 hasInitialized = true
-                reopenDelegate.openMainWindow = { appState.showOrCreateMeetingWindow() }
+                // All four of these used to open the fork's meeting window.
+                // AF Flow's own front door is the only thing launching the app
+                // or clicking the Dock icon should ever show.
+                reopenDelegate.openMainWindow = { appState.showHomeWindow() }
                 if Self.forceOnboarding {
                     onboardingCompleted = false
                     onboardingController.show(appState: appState) {
                         onboardingCompleted = true
                         await appState.initialize()
-                        appState.showMeetingTranscriptWindow()
+                        appState.showHomeWindow()
                     }
                 } else if onboardingCompleted {
                     Task {
                         await appState.initialize()
-                        appState.showMeetingTranscriptWindow()
+                        appState.showHomeWindow()
                     }
                 } else {
                     onboardingController.show(appState: appState) {
                         onboardingCompleted = true
                         await appState.initialize()
-                        appState.showMeetingTranscriptWindow()
+                        appState.showHomeWindow()
                     }
                 }
             }

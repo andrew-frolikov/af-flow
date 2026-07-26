@@ -11,6 +11,7 @@
 		00B000000000000000000001 /* IndexBuilding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000001 /* IndexBuilding.swift */; };
 		00B000000000000000000002 /* WikiKindStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000002 /* WikiKindStore.swift */; };
 		00B000000000000000000003 /* QMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000003 /* QMDService.swift */; };
+		00B000000000000000000099 /* HomeWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000099 /* HomeWindow.swift */; };
 		00B000000000000000000004 /* NewWikiSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000004 /* NewWikiSheet.swift */; };
 		00B000000000000000000007 /* LocalStructuredLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000007 /* LocalStructuredLLM.swift */; };
 		00B000000000000000000008 /* LocalWikiEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000008 /* LocalWikiEngine.swift */; };
@@ -231,6 +232,7 @@
 		00A000000000000000000001 /* IndexBuilding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexBuilding.swift; sourceTree = "<group>"; };
 		00A000000000000000000002 /* WikiKindStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStore.swift; sourceTree = "<group>"; };
 		00A000000000000000000003 /* QMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QMDService.swift; sourceTree = "<group>"; };
+		00A000000000000000000099 /* HomeWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeWindow.swift; sourceTree = "<group>"; };
 		00A000000000000000000004 /* NewWikiSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewWikiSheet.swift; sourceTree = "<group>"; };
 		00A000000000000000000007 /* LocalStructuredLLM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStructuredLLM.swift; sourceTree = "<group>"; };
 		00A000000000000000000008 /* LocalWikiEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalWikiEngine.swift; sourceTree = "<group>"; };
@@ -672,6 +674,7 @@
 				1AC12AC919C182CDEF77DB11 /* CommandKSearchSheet.swift */,
 				95281DF90A125CA223FCEE7A /* ContextBubbleView.swift */,
 				2715D9117D8664700616D95A /* DebugLogWindow.swift */,
+				00A000000000000000000099 /* HomeWindow.swift */,
 				864660499212282B8ADC1AA7 /* HighlightedTextView.swift */,
 				2F22B92A6ECEE8A19C9A5095 /* IndexEntryView.swift */,
 				7FC3D36DE7AC456246062883 /* IndexListView.swift */,
@@ -1099,6 +1102,7 @@
 				6F9B246766050DABB6DE046A /* MeetingTranscriptSettings.swift in Sources */,
 				3DD297DFB3E56835BBD705EF /* MeetingTranscriptWindow.swift in Sources */,
 				47212FA484A38B3ABB2D679A /* MeetingWindowHeuristics.swift in Sources */,
+				00B000000000000000000099 /* HomeWindow.swift in Sources */,
 				5589DDF10DE9446993C99B6B /* MenuBarView.swift in Sources */,
 				9A7637F5576B21D74F14149D /* ModelInventory.swift in Sources */,
 				C1A07FBD7318A26BA879232A /* ModelInventoryViews.swift in Sources */,
