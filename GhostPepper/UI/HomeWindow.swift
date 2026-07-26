@@ -37,15 +37,11 @@ struct AFFlowHomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            menuBar
+
             Spacer(minLength: 28)
 
-            Text("AF FLOW")
-                .font(.custom("Georgia", size: 14))
-                .tracking(4)
-                .foregroundColor(Palette.muted)
-
             StatusPill(status: appState.status)
-                .padding(.top, 18)
                 .padding(.bottom, 26)
 
             instruction
@@ -74,8 +70,40 @@ struct AFFlowHomeView: View {
             Spacer(minLength: 28)
             footer
         }
-        .frame(minWidth: 460, minHeight: 380)
+        .frame(minWidth: 460, minHeight: 420)
         .background(Palette.paper)
+    }
+
+    /// The window's own menu, added 2026-07-26 because Andrew opened the new
+    /// home window and said "there is no menu bar, nothing".
+    ///
+    /// Deliberately a single row of three words rather than a sidebar or a
+    /// toolbar with icons. The one-screen rule from the original design still
+    /// holds: this is a way OUT of the screen to the three places that already
+    /// exist, not a navigation layer on top of it. Every item opens a window
+    /// that is already built, so nothing here can be a dead end.
+    ///
+    /// The wordmark moved here from the centre of the window. An app's name
+    /// belongs in its chrome, and the middle of the screen is more useful spent
+    /// on the one sentence that says how to use it.
+    private var menuBar: some View {
+        HStack(spacing: 0) {
+            Text("AF FLOW")
+                .font(.custom("Georgia", size: 12))
+                .tracking(3)
+                .foregroundColor(Palette.muted)
+
+            Spacer(minLength: 16)
+
+            MenuItem(title: "Settings") { appState.showSettings() }
+            MenuItem(title: "History") { appState.showSettings(section: .transcriptionLab) }
+            MenuItem(title: "Debug log") { appState.showDebugLog() }
+        }
+        .padding(.leading, 20)
+        .padding(.trailing, 12)
+        .frame(height: 42)
+        .background(Palette.band)
+        .overlay(Palette.line.frame(height: 1), alignment: .bottom)
     }
 
     /// The single most important sentence in the app, so it gets the display
@@ -108,6 +136,31 @@ struct AFFlowHomeView: View {
     }
 
     // MARK: - Pieces
+
+    /// A menu word. Plain by default and tinted with a soft plate on hover, so
+    /// it is obviously clickable on a screen share without three buttons
+    /// shouting at the top of an otherwise quiet window.
+    private struct MenuItem: View {
+        let title: String
+        let action: () -> Void
+        @State private var isHovering = false
+
+        var body: some View {
+            Button(action: action) {
+                Text(title)
+                    .font(.system(size: 12.5))
+                    .foregroundColor(isHovering ? Palette.ink : Palette.inkSoft)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isHovering ? Palette.card : Color.clear)
+                    )
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovering = $0 }
+        }
+    }
 
     private struct Keycap: View {
         let text: String
@@ -231,7 +284,7 @@ final class HomeWindowController: NSObject, NSWindowDelegate {
         let created = NSWindow(contentViewController: hosting)
         created.title = "AF Flow"
         created.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        created.setContentSize(NSSize(width: 500, height: 400))
+        created.setContentSize(NSSize(width: 500, height: 440))
         created.isReleasedWhenClosed = false
         created.center()
         created.delegate = self
