@@ -259,6 +259,50 @@ restore() {
         value=$(defaults read "$DOMAIN" "$key" 2>/dev/null || echo "(absent)")
         echo "  $key = $value"
     done
+    unregister_test_hosts
+}
+
+# `xcodebuild test` launches its own copy of GhostPepper.app as the test host,
+# and launching an app REGISTERS it with LaunchServices as a claimant on its
+# bundle identifier. So every suite run quietly adds a second and third app
+# claiming to be com.frolikov.afflow, from inside the repo build tree.
+#
+# That is not cosmetic. On 2026-07-26 Andrew's push-to-talk stopped working
+# with no error on screen, and `tccutil reset ListenEvent com.frolikov.afflow`
+# reported resetting the grant THREE times: one identity, three claimants, and
+# his Input Monitoring permission attached to the wrong one. He held the keys
+# and nothing happened.
+#
+# This is the same defect as the defaults domain and it gets the same
+# treatment. The suite reaches into state shared with his live app, so the
+# wrapper undoes it in the trap, unconditionally, whether the run passed,
+# failed or was interrupted. Per-run tidiness is never enough, because the
+# failing run is exactly the one that would skip it.
+#
+# Anchored to what this script OWNS rather than to a list of paths someone
+# imagined: every app bundle under the repo's own build directory was put
+# there by a build of ours, so all of them get unregistered. The app Andrew
+# actually launches lives in DerivedData and is never touched.
+unregister_test_hosts() {
+    local lsregister claimants left
+    lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+    [ -x "$lsregister" ] || { echo "  lsregister missing, cannot unregister test hosts" >&2; return; }
+
+    while IFS= read -r bundle; do
+        "$lsregister" -u "$bundle" 2>/dev/null && echo "  unregistered test host $bundle"
+    done < <(find "$PWD/build" -maxdepth 6 -name "GhostPepper.app" -type d 2>/dev/null)
+
+    # Report the surviving claimants rather than assuming the unregister took.
+    # "I ran the command" and "the identity is unambiguous again" are different
+    # claims, and this project has confused those before.
+    left=$("$lsregister" -dump 2>/dev/null | grep "path:" | grep -c "GhostPepper.app" || true)
+    claimants=$("$lsregister" -dump 2>/dev/null | grep "path:" | grep "GhostPepper.app" | sed 's/^[[:space:]]*path:[[:space:]]*//' | sort -u)
+    if [ "$left" -le 1 ]; then
+        echo "  bundle id claimants: $left"
+    else
+        echo "  WARNING: $left bundles still claim $DOMAIN. His hotkey permission may attach to the wrong one:" >&2
+        echo "$claimants" >&2
+    fi
 }
 trap restore EXIT INT TERM
 
