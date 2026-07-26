@@ -1267,7 +1267,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.frolikov.afflow;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(AF_FLOW_BUNDLE_ID:default=com.frolikov.afflow)";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -1431,7 +1431,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.frolikov.afflow;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(AF_FLOW_BUNDLE_ID:default=com.frolikov.afflow)";
 				SDKROOT = macosx;
 			};
 			name = Debug;

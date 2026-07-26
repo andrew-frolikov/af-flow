@@ -34,6 +34,37 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 DOMAIN="com.frolikov.afflow"
+
+# THE TEST HOST GETS ITS OWN IDENTITY. Andrew's decision, 2026-07-26, taken at
+# the Codex round cap over the alternative of accepting the residual risk.
+#
+# `xcodebuild test` launches its own copy of GhostPepper.app as the test host.
+# Until now that copy carried Andrew's bundle identifier, so every suite run
+# registered a second and third claimant on `com.frolikov.afflow` with
+# LaunchServices, and his Input Monitoring permission could attach to one of
+# them. On this date it did, and his dictation was dead from 06:59 to 12:10
+# with the app cheerfully reporting itself ready.
+#
+# Everything built before this line was a GUARD: delete the impostor, audit the
+# claimants, fail the run if one survives. Three Codex rounds found holes in
+# that guard and the cap fired with findings still open, which is the loudest
+# possible signal that the guard was the wrong artefact. **An impostor that
+# cannot exist needs no guard.**
+#
+# The identifier is routed through a variable that ONLY the app target reads,
+# because a build setting passed on the xcodebuild command line applies to
+# every target in the scheme, and giving the app and the xctest bundle the same
+# identifier is a different bug. The default in the project keeps Andrew's own
+# builds on `com.frolikov.afflow`; only this script overrides it.
+#
+# The side effect is the point, not an accident: a differently-identified host
+# gets a different sandbox container and therefore a different UserDefaults
+# domain, so the suite can no longer reach the settings it corrupted on
+# 2026-07-20, on 2026-07-21, and again later that day. The snapshot and restore
+# below stay anyway. Two independent protections against the defect that has
+# bitten him more times than any other is not excessive.
+TEST_HOST_DOMAIN="com.frolikov.afflow.testhost"
+
 TEAM="Q4HNX2JLKT"
 DERIVED="${AF_FLOW_DERIVED:-build/run-derived}"
 
@@ -215,6 +246,7 @@ build_for_testing() {
         DEVELOPMENT_TEAM="$TEAM" \
         CODE_SIGN_IDENTITY="Apple Development" \
         CODE_SIGN_STYLE=Automatic \
+        AF_FLOW_BUNDLE_ID="$TEST_HOST_DOMAIN" \
         "$@" \
         2>&1 | grep -E "error:|warning: .*never be executed|TEST BUILD SUCCEEDED|BUILD FAILED"
     return "${PIPESTATUS[0]}"
