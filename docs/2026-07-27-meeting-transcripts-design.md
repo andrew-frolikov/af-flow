@@ -1,8 +1,27 @@
 # Meeting transcripts for Google Meet and Zoom: design
 
-Status: DRAFT, awaiting Andrew's approval. Nothing in this document has been implemented.
+Status: APPROVED by Andrew on 2026-07-27. P1 in progress.
 Date: 2026-07-27
 Author: Claude (Fable 5), at Andrew's request
+
+## Decisions Andrew made on this design
+
+- **Approved as written**, including the phase order.
+- **He changed hard rule 1.** It read "never grant or request Screen Recording";
+  it now permits it "if it's best practice and safe and secure for me".
+- **We did not take Screen Recording, and the reasoning is recorded because the
+  headroom now exists.** The audio-only process tap does the same job for
+  meetings and is structurally incapable of seeing his screen, so taking the
+  wider permission would be strictly worse exposure for no gain. The conditional
+  he attached is what makes declining the correct reading of his instruction
+  rather than an override of it. `CLAUDE.md` is updated to say both things: the
+  rule is relaxed, and this app still touches no screen-capture API.
+- **Audit fixes he selected:** the cancelled-generation crash, cleanup loading a
+  model mid-dictation, and the dictation/meeting contention. The dictation
+  latency MEDIUMs were not selected and stay on the ledger.
+- **Standing instruction, restated:** the orchestrator pins the model per task
+  and says so in the plan. Prefer inline edits over spawning an agent that must
+  re-read context the session already holds.
 
 ## What he asked for
 

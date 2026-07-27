@@ -263,6 +263,9 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
     private let probeExecutionOverride: CleanupModelProbeExecutionOverride?
     private let backendShutdownOverride: (() -> Void)?
     private let probeExecutionGate = CleanupProbeExecutionGate()
+    /// Owns the lifetime of in-flight generations so a slow one is never
+    /// cancelled and the model is never released underneath one. Ledger 27.
+    private let generationTracker: CleanupGenerationTracker
     private var promptPrefillTask: Task<Void, Never>?
     private var preparedPromptContext: PreparedPromptContext?
     /// Tracks the in-flight download/load Task so the UI can cancel it. We
@@ -275,12 +278,17 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         selectedCleanupModelKind: LocalCleanupModelKind? = nil,
         cleanupModelAvailabilityOverrides: [LocalCleanupModelKind: Bool] = [:],
         probeExecutionOverride: CleanupModelProbeExecutionOverride? = nil,
-        backendShutdownOverride: (() -> Void)? = nil
+        backendShutdownOverride: (() -> Void)? = nil,
+        // Injectable so tests can put a generation in flight without loading a
+        // model. The generation lifetime is what ledger 27 turns on, and it is
+        // otherwise only reachable through a real llama.cpp run.
+        generationTracker: CleanupGenerationTracker = CleanupGenerationTracker()
     ) {
         self.defaults = defaults
         self.cleanupModelAvailabilityOverrides = cleanupModelAvailabilityOverrides
         self.probeExecutionOverride = probeExecutionOverride
         self.backendShutdownOverride = backendShutdownOverride
+        self.generationTracker = generationTracker
 
         let storedKind = LocalCleanupModelKind(
             rawValue: defaults.string(forKey: Self.selectedCleanupModelDefaultsKey) ?? ""
@@ -333,16 +341,20 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         Self.isModelDownloaded(kind)
     }
 
-    func deleteCachedModel(kind: LocalCleanupModelKind) {
+    /// Ledger 27: async for the same reason as `unloadModel()`. Deleting the
+    /// file on disk is safe at any time; releasing the loaded model is not.
+    func deleteCachedModel(kind: LocalCleanupModelKind) async {
         let desc = descriptor(for: kind)
         let path = modelPath(for: desc.fileName)
         try? FileManager.default.removeItem(at: path)
 
         if activeLoadedModelKind == kind {
+            await beginGenerationBarrier()
             activeLLM = nil
             activeLoadedModelKind = nil
             state = .idle
             errorMessage = nil
+            await endGenerationBarrier()
             return
         }
 
@@ -434,24 +446,43 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         }
 
         await probeExecutionGate.acquire()
+
+        // Ledger 27, widened after Codex round 2: this path drives `llm.core`
+        // directly, so it must hold a use for the same reason the cleanup probe
+        // does. Without it, termination reads "idle" and can release the backend
+        // while this stream is generating, which aborts the process.
+        do {
+            try await generationTracker.beginUse()
+        } catch {
+            await probeExecutionGate.release()
+            throw CleanupBackendError.unavailable
+        }
+
         await llm.core.resetContext()
 
         let (stream, continuation) = AsyncStream<String>.makeStream()
         let gate = probeExecutionGate
-        let task = Task { @MainActor in
+        let tracker = generationTracker
+        // Consumers stopping early must NOT cancel the generation: cancelling
+        // an in-flight llama.cpp run is the abort trigger this whole change
+        // exists to remove. They set a flag; the generation runs to completion
+        // and its remaining tokens are simply not yielded.
+        let stopped = StreamStopFlag()
+        Task { @MainActor in
             let response = await llm.core.generateResponseStream(
                 from: prompt,
                 thinking: thinkingMode
             )
             for await token in response {
-                if Task.isCancelled { break }
+                if stopped.value { continue }
                 continuation.yield(token)
             }
+            await tracker.endUse()
             await gate.release()
             continuation.finish()
         }
         continuation.onTermination = { _ in
-            task.cancel()
+            stopped.value = true
         }
         return stream
     }
@@ -691,8 +722,12 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         }
 
         state = .loadingModel(kind: kind)
+        // Ledger 27: swapping models releases the previous one, which is the
+        // same hazard as unloading it. Hold the barrier while it is released.
+        await beginGenerationBarrier()
         activeLLM = nil
         activeLoadedModelKind = nil
+        await endGenerationBarrier()
 
         let loadedModel = await Task.detached { () -> LLM? in
             guard let llm = LLM(from: path, maxTokenCount: descriptor.maxTokenCount) else {
@@ -756,16 +791,56 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         return !activeLoadTask.isCancelled
     }
 
-    func unloadModel() {
+    /// Ledger 27: async because it must wait for any in-flight generation
+    /// before releasing the model. Freeing GGML resources under a running
+    /// generation calls `ggml_abort`, which kills the process.
+    func unloadModel() async {
+        await beginGenerationBarrier()
         activeLLM = nil
         activeLoadedModelKind = nil
         state = .idle
         errorMessage = nil
+        await endGenerationBarrier()
         debugLogger?(.model, "Unloaded local cleanup models.")
     }
 
-    func shutdownBackend() {
-        unloadModel()
+    /// Synchronous shutdown for app termination only.
+    ///
+    /// `willTerminateNotification` arrives on the main thread while the process
+    /// is already going away, so there is no opportunity to await a drain: a
+    /// Task spawned there is unlikely to run, and blocking the main thread would
+    /// deadlock any @MainActor work it waited on.
+    ///
+    /// So the choice is made synchronously. With no generation running, the
+    /// backend shuts down exactly as it always did. With one running, the
+    /// shutdown is SKIPPED, because freeing GGML resources under a live
+    /// generation calls `ggml_abort` (ledger 27) and would turn a clean quit
+    /// into a crash report. Skipping costs nothing: the process is exiting and
+    /// the OS reclaims everything anyway.
+    func shutdownBackendForTermination() {
+        guard !generationTracker.isGenerationInFlightSynchronously else {
+            debugLogger?(
+                .model,
+                "Skipped llama backend shutdown at termination: a cleanup generation is still running, and releasing the model under one aborts the process."
+            )
+            return
+        }
+
+        activeLLM = nil
+        activeLoadedModelKind = nil
+        state = .idle
+        errorMessage = nil
+
+        if let backendShutdownOverride {
+            backendShutdownOverride()
+        } else {
+            LLM.shutdownBackend()
+        }
+        debugLogger?(.model, "Shutdown llama backend.")
+    }
+
+    func shutdownBackend() async {
+        await unloadModel()
         if let backendShutdownOverride {
             backendShutdownOverride()
         } else {
@@ -877,17 +952,34 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         }
     }
 
-    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping @Sendable () async -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw CancellationError()
-            }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
-        }
+    /// Waits up to `seconds` for a generation WITHOUT cancelling it.
+    ///
+    /// Ledger 27: the previous implementation raced generation against a sleep
+    /// in a task group and called `group.cancelAll()` on timeout. Cancelling an
+    /// in-flight llama.cpp generation trips `GGML_ASSERT` in
+    /// `ggml_metal_device_free`, and llama.cpp answers that with `ggml_abort`,
+    /// which kills the process rather than throwing. See
+    /// `CleanupGenerationTracker` for the full account.
+    ///
+    /// The deadline now bounds only how long the caller waits. Every site that
+    /// releases `activeLLM` calls `awaitGenerationDrain()` first, so the model
+    /// is never freed under a running generation.
+    private func withTimeout<T: Sendable>(seconds: TimeInterval, operation: @escaping @Sendable () async -> T) async throws -> T {
+        try await generationTracker.run(deadline: seconds, operation: operation)
+    }
+
+    /// Blocks new LLM work and waits for live work to finish. Must be called
+    /// before releasing the model, and balanced with `endGenerationBarrier()`.
+    ///
+    /// Codex round 2 finding 2: merely waiting was not enough, because a second
+    /// caller can enter while the first drains and then be running when the
+    /// model is released.
+    private func beginGenerationBarrier() async {
+        await generationTracker.beginTeardown()
+    }
+
+    private func endGenerationBarrier() async {
+        await generationTracker.endTeardown()
     }
 
     private func prefillPromptContext(
@@ -921,11 +1013,22 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
             return
         }
 
+        // Ledger 27, widened after Codex round 2: `prepareContext` is live LLM
+        // work and must hold a use like any other.
+        do {
+            try await generationTracker.beginUse()
+        } catch {
+            preparedPromptContext = nil
+            await probeExecutionGate.release()
+            return
+        }
+
         await llm.core.resetContext()
         let prepared = await llm.core.prepareContext(for: plan.contextPrefix)
         preparedPromptContext = prepared
             ? PreparedPromptContext(modelKind: modelKind, plan: plan)
             : nil
+        await generationTracker.endUse()
         await probeExecutionGate.release()
     }
 

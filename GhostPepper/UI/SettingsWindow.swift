@@ -456,7 +456,7 @@ struct SettingsView: View {
         if row.id.hasPrefix("cleanup-") {
             // Cleanup model
             if let kind = TextCleanupManager.cleanupModels.first(where: { "cleanup-\($0.fileName)" == row.id })?.kind {
-                appState.textCleanupManager.deleteCachedModel(kind: kind)
+                Task { await appState.textCleanupManager.deleteCachedModel(kind: kind) }
             }
         } else {
             // Speech model

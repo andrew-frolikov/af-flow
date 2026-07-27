@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		00A17B847D4D401A8E89F14A /* AirtableImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A17B837D4D401A8E89F14A /* AirtableImporter.swift */; };
+		00B000000000000000000020 /* CleanupGenerationTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000020 /* CleanupGenerationTracker.swift */; };
+		00B000000000000000000021 /* CleanupGenerationTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000021 /* CleanupGenerationTracker.swift */; };
+		00B000000000000000000022 /* CleanupGenerationLifetimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000022 /* CleanupGenerationLifetimeTests.swift */; };
 		00B000000000000000000001 /* IndexBuilding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000001 /* IndexBuilding.swift */; };
 		00B000000000000000000002 /* WikiKindStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000002 /* WikiKindStore.swift */; };
 		00B000000000000000000003 /* QMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000003 /* QMDService.swift */; };
@@ -232,6 +235,9 @@
 
 /* Begin PBXFileReference section */
 		0065F99395EEC3EB77997C2C /* CleanupSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupSettings.swift; sourceTree = "<group>"; };
+		00A000000000000000000020 /* CleanupGenerationTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupGenerationTracker.swift; sourceTree = "<group>"; };
+		00A000000000000000000021 /* CleanupGenerationTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupGenerationTracker.swift; sourceTree = "<group>"; };
+		00A000000000000000000022 /* CleanupGenerationLifetimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupGenerationLifetimeTests.swift; sourceTree = "<group>"; };
 		00A000000000000000000001 /* IndexBuilding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexBuilding.swift; sourceTree = "<group>"; };
 		00A000000000000000000002 /* WikiKindStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStore.swift; sourceTree = "<group>"; };
 		00A000000000000000000003 /* QMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QMDService.swift; sourceTree = "<group>"; };
@@ -487,6 +493,7 @@
 		150D99E38C8DFC28C5189B22 /* Cleanup */ = {
 			isa = PBXGroup;
 			children = (
+				00A000000000000000000021 /* CleanupGenerationTracker.swift */,
 				8348D35B3C14A52DCB5138E2 /* CleanupBackend.swift */,
 				4FCF12D0FBB05F424AAB2E68 /* CleanupModelProbeCLI.swift */,
 				853418773B99673FB27791AC /* CleanupModelProbeRunner.swift */,
@@ -730,6 +737,7 @@
 		6A2ED16C65A7A2047D1F84F6 /* Cleanup */ = {
 			isa = PBXGroup;
 			children = (
+				00A000000000000000000020 /* CleanupGenerationTracker.swift */,
 				2F8EC51C74573DD4A47E1CEB /* CleanupBackend.swift */,
 				397AC156E3D2AF040A998E68 /* CleanupModelProbeCLI.swift */,
 				7201BD31C20BC2B1D0E51DB6 /* CleanupModelProbeRunner.swift */,
@@ -855,6 +863,7 @@
 		FD52C5E171D3EF7591022762 /* GhostPepperTests */ = {
 			isa = PBXGroup;
 			children = (
+				00A000000000000000000022 /* CleanupGenerationLifetimeTests.swift */,
 				426AD7D84015B8A5FE446715 /* AnthropicProviderSSETests.swift */,
 				960D35875D60655B17574DF8 /* AudioRecorderTests.swift */,
 				6BF767CF1AA15DB2C2B82A1C /* ChordBindingStoreTests.swift */,
@@ -1040,6 +1049,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00B000000000000000000020 /* CleanupGenerationTracker.swift in Sources */,
 				9702D125E2DECC58D973E80F /* AccessibilityWindowTitles.swift in Sources */,
 				124405C2042DC7A4D8C3BCBC /* AgentBackend.swift in Sources */,
 				117E06290C6E2BB843E9BEBF /* AnthropicProvider.swift in Sources */,
@@ -1177,6 +1187,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00B000000000000000000021 /* CleanupGenerationTracker.swift in Sources */,
 				DFC262622EF144E344A49C8C /* CleanupBackend.swift in Sources */,
 				36715F4371E0C7AA79F4504D /* CleanupModelProbeCLI.swift in Sources */,
 				6F3DA53FA7B4119405D86DE8 /* CleanupModelProbeRunner.swift in Sources */,
@@ -1196,6 +1207,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00B000000000000000000022 /* CleanupGenerationLifetimeTests.swift in Sources */,
 				0EE1ACB128322AD4F18CE96C /* AnthropicProviderSSETests.swift in Sources */,
 				242A5D63A9F6E3FAD4E09F7D /* AudioRecorderTests.swift in Sources */,
 				91B80C940C09B24CE80A4B81 /* ChordBindingStoreTests.swift in Sources */,
