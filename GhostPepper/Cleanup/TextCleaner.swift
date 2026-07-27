@@ -234,8 +234,6 @@ final class TextCleaner {
     1. Delete filler sounds: um, uh, uhm, mm, эээ, ммм, and stuttered repeats of a word ("the the" becomes "the").
     2. When the speaker corrects himself, keep only the corrected version: "on Tuesday, no, on Wednesday" becomes "on Wednesday".
     3. Fix punctuation only: put a period between two complete sentences that were run together and capitalize the word after the new period. Keep every word when you split. "and", "so", "и", "но" start the next sentence, never delete them. Add missing commas. Use only periods, commas, colons and question marks.
-    4. Lowercase the first letter of the message, unless it begins a name, an acronym, or the word I.
-    5. Remove the period at the very end of the message. A question mark stays.
 
     Everything else is copied exactly: every word, in the same order, in the same phrasing. Keep informal words (gonna, okay). Keep sentence openers (So, And, Окей, Ну хорошо). Keep every English word inside a Russian sentence in English, in Latin letters, exactly as written. Names, tools and technical terms are never translated and never respelled. Never translate anything. Never add a word the speaker did not say. If you are unsure, copy.
 
@@ -467,7 +465,59 @@ final class TextCleaner {
             }
         }
 
-        return sanitizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return applyDeterministicStyle(sanitizedText.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// Two of Andrew's most consistent edits, done in code rather than asked of
+    /// the model.
+    ///
+    /// **Measured 2026-07-26 against eight of his own dictations.** Both were
+    /// prompt rules, and the 0.8B ignored them almost every time: the terminal
+    /// period survived 7 times out of 7, and the first word stayed capitalised
+    /// in 4 of the 5 cases where it should have been lowered. Shouting louder in
+    /// the prompt is the wrong response, because these are not judgements. They
+    /// are pure string operations with a single correct answer, and asking a
+    /// sampled model to perform them buys inconsistency for nothing.
+    ///
+    /// Moving them here makes them exact instead of roughly a third reliable,
+    /// and it buys back prompt tokens on a model with a 4096-token context,
+    /// where every rule the model must hold competes with the transcript itself.
+    ///
+    /// The evidence for each, from his 128 real corrections: he strips the final
+    /// full stop 46 times against 8 that added one, and of his casing-only fixes
+    /// 33 of 33 were lowercasing the FIRST word of the message.
+    static func applyDeterministicStyle(_ text: String) -> String {
+        var result = text
+
+        // A trailing full stop goes. A question mark or exclamation mark stays,
+        // because those carry meaning he chose rather than punctuation a model
+        // added out of habit.
+        while result.hasSuffix(".") && !result.hasSuffix("..") {
+            result = String(result.dropLast()).trimmingCharacters(in: .whitespaces)
+        }
+
+        // Lowercase the first character, but never when it starts something that
+        // is capitalised for a reason. Anchored to properties of the token
+        // itself rather than to a list of words someone imagined:
+        //   - an acronym or any all-caps token (TFSA, CIBC, AF)
+        //   - the English pronoun "I"
+        //   - a token that carries a capital anywhere after the first character,
+        //     which is how a product name looks (MacBook, CLAUDE.md, AF Flow)
+        guard let firstCharacter = result.first, firstCharacter.isUppercase else {
+            return result
+        }
+        let firstToken = result.split(separator: " ", maxSplits: 1).first.map(String.init) ?? result
+        let letters = firstToken.filter { $0.isLetter }
+        let isAllCaps = !letters.isEmpty && letters.allSatisfy { $0.isUppercase }
+        let hasInnerCapital = firstToken.dropFirst().contains { $0.isUppercase }
+        let isEnglishI = letters == "I"
+        if isAllCaps || hasInnerCapital || isEnglishI {
+            return result
+        }
+        return result.replacingCharacters(
+            in: result.startIndex...result.startIndex,
+            with: String(firstCharacter).lowercased()
+        )
     }
 
     static func formatCleanupInput(userInput: String) -> String {

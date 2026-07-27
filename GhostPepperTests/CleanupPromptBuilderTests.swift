@@ -32,8 +32,13 @@ final class CleanupPromptBuilderTests: XCTestCase {
 
         // The four rules that each answer to a measured lean in his own edits.
         XCTAssertTrue(prompt.contains("never delete them"), "function words must survive a sentence split")
-        XCTAssertTrue(prompt.contains("Lowercase the first letter of the message"))
-        XCTAssertTrue(prompt.contains("Remove the period at the very end of the message"))
+        // The first-word lowercase and terminal-period rules are NOT here on
+        // purpose: they moved into `TextCleaner.applyDeterministicStyle` on
+        // 2026-07-26, after measurement showed the 0.8B ignored them 7 times out
+        // of 7 and 4 times out of 5. They are asserted absent so nobody
+        // reintroduces them into the prompt and reopens the inconsistency.
+        XCTAssertFalse(prompt.contains("Lowercase the first letter of the message"))
+        XCTAssertFalse(prompt.contains("Remove the period at the very end"))
         XCTAssertTrue(prompt.contains("Never translate anything."))
 
         // Register preservation, named explicitly so a later edit cannot quietly
