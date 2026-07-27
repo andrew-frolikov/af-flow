@@ -19,11 +19,28 @@ enum MeetingTranscriptSettings {
     /// selects it himself, and returning a path he has not granted would produce
     /// silent write failures rather than access.
     static func suggestedVaultDirectory() -> URL? {
-        let url = FileManager.default.homeDirectoryForCurrentUser
+        // `FileManager.homeDirectoryForCurrentUser` returns the app's CONTAINER
+        // in a sandboxed process, not ~. The first version of this used it, so
+        // it looked inside the container, found nothing, and silently opened the
+        // picker wherever macOS felt like. Andrew hit that immediately.
+        //
+        // `getpwuid` reports the real home regardless of the sandbox. Reading
+        // the folder still requires his grant; this only decides where the
+        // picker starts.
+        guard let raw = getpwuid(getuid())?.pointee.pw_dir else { return nil }
+        let home = URL(fileURLWithPath: String(cString: raw), isDirectory: true)
+
+        let url = home
             .appendingPathComponent("Claude")
             .appendingPathComponent("AndrewFrolikov OS")
             .appendingPathComponent("Meetings")
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+
+        // Deliberately NOT gated on `fileExists`: a sandboxed process cannot
+        // necessarily stat a path it has no grant for, so checking would fail
+        // for the same reason the original bug did. An `NSOpenPanel` given a
+        // directory that is not there simply opens elsewhere, which is the
+        // behaviour we already have to tolerate.
+        return url
     }
 
     /// Load the user-chosen save directory, or nil to use the default.
