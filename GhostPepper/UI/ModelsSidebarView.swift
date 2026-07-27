@@ -181,9 +181,13 @@ struct ModelsSidebarView: View {
                     onDownload: downloaded ? nil : {
                         cleanupManager.startLoad(kind: desc.kind)
                     },
-                    onDelete: (downloaded && !isActive) ? {
-                        cleanupManager.deleteCachedModel(kind: desc.kind)
-                    } : nil,
+                    onDelete: (downloaded && !isActive) ? ({
+                        // Ledger 27: deleting a loaded model waits for any
+                        // in-flight generation, so this is async now.
+                        Task { @MainActor in
+                            await cleanupManager.deleteCachedModel(kind: desc.kind)
+                        }
+                    } as () -> Void) : nil,
                     onCancel: (progress != nil && cleanupManager.isLoadCancellable) ? {
                         cleanupManager.cancelActiveLoad()
                     } : nil

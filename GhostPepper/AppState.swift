@@ -2744,7 +2744,12 @@ class AppState: ObservableObject {
 
     func prepareForTermination() {
         recordingOCRPrefetch.cancel()
-        textCleanupManager.shutdownBackend()
+        // Ledger 27: releasing GGML resources under a running generation calls
+        // ggml_abort and kills the process. This runs from
+        // willTerminateNotification, where awaiting a drain is not possible, so
+        // the synchronous variant shuts down when nothing is running and skips
+        // when something is.
+        textCleanupManager.shutdownBackendForTermination()
         if let session = activeMeetingSession {
             Task { await session.stop() }
         }
@@ -2770,7 +2775,7 @@ class AppState: ObservableObject {
     private func refreshCleanupModelState() async {
         guard cleanupEnabled else {
             debugLogStore.record(category: .model, message: "Cleanup disabled; unloading local cleanup models.")
-            textCleanupManager.unloadModel()
+            await textCleanupManager.unloadModel()
             objectWillChange.send()
             return
         }
@@ -2784,7 +2789,7 @@ class AppState: ObservableObject {
         if shouldLoadLocalModels {
             await textCleanupManager.loadModel()
         } else {
-            textCleanupManager.unloadModel()
+            await textCleanupManager.unloadModel()
         }
 
         objectWillChange.send()

@@ -167,7 +167,7 @@ final class TextCleanupManagerTests: XCTestCase {
         XCTAssertEqual(capturedThinkingMode, .suppressed)
     }
 
-    func testShutdownBackendCallsOverride() {
+    func testShutdownBackendCallsOverride() async {
         var shutdownCount = 0
         let manager = TextCleanupManager(
             backendShutdownOverride: {
@@ -175,8 +175,8 @@ final class TextCleanupManagerTests: XCTestCase {
             }
         )
 
-        manager.shutdownBackend()
-        manager.shutdownBackend()
+        await manager.shutdownBackend()
+        await manager.shutdownBackend()
 
         XCTAssertEqual(shutdownCount, 2)
     }
@@ -238,16 +238,16 @@ final class TextCleanupManagerTests: XCTestCase {
         }
     }
 
-    func testDeleteCachedModelNotifiesObserversForInventoryRefresh() {
+    func testDeleteCachedModelNotifiesObserversForInventoryRefresh() async {
         let manager = TextCleanupManager()
         let expectation = expectation(description: "cleanup manager publishes cache deletion")
         var cancellable: AnyCancellable? = manager.objectWillChange.sink {
             expectation.fulfill()
         }
 
-        manager.deleteCachedModel(kind: .qwen35_0_8b_q4_k_m)
+        await manager.deleteCachedModel(kind: .qwen35_0_8b_q4_k_m)
 
-        wait(for: [expectation], timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 1.0)
         withExtendedLifetime(cancellable) {}
         cancellable = nil
     }
