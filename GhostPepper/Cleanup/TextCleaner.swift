@@ -465,60 +465,36 @@ final class TextCleaner {
             }
         }
 
-        return applyDeterministicStyle(sanitizedText.trimmingCharacters(in: .whitespacesAndNewlines))
+        return sanitizedText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Two of Andrew's most consistent edits, done in code rather than asked of
-    /// the model.
+    /// **DELETED 2026-07-26, hours after being added, because the measurement
+    /// behind it was wrong.** Kept as a comment because the mistake is worth
+    /// more than the code was.
     ///
-    /// **Measured 2026-07-26 against eight of his own dictations.** Both were
-    /// prompt rules, and the 0.8B ignored them almost every time: the terminal
-    /// period survived 7 times out of 7, and the first word stayed capitalised
-    /// in 4 of the 5 cases where it should have been lowered. Shouting louder in
-    /// the prompt is the wrong response, because these are not judgements. They
-    /// are pure string operations with a single correct answer, and asking a
-    /// sampled model to perform them buys inconsistency for nothing.
+    /// Two rules lived here: lowercase the first word of the message, and strip
+    /// the final full stop. Both were justified by his own corrections, and both
+    /// justifications were computed over the subset of edits where that change
+    /// was the ONLY thing he did. That is precisely the subset in which the
+    /// behaviour is visible, and it silently discarded every case where he left
+    /// the text alone.
     ///
-    /// Moving them here makes them exact instead of roughly a third reliable,
-    /// and it buys back prompt tokens on a model with a 4096-token context,
-    /// where every rule the model must hold competes with the transcript itself.
+    /// Measured properly, over all 908 correction pairs:
+    ///   first word  he lowercased it 28 times, he KEPT the capital 692 times
+    ///   final stop  he stripped it 64 times, he KEPT it 457 and ADDED it 181
     ///
-    /// The evidence for each, from his 128 real corrections: he strips the final
-    /// full stop 46 times against 8 that added one, and of his casing-only fixes
-    /// 33 of 33 were lowercasing the FIRST word of the message.
-    static func applyDeterministicStyle(_ text: String) -> String {
-        var result = text
-
-        // A trailing full stop goes. A question mark or exclamation mark stays,
-        // because those carry meaning he chose rather than punctuation a model
-        // added out of habit.
-        while result.hasSuffix(".") && !result.hasSuffix("..") {
-            result = String(result.dropLast()).trimmingCharacters(in: .whitespaces)
-        }
-
-        // Lowercase the first character, but never when it starts something that
-        // is capitalised for a reason. Anchored to properties of the token
-        // itself rather than to a list of words someone imagined:
-        //   - an acronym or any all-caps token (TFSA, CIBC, AF)
-        //   - the English pronoun "I"
-        //   - a token that carries a capital anywhere after the first character,
-        //     which is how a product name looks (MacBook, CLAUDE.md, AF Flow)
-        guard let firstCharacter = result.first, firstCharacter.isUppercase else {
-            return result
-        }
-        let firstToken = result.split(separator: " ", maxSplits: 1).first.map(String.init) ?? result
-        let letters = firstToken.filter { $0.isLetter }
-        let isAllCaps = !letters.isEmpty && letters.allSatisfy { $0.isUppercase }
-        let hasInnerCapital = firstToken.dropFirst().contains { $0.isUppercase }
-        let isEnglishI = letters == "I"
-        if isAllCaps || hasInnerCapital || isEnglishI {
-            return result
-        }
-        return result.replacingCharacters(
-            in: result.startIndex...result.startIndex,
-            with: String(firstCharacter).lowercased()
-        )
-    }
+    /// So both rules were backwards, and the first one was caught in his real
+    /// usage within ninety minutes of shipping: "Army of Africa" came back as
+    /// "army of Africa", and "Армия Иберии" as "армия Иберии". He dictates short
+    /// proper-noun lookups constantly, and every one of them was being damaged.
+    ///
+    /// The lesson, stated so the next rule does not repeat it: **a lean measured
+    /// over the cases where an edit happened is not a lean over his behaviour.**
+    /// Compute the denominator over everything, including the times he did
+    /// nothing, or the finding is an artefact of how it was counted.
+    ///
+    /// Casing and final punctuation are now left exactly as the model produced
+    /// them, which is what 96 percent of his real edits do.
 
     static func formatCleanupInput(userInput: String) -> String {
         """

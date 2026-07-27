@@ -15,9 +15,8 @@ measured lean from his own 128 corrections, not a preference:
                            single most-corrected defect
   sentences merged         he splits 17 to 4 and merges almost never, so a drop
                            in sentence count is always wrong
-  first word case          33 of 33 of his casing-only fixes were lowercasing
-                           the first word of the message
-  terminal period          he strips it 46 to 8
+  (casing and terminal punctuation are deliberately NOT checked: see the note
+   in score() for the measurement that removed them)
   script flipped           a token that changed alphabet is a translation, and
                            12.6 percent of his utterances are mixed
   words invented           anything in the output that was not in the input and
@@ -154,13 +153,21 @@ def score(raw, cleaned):
         )
 
     stripped = cleaned.strip()
-    if stripped.endswith("."):
-        failures.append("terminal period not removed")
 
-    if stripped and raw.strip():
-        first_out = stripped.split()[0]
-        if first_out[:1].isupper() and not first_out.isupper() and first_out.lower() not in {"i"}:
-            failures.append(f"first word still capitalised: {first_out!r}")
+    # The terminal-period and first-word-case checks were REMOVED on 2026-07-26,
+    # the same evening they were added, because both encoded a lean that does not
+    # exist. They were computed over the subset of his edits where that change
+    # was the only one made, which is exactly where the behaviour is visible, and
+    # they discarded every case where he left the text alone.
+    #
+    # Over all 908 pairs: he lowercased the first word 28 times and KEPT the
+    # capital 692 times; he stripped the final period 64 times and KEPT it 457
+    # while ADDING it 181. Both rules were backwards, and this gate was scoring
+    # correct output as failure, which is worse than not checking at all: it
+    # would have driven the prompt toward damaging his text.
+    #
+    # A gate that encodes a wrong rule does not merely miss defects. It
+    # manufactures them, and then something dutifully optimises against them.
 
     for word in out_counts:
         if word in raw_counts:
