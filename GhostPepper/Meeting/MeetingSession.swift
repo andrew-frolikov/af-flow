@@ -127,6 +127,17 @@ final class MeetingSession: ObservableObject {
                 endTime: result.endTime,
                 text: result.text
             )
+            // Drop microphone bleed rather than recording it as him.
+            //
+            // Without headphones his mic hears his speakers, so everything the
+            // far side says arrives twice: once correctly as Others, and once
+            // attributed to HIM. The second copy is not merely duplication, it
+            // is wrong about who spoke.
+            if MeetingEchoFilter.isEcho(candidate: segment, against: self.transcript.segments) {
+                print("MeetingSession: dropped a microphone echo of the other channel")
+                return
+            }
+
             self.transcript.appendSegment(segment)
             self.autoSave()
         }

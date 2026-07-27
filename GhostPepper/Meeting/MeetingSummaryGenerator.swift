@@ -12,9 +12,26 @@ final class MeetingSummaryGenerator {
     /// Maximum characters per chunk sent to the LLM (~1500 tokens ≈ 6000 chars).
     private let chunkCharLimit = 5000
 
+    /// Rewritten 2026-07-27 after Andrew's first real summary restated the
+    /// transcript almost verbatim and invented a timestamp of "[01:35]" in a
+    /// two-minute meeting.
+    ///
+    /// A 0.8B model copies rather than abstracts unless told very plainly not
+    /// to, and it will imitate whatever shape it sees: fed lines that begin
+    /// "[00:30] Me:", it produced lines that begin "[01:35] Me:". So the ban on
+    /// timestamps and speaker prefixes is explicit, and the instruction leads
+    /// with what to DO rather than what to avoid, because small models follow
+    /// positive instructions far better than negative ones.
     static let defaultPrompt = """
-    Summarize the following meeting excerpt. Output concise bullet points organized by topic. \
-    Include key facts, decisions, numbers, names, and dates. Be brief.
+    Extract only what was decided, agreed, or committed to in this meeting excerpt.
+
+    Write short bullet points. Each bullet states one fact, decision, number, name, \
+    date, or task, and who it belongs to if that is clear.
+
+    Do not copy sentences from the transcript. Do not write timestamps. Do not write \
+    speaker prefixes such as "Me:" or "Others:". Do not repeat the same point twice.
+
+    If the excerpt contains no decisions, facts or commitments, output nothing at all.
     """
 
     static let finalSummaryPrompt = """
@@ -32,6 +49,9 @@ final class MeetingSummaryGenerator {
     - Do NOT include filler, pleasantries, or off-topic chatter
     - Keep bullets factual and specific
     - Write in present tense for facts, past tense for what happened
+    - NEVER write timestamps such as [00:30], and NEVER write speaker prefixes such as "Me:" or "Others:". A summary that repeats the transcript's shape is not a summary.
+    - NEVER restate a transcript line close to word for word. If a point cannot be said more briefly than it was spoken, leave it out.
+    - If the meeting is too short or too thin to contain decisions or facts, say only that, in one line. Do not pad.
     """
 
     init(cleanupManager: TextCleanupManager) {

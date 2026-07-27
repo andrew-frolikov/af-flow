@@ -9724,12 +9724,18 @@ struct TranscriptSegmentRow: View {
     let segment: TranscriptSegment
     var highlightText: String = ""
 
-    private var showSpeakerBadge: Bool {
-        switch segment.speaker {
-        case .me: return true
-        case .remote(let name): return name != nil
-        }
-    }
+    /// Always shown. `SpeakerLabel.displayName` already renders an unnamed
+    /// remote speaker as "Others", so there is nothing to hide.
+    ///
+    /// This used to return `name != nil` for a remote speaker, and the system
+    /// audio channel always produces `.remote(name: nil)`. So the far side of
+    /// every call appeared with no badge at all. Andrew read his first real
+    /// two-channel transcript, saw the video's words sitting unlabelled beneath
+    /// two lines marked "Me", and reasonably concluded the Others channel had
+    /// failed. It had not: the saved markdown said "Others" correctly the whole
+    /// time. The capture worked and the display denied it, which is the worse
+    /// direction for a bug to run.
+    private var showSpeakerBadge: Bool { true }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {

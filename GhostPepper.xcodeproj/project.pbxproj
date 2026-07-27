@@ -11,6 +11,8 @@
 		00B000000000000000000020 /* LLMLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000020 /* LLMLease.swift */; };
 		00B000000000000000000021 /* LLMLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000021 /* LLMLease.swift */; };
 		00B000000000000000000022 /* CleanupGenerationLifetimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000022 /* CleanupGenerationLifetimeTests.swift */; };
+		00B000000000000000000030 /* MeetingEchoFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000030 /* MeetingEchoFilter.swift */; };
+		00B000000000000000000031 /* MeetingEchoFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000031 /* MeetingEchoFilterTests.swift */; };
 		00B000000000000000000001 /* IndexBuilding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000001 /* IndexBuilding.swift */; };
 		00B000000000000000000002 /* WikiKindStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000002 /* WikiKindStore.swift */; };
 		00B000000000000000000003 /* QMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000003 /* QMDService.swift */; };
@@ -238,6 +240,8 @@
 		00A000000000000000000020 /* LLMLease.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMLease.swift; sourceTree = "<group>"; };
 		00A000000000000000000021 /* LLMLease.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMLease.swift; sourceTree = "<group>"; };
 		00A000000000000000000022 /* CleanupGenerationLifetimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupGenerationLifetimeTests.swift; sourceTree = "<group>"; };
+		00A000000000000000000030 /* MeetingEchoFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingEchoFilter.swift; sourceTree = "<group>"; };
+		00A000000000000000000031 /* MeetingEchoFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingEchoFilterTests.swift; sourceTree = "<group>"; };
 		00A000000000000000000001 /* IndexBuilding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndexBuilding.swift; sourceTree = "<group>"; };
 		00A000000000000000000002 /* WikiKindStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStore.swift; sourceTree = "<group>"; };
 		00A000000000000000000003 /* QMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QMDService.swift; sourceTree = "<group>"; };
@@ -665,6 +669,7 @@
 		4E70E33203498F61C51BF026 /* Meeting */ = {
 			isa = PBXGroup;
 			children = (
+				00A000000000000000000030 /* MeetingEchoFilter.swift */,
 				2CD55E5B8D8B9A82E9774A2C /* AccessibilityWindowTitles.swift */,
 				00A17B837D4D401A8E89F14A /* AirtableImporter.swift */,
 				9452C09EB8A7AC2E5E69A502 /* GranolaImporter.swift */,
@@ -863,6 +868,7 @@
 		FD52C5E171D3EF7591022762 /* GhostPepperTests */ = {
 			isa = PBXGroup;
 			children = (
+				00A000000000000000000031 /* MeetingEchoFilterTests.swift */,
 				00A000000000000000000022 /* CleanupGenerationLifetimeTests.swift */,
 				426AD7D84015B8A5FE446715 /* AnthropicProviderSSETests.swift */,
 				960D35875D60655B17574DF8 /* AudioRecorderTests.swift */,
@@ -1049,6 +1055,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00B000000000000000000030 /* MeetingEchoFilter.swift in Sources */,
 				00B000000000000000000020 /* LLMLease.swift in Sources */,
 				9702D125E2DECC58D973E80F /* AccessibilityWindowTitles.swift in Sources */,
 				124405C2042DC7A4D8C3BCBC /* AgentBackend.swift in Sources */,
@@ -1207,6 +1214,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				00B000000000000000000031 /* MeetingEchoFilterTests.swift in Sources */,
 				00B000000000000000000022 /* CleanupGenerationLifetimeTests.swift in Sources */,
 				0EE1ACB128322AD4F18CE96C /* AnthropicProviderSSETests.swift in Sources */,
 				242A5D63A9F6E3FAD4E09F7D /* AudioRecorderTests.swift in Sources */,
