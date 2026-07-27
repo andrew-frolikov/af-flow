@@ -197,7 +197,33 @@ final class ModelManager: ObservableObject {
                 if let language {
                     decodeOptions.language = language
                 } else {
-                    decodeOptions.detectLanguage = true
+                    // AUTO-DETECT IS RESTRICTED TO THE TWO LANGUAGES HE SPEAKS.
+                    //
+                    // Reported 2026-07-27: "sometimes it translates whatever I'm
+                    // saying. I notice that when I speak English sometimes it
+                    // translates it into Russian. Looks correct in Russian, but
+                    // there was no point to translate it."
+                    //
+                    // Nothing translates. Whisper DECODES IN THE LANGUAGE IT WAS
+                    // TOLD, so a mis-detection does not garble the text, it
+                    // renders his meaning fluently in the wrong language. That is
+                    // why it looks correct and why he cannot catch it by reading.
+                    //
+                    // Unrestricted `detectLanguage` chooses among 99 languages
+                    // when only two are possible. His own history shows the
+                    // failure: 1220 dictations, 887 English, 332 Russian, and one
+                    // Bulgarian. Every language but two is a pure loss.
+                    //
+                    // So detection runs explicitly, the answer is constrained to
+                    // en and ru, and the decision is logged with both
+                    // probabilities. This costs no extra work: passing an
+                    // explicit language makes WhisperKit skip the detection pass
+                    // it would otherwise run itself.
+                    if let detected = await detectRestrictedLanguage(audioBuffer: audioBuffer) {
+                        decodeOptions.language = detected
+                    } else {
+                        decodeOptions.detectLanguage = true
+                    }
                 }
                 let results: [TranscriptionResult] = try await whisperKit.transcribe(audioArray: audioBuffer, decodeOptions: decodeOptions)
                 let text = results
@@ -231,6 +257,66 @@ final class ModelManager: ObservableObject {
             }
         } catch {
             debugLogger?(.model, "Speech transcription failed for \(modelName): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// The languages AF Flow's v1 supports, and the only ones he dictates in.
+    ///
+    /// Ukrainian is deliberately absent: Andrew removed it from v1 on
+    /// 2026-07-18 on measured evidence, and adding it here would reopen the
+    /// three-way confusion this restriction exists to close.
+    static let supportedAutoDetectLanguages = ["en", "ru"]
+
+    /// His measured prior, from 1220 real dictations in the Wispr archive:
+    /// 887 English against 332 Russian, roughly 2.7 to 1.
+    ///
+    /// It is applied because a prior is exactly what a detector lacks. Whisper
+    /// scores a 3-second clip of accented English against Russian with no idea
+    /// who is speaking; this project does know. Where the acoustic evidence is
+    /// genuinely close, the answer that is right more than twice as often should
+    /// win, and where it is not close the prior cannot overturn it.
+    static let englishPrior: Float = 887
+    static let russianPrior: Float = 332
+
+    /// Picks between English and Russian from Whisper's language probabilities.
+    ///
+    /// Pure and static so it can be tested without a model, which matters: this
+    /// sits directly on the path of every word he dictates.
+    static func chooseLanguage(from probabilities: [String: Float]) -> String? {
+        let english = probabilities["en"] ?? 0
+        let russian = probabilities["ru"] ?? 0
+        guard english > 0 || russian > 0 else { return nil }
+        return english * englishPrior >= russian * russianPrior ? "en" : "ru"
+    }
+
+    private func detectRestrictedLanguage(audioBuffer: [Float]) async -> String? {
+        guard let whisperKit else { return nil }
+        do {
+            let detection = try await whisperKit.detectLangauge(audioArray: audioBuffer)
+            guard let chosen = Self.chooseLanguage(from: detection.langProbs) else {
+                debugLogger?(
+                    .model,
+                    "Language detection returned neither en nor ru (raw: \(detection.language)). Falling back to Whisper's own detection."
+                )
+                return nil
+            }
+            let english = detection.langProbs["en"] ?? 0
+            let russian = detection.langProbs["ru"] ?? 0
+            // Logged on every dictation, including agreements, because the
+            // failure this fixes is INVISIBLE in the output. A wrong choice
+            // produces fluent, correct-looking text in the wrong language, so
+            // the only place it can ever be caught is here.
+            debugLogger?(
+                .model,
+                "Language chosen: \(chosen). whisper said \(detection.language), p(en)=\(english), p(ru)=\(russian)."
+            )
+            return chosen
+        } catch {
+            debugLogger?(
+                .model,
+                "Language detection failed (\(error.localizedDescription)). Falling back to Whisper's own detection."
+            )
             return nil
         }
     }
