@@ -113,15 +113,38 @@ but the implementation comment that justified the stub is now out of date, and
 changing it on my own reading of his security rule is precisely the kind of call
 this project sends back to him.
 
-### 3. The sandbox question, to be settled by measurement
+### 3. The sandbox question: ANSWERED, and the answer is that nothing changes
 
-AF Flow ships sandboxed (`com.apple.security.app-sandbox`). Published reports say
-process-tap behaviour under App Sandbox is fragile, and at least one project
-turned the sandbox off to make it work reliably.
+**P0 ran on 2026-07-27. Core Audio process taps work inside AF Flow's App
+Sandbox, with its existing entitlements, capturing real system audio.** 352
+callbacks, 180,224 frames, peak 0.718 against a known tone. The sandbox stays
+on, no entitlement is added beyond the audio-capture usage description, and the
+decision this phase existed to surface never has to be put to Andrew.
 
-I am not proposing a sandbox change on the strength of a blog post. Phase 0 is a
-probe that answers the question on his machine. Only if the probe fails inside
-the sandbox does this become a decision, and then it is his.
+Published reports called tap behaviour under App Sandbox "fragile" and at least
+one project disabled the sandbox to work around it. On his Mac, on macOS 26.5,
+that is not what happens. **The probe is why this is a measurement rather than a
+repeated rumour**, and it lives at `scripts/audiotap-probe/` so the claim can be
+re-run rather than trusted.
+
+**Two false negatives were produced before the true answer, and both are worth
+knowing because they will recur.**
+
+1. **TCC attributes to the responsible process, not the bundle.** Running the
+   probe binary straight from a shell makes the terminal responsible, so the
+   permission is never requested for the app and the system hands back correctly
+   shaped SILENCE: frames arrive, every sample is zero. That reads exactly like a
+   denial. Launching with `open -a` fixed it. Anything testing a TCC-gated
+   capability must go through LaunchServices or it is testing the terminal.
+2. **The probe's own verdict conflated "blocked" with "nothing was playing."** A
+   run with a quiet Mac reported BLOCKED while the sandbox was working perfectly.
+   The probe now plays its own tone, so silence has only one meaning. A check
+   that cannot tell "denied" from "nothing to hear" is the same defect this
+   project keeps paying for, and it produced a confident wrong answer here.
+
+A third confound was caught before it did damage: the default output device
+changed between runs (speakers to AirPods), so an early sandboxed-versus-
+unsandboxed comparison was not like for like. Re-run back to back on one device.
 
 ### 4. Attendee names and calendar are dead, and should stay dead
 
@@ -291,7 +314,7 @@ Each phase is a safe stopping point with its own commit and its own Codex round.
 
 | Phase | What | Gate |
 |---|---|---|
-| **P0** | Probe: does a process tap work in a sandboxed AF Flow build on his Mac? Existing `CleanupModelProbe` target is the precedent. | **Human-gated.** He clicks Allow once on a new permission prompt. Output is a yes or no, not a design opinion. |
+| **P0** | ~~Probe: does a process tap work in a sandboxed AF Flow build?~~ **DONE 2026-07-27. YES.** Real audio captured under AF Flow's exact entitlements, peak 0.718. Sandbox stays on. `scripts/audiotap-probe/`. | ~~Human-gated.~~ Needed no permission click in the end: the grant already existed once the request was attributed to an app rather than to the terminal. |
 | **P1** | Fix ledger 27, the cancelled-generation abort. Drain or await generation before releasing the model; bound generation by a token budget the generator actually checks. | Must be provably fixed before P2 ships, because meetings make it routine. Verified by reproducing the abort first, then failing to reproduce it. |
 | **P2** | Implement `SystemAudioRecorder` on the process tap. Add `NSAudioCaptureUsageDescription`. Raise deployment target to 14.4. | Both channels transcribe in a real call. Egress check: nothing new on the wire. |
 | **P3** | Un-hide the meeting UI. Event-driven detection, no polling. Stop calling the dead OCR and calendar paths. | He starts a real Meet or Zoom call and gets a transcript. |
@@ -303,9 +326,9 @@ the app he uses daily.
 
 ## Risks, stated plainly
 
-- **The probe may say the sandbox blocks it.** Then he has a real decision:
-  turn off App Sandbox, or ship meetings mic-only. I will present it as options
-  with a recommendation and not decide it myself.
+- ~~The probe may say the sandbox blocks it.~~ **Closed 2026-07-27: it does not.**
+  The sandbox stays on and he is not asked to weaken it. This was the largest
+  open risk in the design and it resolved in the cheapest possible direction.
 - **Meeting transcription and dictation share one transcriber and one Metal
   device.** The serialisation fix reduces the latency cost but concurrent
   inference on shared state is ledger item 15, still unbenchmarked. P4 measures
