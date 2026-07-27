@@ -46,10 +46,42 @@ final class ChunkedTranscriptionPipeline {
 
     private let sampleRate: Double = 16000
 
+    /// Below this RMS a chunk is treated as silence and never reaches the model.
+    ///
+    /// Whisper does not return nothing for silence, it INVENTS. Its favourite
+    /// inventions are "Thank you.", "Thanks for watching!" and similar, because
+    /// that is what ends the videos it was trained on. Andrew's first real
+    /// meeting recording, made alone with no other participants, produced
+    /// exactly that: a line reading `Others: Thank you.` in a call where nobody
+    /// else spoke at all.
+    ///
+    /// That is worse than a missing transcript. A meeting record that contains
+    /// words nobody said, attributed to other people, is a record he cannot
+    /// trust, and the failure is invisible because the invented text is fluent
+    /// and plausible.
+    ///
+    /// The threshold matches the one `MeetingSession` already uses to decide
+    /// whether it is hearing anything at all, so the two agree about what
+    /// silence means rather than each having an opinion.
+    private static let silenceRMSThreshold: Float = 0.001
+
+    static func isEffectivelySilent(_ samples: [Float]) -> Bool {
+        guard !samples.isEmpty else { return true }
+        var sumOfSquares: Float = 0
+        for sample in samples {
+            sumOfSquares += sample * sample
+        }
+        let rms = (sumOfSquares / Float(samples.count)).squareRoot()
+        return rms < silenceRMSThreshold
+    }
+
     init(transcriber: SpeechTranscriber, chunkDirectory: URL, chunkInterval: TimeInterval = 30.0) {
-        self.transcribeChunk = { samples in
+        self.transcribeChunk = { samples -> String? in
+            // Silence never reaches the model, so it can never be turned into
+            // words. See `silenceRMSThreshold`.
+            guard !ChunkedTranscriptionPipeline.isEffectivelySilent(samples) else { return nil }
             // Meeting chunks yield to push-to-talk, which he is waiting on.
-            await transcriber.transcribe(audioBuffer: samples, priority: .background)
+            return await transcriber.transcribe(audioBuffer: samples, priority: .background)
         }
         self.chunkDirectory = chunkDirectory
         self.chunkInterval = chunkInterval

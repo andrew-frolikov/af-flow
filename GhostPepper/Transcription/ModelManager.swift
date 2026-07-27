@@ -204,12 +204,46 @@ final class ModelManager: ObservableObject {
     /// slot for its lifetime, or give it its own arbiter.
     let transcriptionScheduler = TranscriptionScheduler()
 
+    /// Below this RMS the buffer is treated as silence. Roughly the noise floor.
+    nonisolated static let silenceRMSThreshold: Float = 0.001
+
+    nonisolated static func isEffectivelySilent(_ samples: [Float]) -> Bool {
+        guard !samples.isEmpty else { return true }
+        var sumOfSquares: Float = 0
+        for sample in samples {
+            sumOfSquares += sample * sample
+        }
+        return (sumOfSquares / Float(samples.count)).squareRoot() < silenceRMSThreshold
+    }
+
     func transcribe(
         audioBuffer: [Float],
         language: String? = nil,
         priority: SpeechTranscriber.Priority = .dictation
     ) async -> String? {
         guard !audioBuffer.isEmpty else { return nil }
+
+        // Silence never reaches the model, on ANY path.
+        //
+        // Whisper does not return nothing for silence, it INVENTS, and its
+        // favourite inventions are "Thank you." and "Thanks for watching!",
+        // because that is how the videos it was trained on end. Andrew reported
+        // seeing "Thank you" appear repeatedly, in his dictation as well as in a
+        // meeting recording made alone where nobody else spoke.
+        //
+        // The gate lives HERE rather than in the meeting pipeline for the same
+        // reason the scheduler does: every route to inference passes through
+        // this function, and guarding one caller would leave the others
+        // inventing text. Push-to-talk on a moment of silence is the common case
+        // and it is his daily experience.
+        //
+        // The threshold is roughly the noise floor, far below real speech, so
+        // this drops digital silence rather than quiet talking.
+        guard !Self.isEffectivelySilent(audioBuffer) else {
+            debugLogger?(.model, "Skipped transcription: the audio is silent, and Whisper invents words for silence.")
+            return nil
+        }
+
         guard let model = SpeechModelCatalog.model(named: modelName) else { return nil }
 
         await transcriptionScheduler.acquire(priority)

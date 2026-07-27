@@ -698,3 +698,64 @@ final class TranscriptionSchedulerTests: XCTestCase {
         func leave() { current -= 1 }
     }
 }
+
+/// Whisper does not return nothing for silence, it invents. Its favourite
+/// inventions are "Thank you." and "Thanks for watching!", because that is how
+/// the videos it was trained on end.
+///
+/// Andrew reported seeing "Thank you" appear repeatedly in his dictation, and
+/// his first real meeting recording, made alone with nobody else on the call,
+/// contained a line reading `Others: Thank you.` A transcript that contains
+/// words nobody said, attributed to other people, is worse than a missing one:
+/// the invented text is fluent and plausible, so nothing about reading it
+/// reveals the problem.
+final class SilenceGateTests: XCTestCase {
+
+    func testDigitalSilenceIsTreatedAsSilent() {
+        XCTAssertTrue(ModelManager.isEffectivelySilent([Float](repeating: 0, count: 16_000)))
+    }
+
+    func testAnEmptyBufferIsTreatedAsSilent() {
+        XCTAssertTrue(ModelManager.isEffectivelySilent([]))
+    }
+
+    /// Room tone and mic noise floor must still count as silence, or the gate
+    /// does nothing in practice: a real microphone never returns exact zeroes.
+    func testMicrophoneNoiseFloorIsTreatedAsSilent() {
+        var noise = [Float]()
+        var seed: UInt64 = 42
+        for _ in 0..<16_000 {
+            // Deterministic pseudo-noise at roughly -80 dBFS.
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            let unit = Float(seed >> 40) / Float(1 << 24) - 0.5
+            noise.append(unit * 0.0002)
+        }
+        XCTAssertTrue(
+            ModelManager.isEffectivelySilent(noise),
+            "A real microphone's noise floor must count as silence, or Whisper still gets a chance to invent words from it."
+        )
+    }
+
+    /// And ordinary speech must NOT be gated. A silence gate that swallows quiet
+    /// talking would be a far worse bug than the one it fixes, because he would
+    /// lose real dictation.
+    func testOrdinarySpeechIsNotTreatedAsSilent() {
+        var tone = [Float]()
+        for index in 0..<16_000 {
+            // A quiet 200 Hz tone at about -34 dBFS, well below normal speech.
+            tone.append(sin(Float(index) * 0.0785) * 0.02)
+        }
+        XCTAssertFalse(
+            ModelManager.isEffectivelySilent(tone),
+            "Quiet speech was gated as silence. Losing his real dictation is worse than the invented words this gate exists to stop."
+        )
+    }
+
+    func testLoudSpeechIsNotTreatedAsSilent() {
+        var tone = [Float]()
+        for index in 0..<16_000 {
+            tone.append(sin(Float(index) * 0.0785) * 0.4)
+        }
+        XCTAssertFalse(ModelManager.isEffectivelySilent(tone))
+    }
+}

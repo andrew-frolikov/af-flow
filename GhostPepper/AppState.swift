@@ -1875,7 +1875,7 @@ class AppState: ObservableObject {
         meetingTranscriptWindowController.refreshPresentation()
     }
 
-    func generateMeetingSummary(for transcript: MeetingTranscript) async {
+    func generateMeetingSummary(for transcript: MeetingTranscript, existingFileURL: URL? = nil) async {
         guard !transcript.segments.isEmpty else { return }
         transcript.isGeneratingSummary = true
         let generator = MeetingSummaryGenerator(cleanupManager: textCleanupManager)
@@ -1887,6 +1887,27 @@ class AppState: ObservableObject {
         transcript.summary = result
         transcript.isGeneratingSummary = false
         debugLogStore.record(category: .model, message: "Meeting summary \(result != nil ? "generated" : "failed") for \(transcript.meetingName)")
+
+        // Write it back to the file, or the summary exists only in memory.
+        //
+        // The session has already stopped by the time this runs, so nothing else
+        // is going to save it: the transcript on disk, which is the one his
+        // vault holds and Claude sessions read, would keep the transcript and
+        // silently lack the summary. The in-app view would show one, which is
+        // the worst version of the bug because it looks like it worked.
+        guard let summary = result, !summary.isEmpty else { return }
+        do {
+            _ = try MeetingMarkdownWriter.write(
+                transcript: transcript,
+                to: MeetingTranscriptSettings.effectiveSaveDirectory(),
+                existingFileURL: existingFileURL
+            )
+        } catch {
+            debugLogStore.record(
+                category: .model,
+                message: "Meeting summary generated but could not be saved: \(error.localizedDescription)"
+            )
+        }
     }
 
     func stopMeetingTranscription() {
@@ -1907,6 +1928,21 @@ class AppState: ObservableObject {
         if let savedURL = savedURL {
             triggerIndexUpdates(for: savedURL)
         }
+
+        // Summarise automatically, on Andrew's decision of 2026-07-27.
+        //
+        // It was a button, and his first real meeting therefore produced no
+        // summary at all. Two reasons to make it automatic. It is what he
+        // expects from ending a meeting, and pressing a second button to make
+        // the transcript useful is a step nobody remembers.
+        //
+        // And it puts ledger 27 back under test. The summary is the ONLY path
+        // that sends 5,000-character chunks through the cleanup model, which is
+        // the path whose cancellation used to call ggml_abort and kill the app.
+        // While it was a button nobody pressed, a regression there would have
+        // been invisible until the day he happened to want a summary. Now every
+        // meeting exercises it.
+        await generateMeetingSummary(for: session.transcript, existingFileURL: savedURL)
     }
 
     private func remoteSpeakerTaggedTranscript(
