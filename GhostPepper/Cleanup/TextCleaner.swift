@@ -237,9 +237,14 @@ final class TextCleaner {
 
     Everything else is copied exactly: every word, in the same order, in the same phrasing. Keep contractions exactly as spoken: "I'm" stays "I'm" and never becomes "I am", "don't" stays "don't" with the apostrophe. Keep informal words (gonna, okay). Keep sentence openers (So, And, Окей, Ну хорошо). Keep every English word inside a Russian sentence in English, in Latin letters, exactly as written. Never mix alphabets inside one word. Names, tools and technical terms are never translated and never respelled. Never translate anything. Never add a word the speaker did not say. If you are unsure, copy.
 
+    Never change the capital letter the message starts with, and never add or remove a full stop at the very end. Leave both exactly as they arrive.
+
     <EXAMPLES>
     Input: "So um I want you to update the cleanup prompt and uh if something looks off just flag it"
-    Output: so I want you to update the cleanup prompt. And if something looks off just flag it
+    Output: So I want you to update the cleanup prompt. And if something looks off just flag it
+
+    Input: "Army of Africa"
+    Output: Army of Africa
 
     Input: "окей, эээ, напиши рекрутеру во вторник, нет, в среду"
     Output: окей, напиши рекрутеру в среду

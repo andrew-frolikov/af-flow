@@ -298,9 +298,27 @@ final class FocusedElementLocator {
         // `shouldAttemptPaste` resolves it by asking whether the frontmost app
         // even has a Paste menu item, which is a real signal rather than an
         // assumption. A game still correctly declines; a text editor does not.
+        // WITHOUT ACCESSIBILITY, DO NOT ATTEMPT A PASTE. Reverted 2026-07-27
+        // after Codex round 1 refused the widening, and it was right for a
+        // reason I had missed: posting Cmd-V is itself an Accessibility
+        // operation, so in this branch the keystroke could never land anyway.
+        // Routing it to `.focusUnknown` therefore bought nothing and cost the
+        // one thing worth protecting, because `.focusUnknown` can fire Cmd-V on
+        // no stronger evidence than the frontmost app having a Paste menu, and
+        // dictated text landing somewhere unintended is worse than dictated
+        // text waiting on the clipboard.
+        //
+        // The state is also unreachable while he is dictating: the hotkey
+        // monitor needs the same permission, so no Accessibility means no
+        // recording to paste. It is logged rather than silent so that if it
+        // ever does happen, it says so instead of looking like an empty field.
         guard PermissionChecker.checkAccessibility() else {
-            return .focusUnknown
+            return .noFocusedInput
         }
+        // No frontmost application is genuinely NOT KNOWING rather than knowing
+        // there is nothing, and it carries no such risk: `shouldAttemptPaste`
+        // resolves it by asking whether the frontmost app has a Paste menu, and
+        // if there is no frontmost app there is nothing to say yes.
         guard let application = NSWorkspace.shared.frontmostApplication else {
             return .focusUnknown
         }

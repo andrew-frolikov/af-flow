@@ -40,6 +40,16 @@ final class CleanupPromptBuilderTests: XCTestCase {
         // the sole change, which is the subset where the behaviour is visible.
         XCTAssertFalse(prompt.contains("Lowercase the first letter of the message"))
         XCTAssertFalse(prompt.contains("Remove the period at the very end"))
+        // And asserted POSITIVELY, because removing the rules was not enough:
+        // Codex found that worked example 1 still demonstrated "So" becoming
+        // "so", so the model was being taught the behaviour by imitation after
+        // the instruction had gone. A small model follows examples harder than
+        // it follows rules, which is the entire design premise of this prompt.
+        XCTAssertTrue(prompt.contains("Never change the capital letter the message starts with"))
+        XCTAssertFalse(
+            prompt.contains("Output: so I want you to update"),
+            "no example may demonstrate lowercasing the first word"
+        )
         XCTAssertTrue(prompt.contains("Never translate anything."))
 
         // Register preservation, named explicitly so a later edit cannot quietly

@@ -231,14 +231,35 @@ def main():
     if args.limit:
         rows = rows[-args.limit :]
 
+    # NEVER DOWNLOAD. Codex round 1 of 2026-07-27, finding 4: this script drives
+    # CleanupModelProbe, which is an unsandboxed CLI outside the XCTest no-network
+    # guard, so a missing model here would be fetched over the wire. The project's
+    # premise is that nothing leaves this Mac, and a measurement tool is not an
+    # exception to that.
+    models_dir = Path.home() / "Library/Application Support/GhostPepper/models"
+    expected = {
+        "qwen35_0_8b_q4_k_m": "Qwen3.5-0.8B-Q4_K_M.gguf",
+        "qwen35_2b_q4_k_m": "Qwen3.5-2B-Q4_K_M.gguf",
+        "qwen35_4b_q4_k_m": "Qwen3.5-4B-Q4_K_M.gguf",
+    }.get(args.model)
+    if expected and not (models_dir / expected).exists():
+        print(
+            f"REFUSING TO RUN: {expected} is not cached at {models_dir}.\n"
+            "Running anyway would download it. Link or copy the model there first.",
+            file=sys.stderr,
+        )
+        return 2
+
     print(f"{len(rows)} fixtures, model {args.model}\n")
 
     results = []
     tally = {}
+    probe_failures = 0
     for index, row in enumerate(rows, 1):
         raw = row["rawTranscription"].strip()
         cleaned, reason = run_probe(raw, args.model)
         if cleaned is None:
+            probe_failures += 1
             print(f"[{index:>3}] PROBE FAILED  {reason}")
             continue
         failures = score(raw, cleaned)
@@ -259,6 +280,18 @@ def main():
     if args.out:
         Path(args.out).write_text(json.dumps(results, ensure_ascii=False, indent=2))
         print(f"\nwrote {args.out}")
+
+    # EXIT NON-ZERO ON PROBE FAILURES OR AN EMPTY RUN. Codex round 1 of
+    # 2026-07-27, finding 3: this printed a tidy summary and exited 0 even when
+    # every fixture crashed, so "0 of 0 clean" read as success. A scorer that
+    # cannot fail is the same defect as a gate that cannot fail, and this one
+    # already hid 40 crashed fixtures during the 2B comparison.
+    if probe_failures:
+        print(f"\n{probe_failures} fixture(s) never produced output. Not a pass.", file=sys.stderr)
+        return 1
+    if not results:
+        print("\nNOTHING WAS EVALUATED. Not a pass.", file=sys.stderr)
+        return 1
     return 0
 
 
