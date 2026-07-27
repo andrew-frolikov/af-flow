@@ -2260,9 +2260,6 @@ struct SettingsView: View {
                         "Enable meeting transcription",
                         isOn: $appState.meetingTranscriptEnabled
                     )
-                    .onChange(of: appState.meetingTranscriptEnabled) { _, _ in
-                        appState.setupMeetingDetector()
-                    }
 
                     Text("When enabled, AF Flow can detect video calls and offer to transcribe them locally using your microphone. Capturing other participants' system audio is not available in AF Flow.")
                         .font(.caption)
@@ -2273,9 +2270,6 @@ struct SettingsView: View {
                             "Auto-detect meeting apps",
                             isOn: $appState.meetingAutoDetectEnabled
                         )
-                        .onChange(of: appState.meetingAutoDetectEnabled) { _, _ in
-                            appState.setupMeetingDetector()
-                        }
 
                         Text("Monitors for Zoom, Teams, FaceTime, Meet, and other call apps. When detected, the pepper character will ask if you'd like to transcribe.")
                             .font(.caption)

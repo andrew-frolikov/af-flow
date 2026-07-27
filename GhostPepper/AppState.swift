@@ -696,8 +696,18 @@ class AppState: ObservableObject {
 
         await refreshCleanupModelState()
 
-        // Start meeting detection if enabled
-        setupMeetingDetector()
+        // The meeting auto-detect used to start here. Removed 2026-07-27.
+        //
+        // It polled every 5 seconds for the lifetime of the app and walked the
+        // accessibility tree of every browser window up to 20 children deep, and
+        // its payload was a window appearing over whatever Andrew was dictating
+        // into. `meetingTranscriptEnabled` defaults false, but
+        // `meetingAutoDetectEnabled` defaults TRUE, so exactly one boolean stood
+        // between him and that poll running all day in a dictation app.
+        //
+        // It is on the "can still fire at runtime" list he approved for removal,
+        // and it is the only item on that list that was doing work every five
+        // seconds while he spoke.
     }
 
     func relaunchApp() {
@@ -1557,7 +1567,6 @@ class AppState: ObservableObject {
         }
         return controller
     }()
-    private let meetingDetector = MeetingDetector()
     @Published var activeMeetingSession: MeetingSession?
     private(set) lazy var pepperChatSession: PepperChatSession = {
         let session = PepperChatSession(transcriber: transcriber)
@@ -1864,28 +1873,6 @@ class AppState: ObservableObject {
         Task {
             await finishMeetingSession(session, logPrefix: "Meeting transcription stopped")
         }
-    }
-
-    func setupMeetingDetector() {
-        guard meetingTranscriptEnabled, meetingAutoDetectEnabled else {
-            meetingDetector.stop()
-            return
-        }
-
-        meetingDetector.onMeetingDetected = { [weak self] meeting in
-            guard let self = self, self.activeMeetingSession == nil else { return }
-            self.pepperChatSession.showMeetingPrompt(meeting: meeting) { [weak self] in
-                self?.startMeetingTranscription(
-                    meetingName: meeting.suggestedName,
-                    skipConsent: meeting.isVideo,
-                    sourceURL: meeting.sourceURL,
-                    detectedMeeting: meeting
-                )
-            }
-            self.pepperChatWindowController.show(session: self.pepperChatSession)
-        }
-
-        meetingDetector.start()
     }
 
     private func finishMeetingSession(_ session: MeetingSession, logPrefix: String) async {
@@ -2758,7 +2745,6 @@ class AppState: ObservableObject {
     func prepareForTermination() {
         recordingOCRPrefetch.cancel()
         textCleanupManager.shutdownBackend()
-        meetingDetector.stop()
         if let session = activeMeetingSession {
             Task { await session.stop() }
         }
