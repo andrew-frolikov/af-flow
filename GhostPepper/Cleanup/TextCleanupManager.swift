@@ -786,7 +786,42 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         })
     }
 
+    /// True when this process was launched by XCTest.
+    ///
+    /// Anchored to what XCTest itself sets, not to a flag anyone must remember
+    /// to pass, and not to a list of tests someone has to keep up to date.
+    static let isRunningUnderTests =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        || NSClassFromString("XCTestCase") != nil
+
     private func downloadModel(kind: LocalCleanupModelKind, url urlString: String, to destination: URL) async throws {
+        // THE TEST SUITE NEVER REACHES THE NETWORK. This is the single choke
+        // point where a cleanup model is fetched, so the rule lives here rather
+        // than at each of the call sites that can arrive at it.
+        //
+        // The earlier fix, on this same day, made an availability override
+        // honoured in both directions. That closed the tests that SET an
+        // override and left open every test that sets none at all: with an
+        // empty overrides dictionary `availabilityOverride` returns nil, the
+        // guard does not fire, and the download proceeds. A cold test container
+        // then fetched 188 MB of Qwen 3.5 0.8B before the run ended and killed
+        // it, which is how this was found: the app's own debug log, written by
+        // the test host, says "Loading local cleanup model Qwen 3.5 0.8B".
+        //
+        // That is the second time today I fixed the reported instance and left
+        // the class open, which is this project's signature error. So the rule
+        // is stated over the capability rather than over the callers: under
+        // XCTest, this method does not exist.
+        if Self.isRunningUnderTests {
+            debugLogger?(
+                .model,
+                "Refused to download \(kind.rawValue): the test suite must never reach the network."
+            )
+            state = .error
+            errorMessage = "Cleanup model is not cached, and tests never download."
+            throw CleanupBackendError.unavailable
+        }
+
         let descriptor = descriptor(for: kind)
         if case .mlxRepository(let repoID) = descriptor.runtime {
             try await downloadHuggingFaceRepository(kind: kind, repoID: repoID, to: destination)

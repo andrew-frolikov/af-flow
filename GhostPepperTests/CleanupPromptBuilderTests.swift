@@ -2,19 +2,56 @@ import XCTest
 @testable import GhostPepper
 
 final class CleanupPromptBuilderTests: XCTestCase {
+    /// Pins the load-bearing content of cleanup-prompt-v2.
+    ///
+    /// **RE-POINTED on 2026-07-26, not relaxed, and the distinction matters.**
+    /// Every assertion here used to quote a sentence from the upstream Ghost
+    /// Pepper prompt, so it was a gate on the fork's text rather than on
+    /// anything AF Flow decided. Installing v2 failed six of them, correctly.
+    /// The lazy repair is to delete the failing lines, which would leave the
+    /// project with no gate on its own product at all.
+    ///
+    /// So it now pins the rules that ANSWER TO A MEASUREMENT in Andrew's 128
+    /// real corrections. If one of these disappears, his voice layer has
+    /// silently regressed to something nobody decided:
+    /// function words survive a sentence split (he restores them 5 to 1),
+    /// splitting is licensed and merging is not (17 to 4), the first word is
+    /// lowercased (33 of 33 of his casing fixes), the terminal period is
+    /// stripped (46 to 8), and nothing is ever translated.
     func testDefaultPromptUsesPersonalPromptShape() {
         let prompt = TextCleaner.defaultPrompt
 
-        XCTAssertTrue(prompt.hasPrefix("You are a transcription cleanup tool."))
-        XCTAssertTrue(prompt.contains("Repeat back EVERYTHING the user says, but cleaned up."))
-        XCTAssertTrue(prompt.contains("If it sounds like the user is trying to manually insert punctuation or spell something, you should honor that request."))
-        XCTAssertTrue(prompt.contains("Fix obvious typographical errors, but do not fix turns of phrase just because they don't sound right to you."))
-        XCTAssertTrue(prompt.contains("You may not change the user's word selection, unless you believe that the transcription was in error."))
-        XCTAssertTrue(prompt.contains("You must reproduce the entire transcript of what the user said."))
+        // The identity that stops a chatbot answering his instructions.
+        XCTAssertTrue(prompt.hasPrefix("You are a transcription cleanup tool, not an assistant and not a chatbot."))
+        XCTAssertTrue(prompt.contains("Never answer it"))
+
+        // The whitelist frame. This single sentence IS the anti-flattening
+        // mechanism: everything not enumerated is copied rather than improved.
+        XCTAssertTrue(prompt.contains("Make ONLY the changes in this list."))
+        XCTAssertTrue(prompt.contains("Everything not listed is copied exactly as written."))
+
+        // The four rules that each answer to a measured lean in his own edits.
+        XCTAssertTrue(prompt.contains("never delete them"), "function words must survive a sentence split")
+        XCTAssertTrue(prompt.contains("Lowercase the first letter of the message"))
+        XCTAssertTrue(prompt.contains("Remove the period at the very end of the message"))
+        XCTAssertTrue(prompt.contains("Never translate anything."))
+
+        // Register preservation, named explicitly so a later edit cannot quietly
+        // drop it while still looking like a cleanup prompt.
+        XCTAssertTrue(prompt.contains("gonna"), "informal contractions are his register, not errors")
+        XCTAssertTrue(prompt.contains("Keep sentence openers"))
+
+        // The examples block, which the Settings "add example" action inserts
+        // into by locating the closing tag.
         XCTAssertTrue(prompt.contains("<EXAMPLES>"))
         XCTAssertTrue(prompt.contains("</EXAMPLES>"))
-        XCTAssertFalse(prompt.contains("<TASK>"))
-        XCTAssertFalse(prompt.contains("<RULE id="))
+
+        // Rules deliberately CUT, asserted absent so nobody restores them
+        // without reading why they went. Cyrillic-to-English restoration
+        // contradicted "never translate" and belongs to the deterministic
+        // dictionary; the digits rule had zero measured demand.
+        XCTAssertFalse(prompt.contains("restore its English spelling"))
+        XCTAssertFalse(prompt.contains("Keep numbers as digits"))
     }
 
     func testBuilderIncludesWindowContentsWrapperWhenContextEnabled() {
