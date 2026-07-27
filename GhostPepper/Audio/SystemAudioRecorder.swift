@@ -74,6 +74,11 @@ final class SystemAudioRecorder {
         /// Set when a stop arrives mid-startup. Startup then destroys what it
         /// built instead of publishing it.
         var stopRequestedDuringStart = false
+        /// Set for the whole of `stopRecording()`, including the final drain.
+        /// Without it a new start could claim the recorder and reset the ring
+        /// while the previous stop was still draining, so the last seconds of
+        /// one meeting would vanish or land in the next one.
+        var isStopping = false
     }
 
     /// Lifecycle state. Guarded, and never touched from the IO proc.
@@ -116,12 +121,20 @@ final class SystemAudioRecorder {
         }
 
         let claimed = stateLock.withLock { current -> Bool in
-            guard !current.isRunning, !current.isStarting else { return false }
+            guard !current.isRunning, !current.isStarting, !current.isStopping else { return false }
             current.isStarting = true
             current.stopRequestedDuringStart = false
             return true
         }
-        guard claimed else { return }
+        guard claimed else {
+            // Silence here would cost the Others channel with nothing reported:
+            // `DualStreamCapture` only degrades to microphone-only when this
+            // THROWS, so returning quietly leaves it believing both channels are
+            // live. Reachable when the output-device listener's stop races the
+            // meeting's own stop; the loser can still be holding `isStopping`
+            // when the next meeting starts.
+            throw SystemAudioRecorderError.busy
+        }
 
         var pending = State()
 
@@ -225,7 +238,33 @@ final class SystemAudioRecorder {
 
         pending.deviceListener = installDefaultOutputListener()
         pending.deviceListenerQueue = pending.deviceListener == nil ? nil : drainQueue
+
+        // The device was read before the listener existed, so a change in that
+        // window would be missed by both: the aggregate stays bound to the old
+        // device and nothing ever reports it, giving a silent Others channel.
+        // Re-read now that we are watching.
+        if let current = Self.defaultOutputDevice(), current.id != output.id {
+            Self.destroy(state: pending)
+            stateLock.withLock { state in
+                state.isStarting = false
+                state.stopRequestedDuringStart = false
+            }
+            throw SystemAudioRecorderError.outputDeviceChangedDuringStart
+        }
         pending.isRunning = true
+
+        // Create the timer BEFORE publishing. Publishing first left a window in
+        // which a stop saw a running recorder, tore down the audio graph, found
+        // no timer to cancel, and then start installed a live timer and
+        // announced success after the stop had already returned.
+        // Activated here, before publishing. A DispatchSource that is released
+        // without ever being activated terminates the process from inside
+        // libdispatch, so the rollback path below must be cancelling an ACTIVE
+        // timer rather than a suspended one. It fires into `drainOnce()`, which
+        // is harmless while the ring is empty.
+        let timer = makeDrainTimer()
+        drainTimer = timer
+        timer.resume()
 
         let published = stateLock.withLock { current -> Bool in
             guard !current.stopRequestedDuringStart else { return false }
@@ -234,6 +273,8 @@ final class SystemAudioRecorder {
         }
 
         guard published else {
+            timer.cancel()
+            drainTimer = nil
             // A stop landed while this was building. Destroy what we made
             // rather than leaving a live tap nobody owns.
             Self.destroy(state: pending)
@@ -244,7 +285,6 @@ final class SystemAudioRecorder {
             return
         }
 
-        startDraining()
         onRecordingStarted?()
     }
 
@@ -258,11 +298,19 @@ final class SystemAudioRecorder {
                 return State()
             }
             let snapshot = current
+            let wasStopping = current.isStopping
             current = State()
+            // Preserve a stop that is already in flight. Clearing it here let a
+            // SECOND concurrent stop reset the flag (its own snapshot is not
+            // running), after which a new start could reset the ring while the
+            // first stop was still draining, losing or cross-wiring audio
+            // between two meetings.
+            current.isStopping = wasStopping || snapshot.isRunning
             return snapshot
         }
 
         guard previous.isRunning else { return [] }
+        defer { stateLock.withLock { $0.isStopping = false } }
 
         // Stop the audio flowing first, so the final drain sees a settled ring.
         Self.destroy(state: previous)
@@ -296,14 +344,14 @@ final class SystemAudioRecorder {
 
     // MARK: - Draining, off the realtime thread
 
-    private func startDraining() {
+    /// Built suspended, so the caller decides when it starts firing.
+    private func makeDrainTimer() -> DispatchSourceTimer {
         let timer = DispatchSource.makeTimerSource(queue: drainQueue)
         timer.schedule(deadline: .now() + .milliseconds(100), repeating: .milliseconds(100))
         timer.setEventHandler { [weak self] in
             self?.drainOnce()
         }
-        drainTimer = timer
-        timer.resume()
+        return timer
     }
 
     private func drainOnce() {
@@ -508,64 +556,85 @@ final class SystemAudioRecorder {
     }
 }
 
-/// A fixed-capacity mono ring buffer written from the realtime thread and read
-/// from a normal queue.
+/// A double-buffered mono sink written from the realtime thread and drained from
+/// a normal queue.
 ///
-/// Storage is allocated once, so the write path performs no allocation. The
-/// indices are guarded by `os_unfair_lock`, which is the lock Apple recommends
-/// on this side because it participates in priority inheritance, and the
-/// critical section is a bounded copy. This is deliberately described as cheap
-/// and uncontended rather than as "lock free", because it is not lock free and
-/// saying otherwise would be the kind of claim this project keeps retracting.
+/// ## Why this is two buffers and not a ring
+///
+/// The previous version was a single ring guarded by one lock, and the realtime
+/// IO proc took that lock. So did the reader, **while copying up to sixty
+/// seconds of audio out of it**. Codex called that out on the third review round
+/// and was right: making the write path allocation free buys nothing if the
+/// realtime thread can then be parked behind a multi-megabyte copy. The comment
+/// claiming the lock was "cheap and uncontended" was describing the writer and
+/// quietly ignoring the reader.
+///
+/// Two buffers fix it structurally rather than by tuning:
+///
+/// - **The writer** copies one callback's worth of frames, a few kilobytes, into
+///   the front buffer. Its critical section is bounded by the callback size and
+///   never by how much audio has accumulated.
+/// - **The reader** swaps the two buffer pointers and takes the count. That is
+///   constant time regardless of how full the buffer is. The actual copy out
+///   happens afterwards, with no lock held, against a buffer the writer is no
+///   longer touching.
+///
+/// Single writer (the Core Audio IO proc) and single reader (the serial drain
+/// queue) is assumed, and both are true by construction.
 final class MonoRingBuffer: @unchecked Sendable {
-    private struct Cursor {
-        var writeIndex = 0
-        var available = 0
+    private struct Shared {
+        var front: UnsafeMutablePointer<Float>
+        var spare: UnsafeMutablePointer<Float>
+        var count = 0
         var dropped = 0
     }
 
     private let capacity: Int
     private let scratchCapacity: Int
-    private let storage: UnsafeMutablePointer<Float>
+    private let bufferA: UnsafeMutablePointer<Float>
+    private let bufferB: UnsafeMutablePointer<Float>
+    /// Downmix workspace. Touched only by the writer, so it needs no lock.
     private let scratch: UnsafeMutablePointer<Float>
-    /// Preallocated landing area for `readAll()`, sized to the whole ring so a
-    /// full drain never needs to allocate while the writer lock is held.
-    private let drainScratch: UnsafeMutablePointer<Float>
-    private let cursor: OSAllocatedUnfairLock<Cursor>
+    private let shared: OSAllocatedUnfairLock<Shared>
 
     init(capacity: Int, scratchCapacity: Int = 16_384) {
         self.capacity = max(1, capacity)
         self.scratchCapacity = max(1, scratchCapacity)
-        storage = .allocate(capacity: self.capacity)
-        storage.initialize(repeating: 0, count: self.capacity)
+        bufferA = .allocate(capacity: self.capacity)
+        bufferA.initialize(repeating: 0, count: self.capacity)
+        bufferB = .allocate(capacity: self.capacity)
+        bufferB.initialize(repeating: 0, count: self.capacity)
         scratch = .allocate(capacity: self.scratchCapacity)
         scratch.initialize(repeating: 0, count: self.scratchCapacity)
-        drainScratch = .allocate(capacity: self.capacity)
-        drainScratch.initialize(repeating: 0, count: self.capacity)
-        cursor = OSAllocatedUnfairLock(initialState: Cursor())
+        shared = OSAllocatedUnfairLock(initialState: Shared(front: bufferA, spare: bufferB))
     }
 
     deinit {
-        storage.deinitialize(count: capacity)
-        storage.deallocate()
+        bufferA.deinitialize(count: capacity)
+        bufferA.deallocate()
+        bufferB.deinitialize(count: capacity)
+        bufferB.deallocate()
         scratch.deinitialize(count: scratchCapacity)
         scratch.deallocate()
-        drainScratch.deinitialize(count: capacity)
-        drainScratch.deallocate()
     }
 
-    var droppedFrames: Int { cursor.withLock { $0.dropped } }
+    var droppedFrames: Int { shared.withLock { $0.dropped } }
 
     func reset() {
-        cursor.withLock { $0 = Cursor() }
+        shared.withLock { state in
+            state.front = bufferA
+            state.spare = bufferB
+            state.count = 0
+            state.dropped = 0
+        }
     }
 
     /// Downmixes every channel of `bufferList` to mono and appends it.
     ///
-    /// Reads ALL buffers, not just the first. Codex caught that: an aggregate
-    /// device commonly delivers non-interleaved stereo as two separate buffers,
-    /// so taking only the first would silently capture one channel while telling
-    /// the converter it had two.
+    /// Reads ALL buffers, not just the first. Codex caught that on the first
+    /// round: an aggregate device commonly delivers non-interleaved stereo as
+    /// two separate buffers, so taking only the first would silently capture one
+    /// channel while telling the converter it had two.
     func writeDownmixed(
         from bufferList: UnsafePointer<AudioBufferList>,
         channelCount: Int,
@@ -577,6 +646,7 @@ final class MonoRingBuffer: @unchecked Sendable {
         guard buffers.count > 0 else { return }
 
         var frameCount = 0
+        var truncated = 0
 
         if interleaved {
             guard let raw = buffers[0].mData, buffers[0].mDataByteSize > 0 else { return }
@@ -585,11 +655,7 @@ final class MonoRingBuffer: @unchecked Sendable {
             let availableFrames = totalSamples / channels
             frameCount = min(availableFrames, scratchCapacity)
             guard frameCount > 0 else { return }
-            // Truncation to the scratch buffer is a real loss and is counted.
-            // Silently clipping it would make `droppedFrames` claim a clean run.
-            if availableFrames > frameCount {
-                cursor.withLock { $0.dropped += availableFrames - frameCount }
-            }
+            truncated = availableFrames - frameCount
 
             let samples = raw.assumingMemoryBound(to: Float.self)
             let scale = 1.0 / Float(channels)
@@ -606,9 +672,7 @@ final class MonoRingBuffer: @unchecked Sendable {
             let availableFrames = Int(buffers[0].mDataByteSize) / MemoryLayout<Float>.size
             frameCount = min(availableFrames, scratchCapacity)
             guard frameCount > 0 else { return }
-            if availableFrames > frameCount {
-                cursor.withLock { $0.dropped += availableFrames - frameCount }
-            }
+            truncated = availableFrames - frameCount
 
             scratch.update(from: firstData.assumingMemoryBound(to: Float.self), count: frameCount)
 
@@ -632,42 +696,47 @@ final class MonoRingBuffer: @unchecked Sendable {
         }
 
         let frames = frameCount
-        cursor.withLock { state in
-            if state.available + frames > capacity {
-                // The drain has fallen behind. Dropping keeps the buffer
-                // coherent, and the count is reported rather than hidden.
+        let clipped = truncated
+        let source = scratch
+
+        shared.withLock { state in
+            // Truncation to the scratch buffer is a real loss and is counted.
+            // Hiding it would let `droppedFrames` claim a clean run.
+            if clipped > 0 {
+                state.dropped += clipped
+            }
+
+            guard state.count + frames <= capacity else {
+                // The drain has fallen behind. Dropping keeps what is already
+                // buffered intact, and the loss is reported rather than hidden.
                 state.dropped += frames
                 return
             }
-            for index in 0..<frames {
-                storage[(state.writeIndex + index) % capacity] = scratch[index]
-            }
-            state.writeIndex = (state.writeIndex + frames) % capacity
-            state.available += frames
+
+            // Bounded by one callback's frames, never by how much has
+            // accumulated. This is the whole point of the two-buffer design.
+            state.front.advanced(by: state.count)
+                .update(from: source, count: frames)
+            state.count += frames
         }
     }
 
-    /// Removes and returns everything buffered.
+    /// Takes everything buffered.
     ///
-    /// The `Array` is built OUTSIDE the lock. Allocating inside it would make
-    /// the realtime IO proc wait on a malloc, which is the blocking this design
-    /// exists to avoid: the write path being allocation free buys nothing if the
-    /// reader allocates while holding the same lock.
+    /// The swap is constant time and is all that happens under the lock, so the
+    /// realtime writer can never be parked behind this. The copy out runs
+    /// afterwards against a buffer the writer has already stopped using.
     func readAll() -> [Float] {
-        let count = cursor.withLock { state -> Int in
-            guard state.available > 0 else { return 0 }
-            let start = ((state.writeIndex - state.available) % capacity + capacity) % capacity
-            let total = state.available
-            // Bounded copy into preallocated storage, no allocation.
-            for index in 0..<total {
-                drainScratch[index] = storage[(start + index) % capacity]
-            }
-            state.available = 0
-            return total
+        let (filled, count) = shared.withLock { state -> (UnsafeMutablePointer<Float>, Int) in
+            guard state.count > 0 else { return (state.spare, 0) }
+            swap(&state.front, &state.spare)
+            let filledCount = state.count
+            state.count = 0
+            return (state.spare, filledCount)
         }
 
         guard count > 0 else { return [] }
-        return Array(UnsafeBufferPointer(start: drainScratch, count: count))
+        return Array(UnsafeBufferPointer(start: filled, count: count))
     }
 }
 
@@ -701,6 +770,8 @@ private final class SystemAudioBuffer: @unchecked Sendable {
 
 enum SystemAudioRecorderError: Error, LocalizedError {
     case requiresNewerMacOS
+    case busy
+    case outputDeviceChangedDuringStart
     case tapUnavailable(OSStatus)
     case aggregateUnavailable(OSStatus)
     case ioProcUnavailable(OSStatus)
@@ -710,6 +781,10 @@ enum SystemAudioRecorderError: Error, LocalizedError {
         switch self {
         case .requiresNewerMacOS:
             return "Capturing other participants needs macOS 14.4 or later. Meeting transcription will use the microphone only."
+        case .busy:
+            return "AF Flow is still finishing the previous recording. Meeting transcription will use the microphone only."
+        case .outputDeviceChangedDuringStart:
+            return "The audio output device changed while starting. Meeting transcription will use the microphone only."
         case .tapUnavailable(let status):
             return "AF Flow could not start system audio capture (\(status)). Check System Settings, Privacy and Security, Audio Recording. Meeting transcription will use the microphone only."
         case .aggregateUnavailable(let status):

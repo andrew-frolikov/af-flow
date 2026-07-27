@@ -274,6 +274,62 @@ final class MeetingDetector {
     }
 
     /// Generate a default meeting name like "Zoom — 10:03 AM".
+    /// Identifies the meeting app in front RIGHT NOW, once, on demand.
+    ///
+    /// This is the whole of detection as far as the menu is concerned. The
+    /// class still contains the fork's polling machinery, which is not started
+    /// anywhere: it ran every five seconds for the app's lifetime and walked
+    /// every browser window's accessibility tree, in a dictation app, while
+    /// Andrew was speaking. Reviving the feature must not revive that, so
+    /// detection is a question asked at the moment he clicks rather than a loop
+    /// that runs all day.
+    @MainActor
+    static func detectFrontmostMeetingNow() -> DetectedMeeting? {
+        guard let frontmost = NSWorkspace.shared.frontmostApplication,
+              let bundleID = frontmost.bundleIdentifier else { return nil }
+
+        if let appName = knownMeetingApps[bundleID] {
+            let titles = AccessibilityWindowTitles.all(for: frontmost)
+            let name = MeetingWindowHeuristics.bestMeetingTitle(in: titles, appName: appName)
+                ?? suggestedMeetingName(appName: appName)
+            return DetectedMeeting(
+                appName: appName,
+                bundleIdentifier: bundleID,
+                suggestedName: name
+            )
+        }
+
+        // A browser in front: check its window titles for a call URL. One pass
+        // over the frontmost app only, not every window of every browser.
+        //
+        // The bundle-id check matters: without it any frontmost app with
+        // "meet.google.com" or "zoom.us/j/" in a window title is reported as a
+        // live meeting, which includes a notes window, an editor, or a terminal
+        // showing this very source file.
+        guard browserBundleIDs.contains(bundleID) else { return nil }
+
+        let titles = AccessibilityWindowTitles.all(for: frontmost)
+        let lowercased = titles.map { $0.lowercased() }
+        for pattern in browserMeetingPatterns {
+            guard lowercased.contains(where: { $0.contains(pattern) }) else { continue }
+            let appName = frontmost.localizedName ?? "Browser"
+            let name = MeetingWindowHeuristics.bestMeetingTitle(in: titles, appName: appName)
+                ?? suggestedMeetingName(appName: appName)
+            return DetectedMeeting(
+                appName: appName,
+                bundleIdentifier: bundleID,
+                suggestedName: name
+            )
+        }
+
+        return nil
+    }
+
+    /// Fallback name when nothing recognisable is in front.
+    static func defaultMeetingName() -> String {
+        suggestedMeetingName(appName: "Meeting")
+    }
+
     private static func suggestedMeetingName(appName: String) -> String {
         let formatter = DateFormatter()
         formatter.timeStyle = .short

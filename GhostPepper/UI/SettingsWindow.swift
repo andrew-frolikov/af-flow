@@ -126,8 +126,14 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     /// risks an app that does not build at 13:00 tomorrow, and this project's
     /// own rule is to prefer the change whose outcome the compiler guarantees
     /// over the clever one. Nobody opens what has no entry point.
+    /// Meeting Transcript is back in this list as of 2026-07-27, on Andrew's
+    /// request to transcribe his Google Meet and Zoom calls. It was hidden
+    /// during the v1 fork-surface cut, when the feature could only hear his own
+    /// microphone and its auto-detect polled his browsers every five seconds.
+    /// Both of those are fixed: the "Others" channel is real now, and detection
+    /// no longer polls.
     static var visible: [SettingsSection] {
-        [.general, .cleanup, .models, .transcriptionLab]
+        [.general, .cleanup, .models, .transcriptionLab, .meetingTranscript]
     }
 
     var title: String {
@@ -2261,19 +2267,18 @@ struct SettingsView: View {
                         isOn: $appState.meetingTranscriptEnabled
                     )
 
-                    Text("When enabled, AF Flow can detect video calls and offer to transcribe them locally using your microphone. Capturing other participants' system audio is not available in AF Flow.")
+                    Text("When enabled, AF Flow transcribes video calls on this Mac: your voice from the microphone, and the other participants from the Mac's audio output. Nothing is sent anywhere, and no Google or Zoom account is connected.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
                     if appState.meetingTranscriptEnabled {
-                        Toggle(
-                            "Auto-detect meeting apps",
-                            isOn: $appState.meetingAutoDetectEnabled
-                        )
-
-                        Text("Monitors for Zoom, Teams, FaceTime, Meet, and other call apps. When detected, the pepper character will ask if you'd like to transcribe.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        // The "Auto-detect meeting apps" toggle used to sit
+                        // here. Removed 2026-07-27: `meetingAutoDetectEnabled`
+                        // has no runtime consumer since the five-second poll was
+                        // deleted, so the control promised monitoring and prompts
+                        // that nothing performs. A switch that cannot do what its
+                        // label says is worse than no switch. Meetings start from
+                        // the menu bar instead.
 
                         Toggle(
                             "Float the meeting window while recording",
@@ -2313,6 +2318,14 @@ struct SettingsView: View {
                                 panel.canCreateDirectories = true
                                 panel.message = "Choose where to save AF Flow meetings and 2nd Brain files"
                                 panel.prompt = "Select Folder"
+                                // Open straight at the vault Meetings folder, so
+                                // the recommended choice is one click. AF Flow is
+                                // sandboxed and cannot write there until he picks
+                                // it, and that grant is deliberately his to give
+                                // rather than something the app assumes.
+                                if let suggested = MeetingTranscriptSettings.suggestedVaultDirectory() {
+                                    panel.directoryURL = suggested
+                                }
 
                                 if panel.runModal() == .OK, let url = panel.url {
                                     MeetingTranscriptSettings.saveSaveDirectory(url)

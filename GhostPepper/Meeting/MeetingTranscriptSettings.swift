@@ -12,6 +12,20 @@ enum MeetingTranscriptSettings {
         documentsArchiveURL()
     }
 
+    /// The vault folder meetings should live in, if it exists.
+    ///
+    /// Only a SUGGESTION, used to open the folder picker in the right place.
+    /// AF Flow is sandboxed, so it genuinely cannot write here until Andrew
+    /// selects it himself, and returning a path he has not granted would produce
+    /// silent write failures rather than access.
+    static func suggestedVaultDirectory() -> URL? {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Claude")
+            .appendingPathComponent("AndrewFrolikov OS")
+            .appendingPathComponent("Meetings")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
     /// Load the user-chosen save directory, or nil to use the default.
     static func loadSaveDirectory() -> URL? {
         guard let bookmarkData = UserDefaults.standard.data(forKey: saveDirectoryKey) else {

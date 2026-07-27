@@ -185,9 +185,35 @@ final class ModelManager: ObservableObject {
         downloadProgress = nil
     }
 
-    func transcribe(audioBuffer: [Float], language: String? = nil) async -> String? {
+    /// Serialises transcription across the buffer-at-a-time routes to the model.
+    ///
+    /// It sits HERE rather than in `SpeechTranscriber` because speaker-filtered
+    /// dictation and post-meeting speaker tagging reach inference without
+    /// passing through that type. Guarding the wrapper left them free to overlap
+    /// a push-to-talk transcription on the same model.
+    ///
+    /// **What it does NOT cover, stated because the first version of this
+    /// comment claimed "every route by construction" and that was false.** The
+    /// streaming sessions from `makeRecordingTranscriptionSession()` drive their
+    /// own `SlidingWindowAsrManager` or `Qwen3AsrManager` over shared models for
+    /// the life of a recording, and a per-buffer slot is the wrong shape for
+    /// them. `fullBufferTranscription` is routed through here; the streaming
+    /// halves are not. Those paths are live only for FluidAudio and Qwen speech
+    /// models, and Andrew currently runs WhisperKit turbo, so this is a gap
+    /// rather than a daily defect. Ledger item: give a streaming session the
+    /// slot for its lifetime, or give it its own arbiter.
+    let transcriptionScheduler = TranscriptionScheduler()
+
+    func transcribe(
+        audioBuffer: [Float],
+        language: String? = nil,
+        priority: SpeechTranscriber.Priority = .dictation
+    ) async -> String? {
         guard !audioBuffer.isEmpty else { return nil }
         guard let model = SpeechModelCatalog.model(named: modelName) else { return nil }
+
+        await transcriptionScheduler.acquire(priority)
+        defer { Task { [transcriptionScheduler] in await transcriptionScheduler.release() } }
 
         do {
             switch model.backend {
@@ -339,9 +365,16 @@ final class ModelManager: ObservableObject {
                   let fluidAudioManager else {
                 return nil
             }
+            let scheduler = transcriptionScheduler
             return SlidingWindowRecordingTranscriptionSession(
                 models: fluidAudioModels,
                 fullBufferTranscription: { audioBuffer in
+                    // Routed through the arbiter like every other inference.
+                    // This closure used to call the manager directly, so a live
+                    // dictation on a FluidAudio model could overlap a scheduled
+                    // meeting chunk against the same models.
+                    await scheduler.acquire(.dictation)
+                    defer { Task { await scheduler.release() } }
                     do {
                         let result = try await fluidAudioManager.transcribe(audioBuffer, source: .microphone)
                         let cleaned = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -396,7 +429,10 @@ final class ModelManager: ObservableObject {
         }
     }
 
-    func transcribeWithSpeakerTagging(audioBuffer: [Float]) async -> SpeakerTaggedTranscriptionResult? {
+    func transcribeWithSpeakerTagging(
+        audioBuffer: [Float],
+        priority: SpeechTranscriber.Priority = .dictation
+    ) async -> SpeakerTaggedTranscriptionResult? {
         guard let model = SpeechModelCatalog.model(named: modelName),
               model.supportsSpeakerFiltering,
               audioBuffer.isEmpty == false else {
@@ -410,7 +446,7 @@ final class ModelManager: ObservableObject {
             defer { diarizer.cleanup() }
 
             let session = FluidAudioSpeechSession { [weak self] filteredAudio in
-                await self?.transcribe(audioBuffer: filteredAudio)
+                await self?.transcribe(audioBuffer: filteredAudio, priority: priority)
             }
             session.appendAudioChunk(audioBuffer)
 

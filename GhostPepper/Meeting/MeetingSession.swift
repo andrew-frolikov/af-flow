@@ -38,9 +38,30 @@ final class MeetingSession: ObservableObject {
     private let remoteSpeakerTagger: RemoteSpeakerTagger?
 
     /// How often to auto-save the markdown file (matches chunk interval).
-    private var autoSaveTimer: Timer?
     private var silenceCheckTimer: Timer?
     private var meetingEndCheckTimer: Timer?
+    private var appTerminationObserver: NSObjectProtocol?
+
+    deinit {
+        // The run loop retains a repeating Timer and NotificationCenter retains
+        // a block observer until each is explicitly removed, so a session that
+        // is dropped without a normal or automatic stop would keep both alive
+        // and keep firing against a dead meeting.
+        //
+        // `deinit` on a @MainActor class is nonisolated and runs on whichever
+        // thread drops the last reference, so the teardown is hopped to main
+        // rather than touching Timer and NSWorkspace from an arbitrary one.
+        let timer = meetingEndCheckTimer
+        let observer = appTerminationObserver
+        let silenceTimer = silenceCheckTimer
+        Task { @MainActor in
+            timer?.invalidate()
+            silenceTimer?.invalidate()
+            if let observer {
+                NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            }
+        }
+    }
     private var savedChunkRecords: [SavedChunkRecord] = []
     private var hasReceivedAudio = false
     private var hasAutoUpdatedTitle = false
@@ -166,15 +187,19 @@ final class MeetingSession: ObservableObject {
             await populateFromCalendar()
         }
 
-        // Try to auto-update title and grab attendees multiple times over the first minute.
-        // People join at different times, so retrying gives us better coverage.
-        for delay in [3.0, 15.0, 30.0, 60.0] {
-            Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self = self, self.isActive else { return }
-                    self.autoUpdateTitleFromDetectedMeetingApp()
-                    await self.captureAttendees()
-                }
+        // Title refresh, once, shortly after the call starts.
+        //
+        // This used to run four times over the first minute and also call
+        // `captureAttendees()`, which OCRs the meeting window through
+        // `WindowCaptureService`. That service is permanently stubbed to return
+        // nil, because reading the screen would need the screen-capture
+        // permission this app does not take. So the attendee passes were pure
+        // cost with a guaranteed nil result, four times a meeting, and they are
+        // gone rather than retried.
+        Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isActive else { return }
+                self.autoUpdateTitleFromDetectedMeetingApp()
             }
         }
 
@@ -222,12 +247,14 @@ final class MeetingSession: ObservableObject {
         // Final save with end date.
         autoSave()
 
-        autoSaveTimer?.invalidate()
-        autoSaveTimer = nil
         silenceCheckTimer?.invalidate()
         silenceCheckTimer = nil
         meetingEndCheckTimer?.invalidate()
         meetingEndCheckTimer = nil
+        if let appTerminationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(appTerminationObserver)
+        }
+        appTerminationObserver = nil
         inactiveMeetingPollCount = 0
 
         print("MeetingSession: stopped '\(transcript.meetingName)': \(transcript.segments.count) segments, \(transcript.formattedDuration)")
@@ -515,18 +542,16 @@ final class MeetingSession: ObservableObject {
         }()
 
         Task {
-            if let meetingApp {
-                meetingApp.activate(options: .activateIgnoringOtherApps)
-                // Wait for the window to come to front
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                print("MeetingSession: Detect activated \(meetingApp.localizedName ?? "app") for OCR")
-            } else {
-                print("MeetingSession: Detect found no meeting app to activate")
-            }
-            await captureAttendees()
-            // Bring AF Flow back to front
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            NSApp.activate(ignoringOtherApps: true)
+            // The attendee half is deliberately gone.
+            //
+            // It used to steal focus with `activateIgnoringOtherApps`, sleep
+            // 800 ms, OCR the meeting window, then yank focus back. That OCR
+            // runs through `WindowCaptureService`, which is permanently stubbed
+            // because reading the screen needs a permission this app does not
+            // take, so the whole sequence interrupted whatever he was doing to
+            // obtain a guaranteed nil. The title refresh below needs no focus
+            // change at all.
+            _ = meetingApp
         }
     }
 
@@ -631,11 +656,47 @@ final class MeetingSession: ObservableObject {
         }
     }
 
+    /// Watches for the call ending, WITHOUT the five-second accessibility walk
+    /// this used to run for the whole meeting.
+    ///
+    /// Codex caught the claim: `startMeetingTranscriptionFromMenu` was
+    /// documented as doing detection once on demand, while this timer walked
+    /// Zoom's window tree every five seconds behind it. That is the poll Andrew
+    /// had removed on 2026-07-27, reintroduced by the feature that promised not
+    /// to reintroduce it.
+    ///
+    /// The app quitting is the signal that actually matters and it arrives as a
+    /// notification, so nothing needs polling. A window-title check still runs,
+    /// but once a minute rather than twelve times a minute, and only to catch a
+    /// call that ended while Zoom stayed open.
     private func startMeetingEndMonitorIfNeeded() {
         guard supportsAutomaticEndDetection else { return }
 
         meetingEndCheckTimer?.invalidate()
-        meetingEndCheckTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        if let existing = appTerminationObserver {
+            // Replacing without removing leaks the previous registration.
+            NSWorkspace.shared.notificationCenter.removeObserver(existing)
+            appTerminationObserver = nil
+        }
+
+        appTerminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard
+                let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                let bundleID = app.bundleIdentifier
+            else { return }
+
+            Task { @MainActor [weak self] in
+                guard let self, self.isActive else { return }
+                guard bundleID == self.detectedMeetingBundleIdentifier else { return }
+                self.requestAutomaticStop(reason: "Zoom is no longer running")
+            }
+        }
+
+        meetingEndCheckTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.checkForMeetingEnd()
             }
@@ -663,8 +724,13 @@ final class MeetingSession: ObservableObject {
             return
         }
 
+        // One strike, not two. This check used to run every 5 seconds, where two
+        // strikes meant about 10 seconds of grace. At 60 seconds it would mean
+        // TWO MINUTES of recording, transcribing and holding the shared model
+        // after his call ended, which is worse than the occasional early stop
+        // the second strike guarded against.
         inactiveMeetingPollCount += 1
-        guard inactiveMeetingPollCount >= 2 else { return }
+        guard inactiveMeetingPollCount >= 1 else { return }
         requestAutomaticStop(reason: "meeting windows no longer look active")
     }
 
@@ -672,6 +738,10 @@ final class MeetingSession: ObservableObject {
         guard isActive else { return }
         meetingEndCheckTimer?.invalidate()
         meetingEndCheckTimer = nil
+        if let appTerminationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(appTerminationObserver)
+        }
+        appTerminationObserver = nil
         inactiveMeetingPollCount = 0
         print("MeetingSession: automatic stop requested: \(reason)")
         if let onAutoStopRequested {

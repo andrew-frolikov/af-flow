@@ -205,7 +205,17 @@ final class MonoRingBufferTests: XCTestCase {
         }
 
         XCTAssertEqual(ring.droppedFrames, 2, "Dropped frames must be reported, not hidden.")
-        XCTAssertEqual(ring.readAll().count, 4, "The frames already buffered must survive intact.")
+
+        // Assert the SAMPLES, not the count. Codex caught that the earlier
+        // version checked only `count == 4`, which a buffer that overwrote the
+        // audio while keeping the count would have passed. "Survive intact"
+        // means these exact values.
+        let survivors = ring.readAll()
+        XCTAssertEqual(survivors.count, 4)
+        XCTAssertEqual(survivors[0], 0.1, accuracy: 0.0001)
+        XCTAssertEqual(survivors[1], 0.2, accuracy: 0.0001)
+        XCTAssertEqual(survivors[2], 0.3, accuracy: 0.0001)
+        XCTAssertEqual(survivors[3], 0.4, accuracy: 0.0001)
     }
 
     func testReadAllDrainsSoSamplesAreNeverDeliveredTwice() {
@@ -219,10 +229,19 @@ final class MonoRingBufferTests: XCTestCase {
         XCTAssertTrue(ring.readAll().isEmpty, "A second read must not repeat audio already handed over.")
     }
 
+    /// The earlier version of this used a write that overflowed and was therefore
+    /// dropped before `reset()` was ever called, so the buffer was already empty
+    /// and the assertion could not fail. It also never covered the part of
+    /// `reset()` that re-points the two buffers after a swap.
     func testResetClearsBufferedAudioAndDropCount() {
-        let ring = MonoRingBuffer(capacity: 2)
+        let ring = MonoRingBuffer(capacity: 4)
 
-        planarBufferList(channels: [[0.1, 0.2, 0.3]]) { list in
+        // Fits, so it is genuinely buffered and reset has something to clear.
+        planarBufferList(channels: [[0.1, 0.2]]) { list in
+            ring.writeDownmixed(from: list, channelCount: 1, interleaved: false)
+        }
+        // And overflow it, so there is a drop count to clear too.
+        planarBufferList(channels: [[0.3, 0.4, 0.5]]) { list in
             ring.writeDownmixed(from: list, channelCount: 1, interleaved: false)
         }
         XCTAssertGreaterThan(ring.droppedFrames, 0)
@@ -230,12 +249,39 @@ final class MonoRingBufferTests: XCTestCase {
         ring.reset()
 
         XCTAssertEqual(ring.droppedFrames, 0)
-        XCTAssertTrue(ring.readAll().isEmpty)
+        XCTAssertTrue(
+            ring.readAll().isEmpty,
+            "reset() left buffered audio behind, so the next meeting would begin with the previous one's tail."
+        )
     }
 
-    /// Wrapping is where an off-by-one in a ring buffer hides. Fill, drain,
-    /// refill so the write index passes the end of the storage.
-    func testWritesThatWrapAroundReadBackInOrder() {
+    /// `reset()` re-points the front and spare buffers, so it must be correct
+    /// AFTER a swap has already exchanged them, not only from the initial state.
+    func testResetIsCorrectAfterASwapHasExchangedTheBuffers() {
+        let ring = MonoRingBuffer(capacity: 8)
+
+        planarBufferList(channels: [[1, 2, 3]]) { list in
+            ring.writeDownmixed(from: list, channelCount: 1, interleaved: false)
+        }
+        XCTAssertEqual(ring.readAll(), [1, 2, 3])  // swaps front and spare
+
+        ring.reset()
+
+        planarBufferList(channels: [[7, 8]]) { list in
+            ring.writeDownmixed(from: list, channelCount: 1, interleaved: false)
+        }
+        XCTAssertEqual(
+            ring.readAll(),
+            [7, 8],
+            "After a reset that follows a swap, writes must land where reads look."
+        )
+    }
+
+    /// Successive fill/drain cycles must keep sample order and must not leak
+    /// audio from the previous cycle. With a double buffer this is where a
+    /// mixed-up swap would show, since the second read comes from the buffer the
+    /// first read handed back.
+    func testSuccessiveDrainsReadBackInOrderWithNoBleedThrough() {
         let ring = MonoRingBuffer(capacity: 4)
 
         planarBufferList(channels: [[1, 2, 3]]) { list in

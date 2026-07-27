@@ -283,6 +283,33 @@ final class TextCleaner {
         return result.text
     }
 
+    /// Applies ONLY the deterministic dictionary, with no model involved.
+    ///
+    /// Exists because the dictation path can now return the raw transcription
+    /// when the cleanup model is not loaded, and that early return skipped this
+    /// layer entirely: his preferred spellings and misheard rules, the ones
+    /// traceable to dated rows in `voice-observations.md`, would have silently
+    /// stopped applying exactly when cleanup was unavailable. The dictionary is
+    /// deterministic and costs nothing, so there is no version of "cleanup is
+    /// unavailable" that justifies skipping it.
+    ///
+    /// NOTE ON THE ATTRIBUTE BELOW, because this cost real safety once:
+    /// inserting this function above `cleanWithPerformance` originally placed it
+    /// between that function and ITS `@MainActor`, since a doc comment does not
+    /// break the binding. `cleanWithPerformance` silently became nonisolated,
+    /// which put the whole cleanup body, including reads of `correctionStore`'s
+    /// `@Published` arrays that Settings mutates, off the main actor on every
+    /// dictation. It compiled without a word. Each function carries its own
+    /// attribute now, directly above its own `func`.
+    @MainActor
+    func applyDeterministicCorrections(to text: String) -> String {
+        let corrections = DeterministicCorrections(
+            preferredTranscriptions: correctionStore.preferredTranscriptions,
+            commonlyMisheard: correctionStore.commonlyMisheard
+        )
+        return corrections.apply(to: text)
+    }
+
     @MainActor
     func cleanWithPerformance(
         text: String,

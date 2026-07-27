@@ -492,3 +492,209 @@ final class AppleSpeechAnalyzerBackendTests: XCTestCase {
         }
     }
 }
+
+/// Andrew chose on 2026-07-27 to keep push-to-talk working while a meeting is
+/// being transcribed. Both feed one shared speech model, so without an order his
+/// dictation would queue behind 30-second meeting chunks and his text would
+/// arrive seconds late.
+///
+/// These assert the ORDER rather than the mechanism, so a future rewrite that
+/// loses the priority fails them instead of quietly passing.
+final class TranscriptionSchedulerTests: XCTestCase {
+
+    private actor Order {
+        private(set) var entries: [String] = []
+        func record(_ name: String) { entries.append(name) }
+    }
+
+    /// Waits until the scheduler actually holds the expected queue, so the
+    /// assertion cannot pass on lucky task scheduling.
+    private func waitUntilQueued(
+        _ scheduler: TranscriptionScheduler,
+        dictation: Int,
+        background: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for _ in 0..<200 {
+            let counts = await scheduler.queuedCounts
+            if counts.dictation == dictation && counts.background == background { return }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        let counts = await scheduler.queuedCounts
+        XCTFail(
+            "Timed out waiting for \(dictation) dictation and \(background) background waiters; saw \(counts).",
+            file: file,
+            line: line
+        )
+    }
+
+    func testDictationOvertakesBackgroundWorkAlreadyWaiting() async {
+        let scheduler = TranscriptionScheduler()
+        let order = Order()
+
+        // Something is already running, so everything else must queue.
+        await scheduler.acquire(.background)
+
+        // Two meeting chunks queue FIRST.
+        let firstChunk = Task {
+            await scheduler.acquire(.background)
+            await order.record("chunk-1")
+            await scheduler.release()
+        }
+        let secondChunk = Task {
+            await scheduler.acquire(.background)
+            await order.record("chunk-2")
+            await scheduler.release()
+        }
+
+        // Confirmed queued, not merely slept past.
+        await waitUntilQueued(scheduler, dictation: 0, background: 2)
+
+        // Dictation arrives LAST and must still run first.
+        let dictation = Task {
+            await scheduler.acquire(.dictation)
+            await order.record("dictation")
+            await scheduler.release()
+        }
+
+        await waitUntilQueued(scheduler, dictation: 1, background: 2)
+
+        await scheduler.release()
+
+        _ = await (firstChunk.value, secondChunk.value, dictation.value)
+
+        let entries = await order.entries
+        XCTAssertEqual(entries.count, 3)
+        XCTAssertEqual(
+            entries.first,
+            "dictation",
+            "His dictation arrived last and must still run first. Going after the queued meeting chunks is exactly the latency this priority exists to remove."
+        )
+    }
+
+    /// Priority must not become starvation: a meeting has to keep making
+    /// progress while he dictates, or it can never finish draining.
+    func testBackgroundWorkIsNotStarvedByContinuousDictation() async {
+        let scheduler = TranscriptionScheduler()
+        let order = Order()
+
+        await scheduler.acquire(.background)
+
+        let chunk = Task {
+            await scheduler.acquire(.background)
+            await order.record("chunk")
+            await scheduler.release()
+        }
+        await waitUntilQueued(scheduler, dictation: 0, background: 1)
+
+        // A steady stream of dictations, each queued before the previous is served.
+        var dictations: [Task<Void, Never>] = []
+        for index in 0..<6 {
+            let task = Task {
+                await scheduler.acquire(.dictation)
+                await order.record("dictation-\(index)")
+                await scheduler.release()
+            }
+            dictations.append(task)
+        }
+        await waitUntilQueued(scheduler, dictation: 6, background: 1)
+
+        await scheduler.release()
+        for task in dictations { await task.value }
+        await chunk.value
+
+        let entries = await order.entries
+        let chunkPosition = entries.firstIndex(of: "chunk")
+        XCTAssertNotNil(chunkPosition, "The meeting chunk never ran at all.")
+        XCTAssertLessThan(
+            chunkPosition ?? .max,
+            entries.count - 1,
+            "The meeting chunk was served dead last behind every dictation. Strict priority means a meeting can never drain while he keeps talking."
+        )
+    }
+
+    func testBackgroundWorkStillRunsWhenNothingIsWaiting() async {
+        let scheduler = TranscriptionScheduler()
+        let order = Order()
+
+        await scheduler.acquire(.background)
+        await order.record("chunk")
+        await scheduler.release()
+
+        await scheduler.acquire(.dictation)
+        await order.record("dictation")
+        await scheduler.release()
+
+        let entries = await order.entries
+        XCTAssertEqual(entries, ["chunk", "dictation"], "With no contention, order is simply arrival order.")
+    }
+
+    /// Every acquire is balanced by a release, on every early-return path.
+    ///
+    /// Renamed from "…DoNotOverlap", which is not what it measured. The review
+    /// was blunt and correct: it entered and left the overlap counter AROUND the
+    /// call rather than inside the critical section, never asserted the peak,
+    /// and could not have distinguished a working arbiter from none at all
+    /// because `ModelManager` is `@MainActor` and serialises this path anyway.
+    /// A test whose title claims more than its body checks is the same defect
+    /// this project keeps paying for, committed in the test written to prove it
+    /// had been fixed.
+    ///
+    /// What this DOES check is real and worth keeping: `transcribe` returns
+    /// early when no model is loaded, and a missed release on that path would
+    /// wedge his dictation permanently.
+    @MainActor
+    func testSchedulerSlotIsReleasedOnEveryEarlyReturnPath() async {
+        let manager = ModelManager()
+
+        // No model is loaded, so every one of these takes an early return.
+        await withTaskGroup(of: Void.self) { group in
+            for index in 0..<12 {
+                group.addTask {
+                    _ = await manager.transcribe(
+                        audioBuffer: [0.1, 0.2, 0.3],
+                        priority: index.isMultiple(of: 2) ? .dictation : .background
+                    )
+                }
+            }
+        }
+
+        let queued = await manager.transcriptionScheduler.queuedCounts
+        XCTAssertEqual(queued.dictation, 0, "A dictation request was left queued, so a release was missed.")
+        XCTAssertEqual(queued.background, 0, "A background request was left queued, so a release was missed.")
+
+        // And the slot is genuinely free rather than held. If a release were
+        // missed this hangs rather than failing, which is worth knowing when
+        // reading a timeout in CI.
+        await manager.transcriptionScheduler.acquire(.dictation)
+        await manager.transcriptionScheduler.release()
+    }
+
+    func testOnlyOneTranscriptionRunsAtATime() async {
+        let scheduler = TranscriptionScheduler()
+        let overlap = Overlap()
+
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    await scheduler.acquire(.background)
+                    await overlap.enter()
+                    try? await Task.sleep(nanoseconds: 5_000_000)
+                    await overlap.leave()
+                    await scheduler.release()
+                }
+            }
+        }
+
+        let peak = await overlap.peak
+        XCTAssertEqual(peak, 1, "Two transcriptions ran at once against one shared model.")
+    }
+
+    private actor Overlap {
+        private var current = 0
+        private(set) var peak = 0
+        func enter() { current += 1; peak = max(peak, current) }
+        func leave() { current -= 1 }
+    }
+}

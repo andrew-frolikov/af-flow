@@ -336,6 +336,10 @@ class AppState: ObservableObject {
     private var pipelineOwner: PipelineOwner?
     private var speechAnalyzerReloadsInFlight = 0
     private var pendingMeetingSessionStarts = 0
+    /// Throttles background cleanup-model warming, so repeated dictations with
+    /// an unloadable model do not restart a download on every utterance.
+    private var lastCleanupWarmAttempt: (kind: LocalCleanupModelKind, at: ContinuousClock.Instant)?
+    private static let cleanupWarmRetryInterval: Duration = .seconds(60)
     private let cleanupSettingsDefaults: UserDefaults
     private let inputMonitoringChecker: () -> Bool
     private let inputMonitoringPrompter: () -> Void
@@ -1819,6 +1823,23 @@ class AppState: ObservableObject {
         return session
     }
 
+    /// Starts a meeting from the menu bar, naming it after whatever call app is
+    /// in front so he does not have to type anything to begin.
+    ///
+    /// Detection runs ONCE, here, on demand. It deliberately does not restore
+    /// the fork's five-second poll that walked every browser window's
+    /// accessibility tree for the app's whole lifetime, in a dictation app,
+    /// while he was speaking. That poll was removed on 2026-07-27 and is not
+    /// coming back as a side effect of this feature.
+    func startMeetingTranscriptionFromMenu() {
+        let detected = MeetingDetector.detectFrontmostMeetingNow()
+        startMeetingTranscription(
+            meetingName: detected?.suggestedName ?? MeetingDetector.defaultMeetingName(),
+            detectedMeeting: detected
+        )
+    }
+
+    /// Stops the meeting in progress and writes it out.
     func startMeetingTranscription(
         meetingName: String,
         skipConsent: Bool = false,
@@ -1892,7 +1913,12 @@ class AppState: ObservableObject {
         sessionID: UUID,
         audioBuffer: [Float]
     ) async -> SpeakerTaggedTranscript? {
-        guard let result = await modelManager.transcribeWithSpeakerTagging(audioBuffer: audioBuffer),
+        // Post-meeting tagging: nobody is watching for this, so it yields to
+        // push-to-talk like any other background work.
+        guard let result = await modelManager.transcribeWithSpeakerTagging(
+                audioBuffer: audioBuffer,
+                priority: .background
+              ),
               let speakerTaggedTranscript = result.speakerTaggedTranscript else {
             return nil
         }
@@ -2326,8 +2352,17 @@ class AppState: ObservableObject {
         try? chordBindingStore.setBinding(pepperChatChord, for: .pepperChat)
     }
 
+    /// Whether cleanup can run RIGHT NOW without loading anything.
+    ///
+    /// Codex caught that `isReady` alone was not enough: it reports the
+    /// manager's state, not which model is resident. Wiki or Q and A work can
+    /// leave a different model active, and then this said yes while the cleanup
+    /// call swapped models, or cold-downloaded one, on the release-to-text path.
+    /// That is the exact hot-path load the early return exists to remove.
     private var canAttemptCleanup: Bool {
         textCleanupManager.isReady
+            && textCleanupManager.activeLoadedModelKind == textCleanupManager.selectedCleanupModelKind
+            && textCleanupManager.activeLLM != nil
     }
 
     var shouldLoadLocalCleanupModels: Bool {
@@ -2343,17 +2378,54 @@ class AppState: ObservableObject {
         }
 
         guard cleanupEnabled else {
-            return (text: text, prompt: cleanupPrompt, attemptedCleanup: false, cleanupUsedFallback: false)
+            // The deterministic dictionary is not part of cleanup and must not
+            // be switched off with it. Turning the cleanup MODEL off is a
+            // statement about rewriting his phrasing, not about whether
+            // "Hugging Face" should come out spelled correctly.
+            return (
+                text: textCleaner.applyDeterministicCorrections(to: text),
+                prompt: cleanupPrompt,
+                attemptedCleanup: false,
+                cleanupUsedFallback: false
+            )
         }
 
-        let activeCleanupPrompt: String
-        if canAttemptCleanup {
-            let promptBuildStart = Date()
-            activeCleanupPrompt = activeCleanupPromptComponents(windowContext: windowContext).fullPrompt
-            activePerformanceTrace?.promptBuildDuration = Date().timeIntervalSince(promptBuildStart)
-        } else {
-            activeCleanupPrompt = languageAwareCleanupPrompt
+        // The cleanup model is not loaded, so hand back the raw transcription
+        // rather than making him wait for it.
+        //
+        // `canAttemptCleanup` used to gate only which PROMPT was built, and the
+        // code fell through to the cleaner regardless. `TextCleanupManager.clean()`
+        // calls `loadModel()`, so a dictation started with the model unloaded
+        // blocked on a model load, and on a cold cache on a 535 MB DOWNLOAD,
+        // while he waited for his text to appear.
+        //
+        // It compounds with the single model slot shared by dictation, meeting
+        // summaries, Q&A and wiki generation: every meeting summary evicts the
+        // dictation model, so the next dictation would pay the full load. Rare
+        // today; routine once meetings are on.
+        //
+        // Raw text now, and the model warms in the background for next time.
+        guard canAttemptCleanup else {
+            debugLogStore.record(
+                category: .cleanup,
+                message: "Cleanup model not ready; returning the raw transcription and warming the model in the background."
+            )
+            warmCleanupModelInBackground()
+            // The deterministic dictionary still runs. Codex caught that this
+            // early return skipped it, so his preferred spellings and misheard
+            // rules would have stopped applying exactly when cleanup was
+            // unavailable. It needs no model and costs nothing.
+            return (
+                text: textCleaner.applyDeterministicCorrections(to: text),
+                prompt: languageAwareCleanupPrompt,
+                attemptedCleanup: false,
+                cleanupUsedFallback: false
+            )
         }
+
+        let promptBuildStart = Date()
+        let activeCleanupPrompt = activeCleanupPromptComponents(windowContext: windowContext).fullPrompt
+        activePerformanceTrace?.promptBuildDuration = Date().timeIntervalSince(promptBuildStart)
 
         let cleanedResult = await textCleaner.cleanWithPerformance(
             text: text,
@@ -2365,9 +2437,58 @@ class AppState: ObservableObject {
         return (
             text: cleanedResult.text,
             prompt: activeCleanupPrompt,
-            attemptedCleanup: canAttemptCleanup,
+            // True by construction: the guard above returns early otherwise.
+            // Re-reading `canAttemptCleanup` here would report whatever the
+            // model's state happens to be AFTER the call, which is a different
+            // question from whether cleanup was attempted.
+            attemptedCleanup: true,
             cleanupUsedFallback: cleanedResult.usedFallback
         )
+    }
+
+    /// Loads the cleanup model out of band, so the NEXT dictation finds it
+    /// ready instead of paying for it on the hot path.
+    ///
+    /// Idempotent: `startLoad` already refuses when a load for the same model is
+    /// in flight, so repeated failed dictations do not stack up loads.
+    private func warmCleanupModelInBackground() {
+        guard cleanupEnabled, shouldLoadLocalCleanupModels else { return }
+
+        // Codex was right that the earlier idempotency claim was too strong:
+        // `startLoad` only suppresses duplicates once the manager's state has
+        // caught up, so two dictations in quick succession could each kick off a
+        // load, and a load that keeps failing would be retried on every single
+        // dictation with no backoff.
+        //
+        // This owns the decision instead of inferring it from display state.
+        //
+        // And it never pre-empts a load already in flight. `startLoad` cancels
+        // the active task when it is for a different kind, and the single model
+        // slot is shared with wiki, Q and A and meeting summaries, so a
+        // dictation that found the wrong model resident could cancel whatever
+        // was loading. The two sides could then ping-pong, bounded only by the
+        // throttle and costing a full model load each swap.
+        switch textCleanupManager.state {
+        case .downloading, .loadingModel:
+            return
+        case .idle, .ready, .error:
+            break
+        }
+
+        let kind = textCleanupManager.selectedCleanupModelKind
+        // Monotonic, not wall clock. With `Date`, a backward system clock jump
+        // makes the elapsed interval negative, which reads as "throttled" and
+        // could suppress warming until real time caught up with a stale future
+        // timestamp.
+        let now = ContinuousClock.now
+        if let attempt = lastCleanupWarmAttempt,
+           attempt.kind == kind,
+           attempt.at.duration(to: now) < Self.cleanupWarmRetryInterval {
+            return
+        }
+
+        lastCleanupWarmAttempt = (kind: kind, at: now)
+        textCleanupManager.startLoad(kind: kind)
     }
 
     private var languageAwareCleanupPrompt: String {
@@ -2949,7 +3070,10 @@ class AppState: ObservableObject {
             },
             runSpeakerTagging: { [weak self] audioBuffer in
                 guard let self else { return nil }
-                return await self.modelManager.transcribeWithSpeakerTagging(audioBuffer: audioBuffer)
+                return await self.modelManager.transcribeWithSpeakerTagging(
+                    audioBuffer: audioBuffer,
+                    priority: .background
+                )
             },
             resolveSpeakerProfiles: { [weak self] entryID, audioBuffer, diarizationSummary, speakerTaggedTranscript in
                 guard let self else { return [] }

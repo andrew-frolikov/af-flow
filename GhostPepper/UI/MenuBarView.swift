@@ -3,6 +3,7 @@ import CoreAudio
 import ServiceManagement
 
 struct MenuBarView: View {
+    @AppStorage("meetingTranscriptEnabled") private var meetingTranscriptEnabled: Bool = false
     @ObservedObject var appState: AppState
 
     var body: some View {
@@ -25,12 +26,34 @@ struct MenuBarView: View {
                 appState.showDebugLog()
             }
 
-            // The fork's meeting entries used to live here behind
-            // `meetingTranscriptEnabled`, which is absent from his defaults and
-            // so renders nothing today. Deleted anyway: "nothing writes that key
-            // right now" is a fact about the present, and the cost of being
-            // wrong is a button labelled "IDE..." appearing in the menu he opens
-            // more than any other surface in the app.
+            // Meeting transcription, restored 2026-07-27 on Andrew's request to
+            // transcribe his Meet and Zoom calls.
+            //
+            // The fork's old entries were deleted for a good reason: they were
+            // gated on a key nothing wrote, and one of them was labelled
+            // "IDE...", in the menu he opens more than any other surface. This is
+            // deliberately ONE entry, gated on a setting he turns on himself,
+            // and it says what it does.
+            // Read through this view's own @AppStorage rather than through
+            // `appState`. `@AppStorage` on an ObservableObject CLASS never fires
+            // objectWillChange, so gating on `appState.meetingTranscriptEnabled`
+            // would leave this entry missing until something else happened to
+            // redraw the menu. That is the "switch that cannot do what its label
+            // says" failure this work removed elsewhere; it would be careless to
+            // reintroduce it in the entry point.
+            if meetingTranscriptEnabled {
+                Divider()
+
+                if appState.activeMeetingSession != nil {
+                    Button("Stop Meeting Transcription") {
+                        appState.stopMeetingTranscription()
+                    }
+                } else {
+                    Button("Transcribe a Meeting...") {
+                        appState.startMeetingTranscriptionFromMenu()
+                    }
+                }
+            }
 
             Text("AF Flow v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
                 .font(.caption)

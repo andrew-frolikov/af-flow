@@ -48,7 +48,8 @@ final class ChunkedTranscriptionPipeline {
 
     init(transcriber: SpeechTranscriber, chunkDirectory: URL, chunkInterval: TimeInterval = 30.0) {
         self.transcribeChunk = { samples in
-            await transcriber.transcribe(audioBuffer: samples)
+            // Meeting chunks yield to push-to-talk, which he is waiting on.
+            await transcriber.transcribe(audioBuffer: samples, priority: .background)
         }
         self.chunkDirectory = chunkDirectory
         self.chunkInterval = chunkInterval
