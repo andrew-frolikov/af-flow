@@ -2615,6 +2615,18 @@ struct MeetingRootView: View {
         .animation(.easeInOut(duration: 0.2), value: state.showSidebar)
         .animation(.easeInOut(duration: 0.2), value: state.showModelsSidebar)
         .onAppear { state.loadHistory() }
+        // Refresh the list when a recording finishes.
+        //
+        // Andrew's first real meeting transcribed and saved correctly and then
+        // did not appear in the app, which reads exactly like "nothing was
+        // saved". The file was on disk the whole time: `.meetingRecordingStopped`
+        // was already posted and already observed, but the only handler refreshed
+        // an unrelated status, so the history list kept showing whatever it had
+        // loaded when the window opened. Reopening the window would have shown
+        // it, which is not something he should have to discover.
+        .onReceive(NotificationCenter.default.publisher(for: .meetingRecordingStopped)) { _ in
+            state.loadHistory()
+        }
         .onChange(of: state.showSidebar) { _, visible in
             if visible { state.loadHistory() }
         }
