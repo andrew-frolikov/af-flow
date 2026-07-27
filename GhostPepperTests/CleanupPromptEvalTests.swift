@@ -163,6 +163,18 @@ final class CleanupPromptEvalTests: XCTestCase {
         // afterward can never observe "not downloaded" -- it silently pulls
         // multi-gigabyte weights instead of skipping. Skip here, before any
         // network access happens.
+        // SELF-GATED, rather than relying on the wrapper to skip this class.
+        // Codex, 2026-07-26: `run-tests.sh` skips these by name, so a raw
+        // `xcodebuild test` or a run from Xcode's UI loads real multi-gigabyte
+        // models with nothing to stop it. A test whose safety lives in a
+        // caller is a test that is unsafe the moment anyone calls it another
+        // way, which is the same defect as a guard that only one path reaches.
+        guard ProcessInfo.processInfo.environment["AF_FLOW_CLEANUP_EVALS"] == "1" else {
+            throw XCTSkip(
+                "Cleanup evals load a real local model. Set AF_FLOW_CLEANUP_EVALS=1 to run them."
+            )
+        }
+
         guard TextCleanupManager.isModelDownloaded(modelKind) else {
             throw XCTSkip("Cleanup model \(modelKind.rawValue) not available (not downloaded)")
         }

@@ -5,6 +5,27 @@ import Combine
 struct GhostPepperApp: App {
     private static let automaticTerminationReason = "AF Flow keeps a persistent menu bar presence."
     private static let forceOnboarding = ProcessInfo.processInfo.arguments.contains("--force-onboarding")
+
+    /// True when this process was launched by `xcodebuild test` as the test
+    /// host rather than by Andrew.
+    ///
+    /// **Why this exists, and it is a second egress route entirely separate from
+    /// the one fixed in TextCleanupManager.** `xcodebuild test` launches the app
+    /// as its test host, and the app then runs its own startup path: onboarding
+    /// completes, `initialize()` runs, and the speech model loads, downloading
+    /// itself if the container has no cache. Since the test host was given its
+    /// own bundle identifier it has its own empty container, so that startup is
+    /// a fresh multi-hundred-megabyte fetch that no test asked for and no test
+    /// gate covers. It is the most likely source of the 346 MB
+    /// `CFNetworkDownload` temp file observed on 2026-07-26 during a run whose
+    /// cleanup models were already cached. Codex found it.
+    ///
+    /// Anchored to what the SYSTEM produces rather than to a flag someone has to
+    /// remember to pass: `XCTestConfigurationFilePath` is set by XCTest itself,
+    /// in every configuration, and cannot be present in Andrew's own launch.
+    private static let isRunningTests =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        || NSClassFromString("XCTestCase") != nil
     @StateObject private var appState = AppState()
     @NSApplicationDelegateAdaptor(AppReopenDelegate.self) private var reopenDelegate
     @AppStorage("onboardingCompleted") private var onboardingCompleted = false
@@ -51,6 +72,12 @@ struct GhostPepperApp: App {
                 ProcessInfo.processInfo.disableAutomaticTermination(Self.automaticTerminationReason)
                 guard !hasInitialized else { return }
                 hasInitialized = true
+                // The test host must do NOTHING at startup. It is the app, so
+                // it would otherwise load models, open windows and compete for
+                // the microphone while the suite runs. Returning here also
+                // means a stray `onboardingCompleted = true` in the test
+                // domain can never trigger a model download.
+                if Self.isRunningTests { return }
                 // All four of these used to open the fork's meeting window.
                 // AF Flow's own front door is the only thing launching the app
                 // or clicking the Dock icon should ever show.
