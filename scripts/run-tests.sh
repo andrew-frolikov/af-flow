@@ -279,6 +279,64 @@ build_for_testing() {
 # whole path was inert. The guard's comment is not the guard's blast radius.
 # **When you exempt something from a check, enumerate what the check was
 # protecting, not what its documentation mentions.**
+# AF_FLOW_APP_BUILD builds the app Andrew actually launches, and prints where it
+# put it. It runs no tests and installs nothing.
+#
+# **The fifth capability added to this wrapper rather than worked around, and it
+# was created by another capability.** Since the test host was given its own
+# bundle identifier on 2026-07-26, every build this script produces is
+# `com.frolikov.afflow.testhost`, which is deliberately NOT installable: it would
+# not carry his Input Monitoring grant and it is not the app he runs. That left
+# no sanctioned way to produce an installable build at all, and the only route
+# was a bare `xcodebuild`, which is exactly the bypass that corrupted his
+# settings three times on 2026-07-21.
+#
+# Every time this wrapper has been bypassed, the bypass existed because the
+# wrapper was missing something. That has now produced raw output, repeat runs,
+# build-only, and this. The rule holds: add the capability people are going
+# around it for.
+#
+# It touches no defaults, launches nothing, and uses its own derived-data
+# directory so it can never be confused with the test host next to it.
+if [ "${AF_FLOW_APP_BUILD:-}" = "1" ]; then
+    APP_DERIVED="$REPO_ROOT/build/app-derived"
+    echo "APP BUILD: producing the app Andrew launches, running nothing."
+    echo "Bundle identifier: $DOMAIN (NOT the test host)."
+    echo
+    xcodebuild build \
+        -project GhostPepper.xcodeproj \
+        -scheme GhostPepper \
+        -configuration Debug \
+        -derivedDataPath "$APP_DERIVED" \
+        -skipMacroValidation \
+        DEVELOPMENT_TEAM="$TEAM" \
+        CODE_SIGN_IDENTITY="Apple Development" \
+        CODE_SIGN_STYLE=Automatic \
+        "$@" \
+        2>&1 | grep -E "error:|warning: .*never be executed|BUILD SUCCEEDED|BUILD FAILED"
+    APP_BUILD_STATUS=${PIPESTATUS[0]}
+    APP_PATH="$APP_DERIVED/Build/Products/Debug/GhostPepper.app"
+    if [ "$APP_BUILD_STATUS" -ne 0 ] || [ ! -d "$APP_PATH" ]; then
+        echo "APP BUILD FAILED (exit $APP_BUILD_STATUS)." >&2
+        exit "${APP_BUILD_STATUS:-1}"
+    fi
+    # Verified rather than assumed. Shipping a build carrying the test host's
+    # identity to the path his permissions are attached to would silently break
+    # his dictation, which is the failure this whole line of work started from.
+    BUILT_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Contents/Info.plist" 2>/dev/null)
+    if [ "$BUILT_ID" != "$DOMAIN" ]; then
+        echo "REFUSING TO REPORT SUCCESS: built bundle id is '$BUILT_ID', expected '$DOMAIN'." >&2
+        echo "Installing this would break his Input Monitoring grant." >&2
+        exit 10
+    fi
+    echo
+    echo "built: $APP_PATH"
+    echo "bundle id verified: $BUILT_ID"
+    echo
+    echo "NOT INSTALLED. Copy it over the app he launches only when he can relaunch it."
+    exit 0
+fi
+
 if [ "${AF_FLOW_BUILD_ONLY:-}" = "1" ]; then
     echo "BUILD-ONLY MODE: compiling both targets, running nothing."
     echo "Touches no defaults, no output directory, and launches no test host,"
