@@ -353,7 +353,12 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         let requestedModelKind = modelKind ?? selectedCleanupModelKind
         await loadModel(kind: requestedModelKind)
 
-        guard model(for: requestedModelKind) != nil else {
+        // `isModelAvailable` rather than `model(for:) != nil`, because the
+        // override above deliberately does not manufacture an `LLM`. Asking for
+        // a live object here would make an honoured override look unavailable,
+        // and the test would fail for a reason that has nothing to do with what
+        // it is testing.
+        guard isModelAvailable(requestedModelKind) else {
             debugLogger?(
                 .cleanup,
                 "Skipped local cleanup because model \(requestedModelKind.rawValue) was not ready."
@@ -614,9 +619,32 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
 
         guard state == .idle || state == .error || state == .ready else { return }
 
-        if let override = availabilityOverride(for: kind), !override {
-            errorMessage = "Failed to load the selected cleanup model."
-            state = .error
+        // AN AVAILABILITY OVERRIDE IS ANSWERED HERE IN BOTH DIRECTIONS, and the
+        // asymmetry it replaces cost 4.02 GB of downloads on 2026-07-26.
+        //
+        // This used to read `if let override = ..., !override`, so only FALSE
+        // was handled. A test that said "this model is available" therefore fell
+        // straight through to the disk check below and then to `downloadModel`,
+        // which opens a real URLSession to huggingface.co. Three tests in
+        // TextCleanupManagerTests do exactly that, and between them they pull
+        // Qwen 3.5 2B and 4B. It was invisible for a month because the suite ran
+        // inside the app's own container, where those files already existed: a
+        // warm cache was standing in for a gate, and separating the test host's
+        // container removed the disguise rather than the defect.
+        //
+        // An override is a test saying "pretend this model is loaded", so it is
+        // honoured as stated. `activeLoadedModelKind` and `activeLLM` are
+        // deliberately NOT set: the override is a claim about availability, not
+        // a real model, and manufacturing a fake `LLM` would put a lie somewhere
+        // production code could read it.
+        if let override = availabilityOverride(for: kind) {
+            if override {
+                state = .ready
+                errorMessage = nil
+            } else {
+                errorMessage = "Failed to load the selected cleanup model."
+                state = .error
+            }
             return
         }
 

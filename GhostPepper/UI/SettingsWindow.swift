@@ -1058,30 +1058,12 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsCard("Appearance") {
-                VStack(alignment: .leading, spacing: 14) {
-                    Picker("Theme", selection: $selectedThemeID) {
-                        ForEach(AppThemeID.allCases) { themeID in
-                            Text(themeID.displayName).tag(themeID.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 420, alignment: .leading)
-
-                    HStack(spacing: 12) {
-                        ForEach(AppThemeID.allCases) { themeID in
-                            ThemeSwatch(
-                                theme: AppTheme(id: themeID),
-                                title: themeID.displayName,
-                                subtitle: themeID.subtitle,
-                                isSelected: selectedThemeID == themeID.rawValue
-                            ) {
-                                selectedThemeID = themeID.rawValue
-                            }
-                        }
-                    }
-                }
-            }
+            // The "Appearance" card, offering the fork's Windows 95 and Space
+            // skins, was deleted on 2026-07-26 at Andrew's instruction. The card
+            // only; `AppTheme` stays compiled and every `appTheme.id ==` branch
+            // across this 4051-line file is untouched, because deleting the enum
+            // would be a large edit through code he dictates in front of, for no
+            // gain he can see.
 
             SettingsCard("Startup") {
                 Toggle("Launch at login", isOn: $launchAtLogin)
@@ -1305,28 +1287,10 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            SettingsCard("2nd Brain generation model") {
-                SettingsField("Default 2nd Brain model") {
-                    Picker(
-                        "2nd Brain model",
-                        selection: Binding(
-                            get: { appState.selectedWikiModelKind },
-                            set: { appState.selectedWikiModelKind = $0 }
-                        )
-                    ) {
-                        ForEach(TextCleanupManager.wikiGenerationModels, id: \.kind) { model in
-                            Text(model.displayName).tag(model.kind)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 420, alignment: .leading)
-                }
-
-                Text("2nd Brain generation can use a larger downloaded local model than live dictation cleanup.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            // The "2nd Brain generation model" card was deleted on 2026-07-26 at
+            // Andrew's instruction. It picked the model for Ghost Pepper's wiki
+            // generation, which AF Flow does not do, sitting in the settings
+            // section he opens most.
 
             SettingsCard("Runtime models") {
                 VStack(alignment: .leading, spacing: 16) {

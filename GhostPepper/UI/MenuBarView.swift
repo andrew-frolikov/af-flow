@@ -25,19 +25,12 @@ struct MenuBarView: View {
                 appState.showDebugLog()
             }
 
-            if appState.meetingTranscriptEnabled {
-                Divider()
-
-                Button("IDE...") {
-                    appState.showOrCreateMeetingWindow()
-                }
-
-                if appState.activeMeetingSession != nil {
-                    Button("Stop Meeting") {
-                        appState.stopMeetingTranscription()
-                    }
-                }
-            }
+            // The fork's meeting entries used to live here behind
+            // `meetingTranscriptEnabled`, which is absent from his defaults and
+            // so renders nothing today. Deleted anyway: "nothing writes that key
+            // right now" is a fact about the present, and the cost of being
+            // wrong is a button labelled "IDE..." appearing in the menu he opens
+            // more than any other surface in the app.
 
             Text("AF Flow v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
                 .font(.caption)
