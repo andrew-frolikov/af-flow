@@ -345,6 +345,53 @@ final class TextCleaner {
             // path below, and the ranking behind it is the project's rule: text
             // that is merely uncleaned is a small annoyance, and text that is
             // gone is unrecoverable.
+            // AND THE SAME RANKING ONE LEVEL UP: a cleanup that threw away a
+            // large part of what he said is closer to losing the dictation than
+            // to cleaning it, so it is refused too.
+            //
+            // Found in his own words on 2026-07-27. He said "Я проверил, и это
+            // работает хорошо, если вы нужны мой вердикт" and what landed was
+            // "Я проверил, и это работает хорошо." The model deleted the clause
+            // in which he was offering his verdict, presumably reading garbled
+            // Russian as noise. The prompt already forbids this in plain words
+            // and the model did it anyway, which is the whole argument for
+            // enforcing it here rather than asking more firmly.
+            //
+            // The floor is MEASURED, not chosen. Across his 48 recorded
+            // dictations, median retention is 1.00, the worst legitimate cleanup
+            // keeps 0.87, and that one deletion keeps 0.55. A 0.75 floor sits
+            // clear of both, rejecting exactly the defect and nothing else.
+            //
+            // It only applies from 8 words up, because on very short utterances
+            // the ratio is meaningless: "um yes" to "yes" is a correct cleanup
+            // that keeps half the words.
+            if Self.droppedTooMuch(input: text, output: sanitizedText) {
+                debugLogger?(
+                    .cleanup,
+                    "Cleanup dropped too much of the transcription, returning raw text instead."
+                )
+                logCleanupTranscript(
+                    prompt: activePrompt,
+                    input: formattedInput,
+                    rawOutput: cleanedText,
+                    sanitizedOutput: sanitizedText,
+                    finalOutput: text
+                )
+                return TextCleanerResult(
+                    text: text,
+                    performance: TextCleanerPerformance(
+                        modelCallDuration: modelCallDuration,
+                        postProcessDuration: Date().timeIntervalSince(postProcessStart)
+                    ),
+                    transcript: TextCleanerTranscript(
+                        prompt: activePrompt,
+                        inputText: formattedInput,
+                        rawOutput: cleanedText
+                    ),
+                    usedFallback: true
+                )
+            }
+
             guard !sanitizedText.isEmpty else {
                 debugLogger?(
                     .cleanup,
@@ -500,6 +547,32 @@ final class TextCleaner {
     ///
     /// Casing and final punctuation are now left exactly as the model produced
     /// them, which is what 96 percent of his real edits do.
+
+    /// The share of his words a cleanup must keep, measured rather than chosen.
+    ///
+    /// Across the 48 dictations recorded in the transcription lab, median
+    /// retention is 1.00, the worst legitimate cleanup keeps 0.87, and the one
+    /// real content deletion kept 0.55. This sits clear of both.
+    static let minimumRetainedWordShare = 0.75
+
+    /// Below this, the ratio carries no information: "um yes" becoming "yes" is
+    /// a correct cleanup that keeps half the words.
+    static let retentionCheckMinimumWords = 8
+
+    /// True when the cleanup threw away enough of his speech that returning the
+    /// raw transcription is the safer answer.
+    ///
+    /// Counts words rather than characters so that punctuation the model is
+    /// explicitly allowed to add or remove cannot move the number.
+    static func droppedTooMuch(input: String, output: String) -> Bool {
+        let inputWords = wordCount(input)
+        guard inputWords >= retentionCheckMinimumWords else { return false }
+        return Double(wordCount(output)) / Double(inputWords) < minimumRetainedWordShare
+    }
+
+    private static func wordCount(_ text: String) -> Int {
+        text.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).count
+    }
 
     static func formatCleanupInput(userInput: String) -> String {
         """
