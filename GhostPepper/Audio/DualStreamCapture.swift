@@ -15,6 +15,11 @@ struct TaggedAudioChunk {
 
 protocol MeetingAudioCapturing: AnyObject {
     var onAudioChunk: ((TaggedAudioChunk) -> Void)? { get set }
+    /// Reports that the "Others" channel stopped on its own mid-meeting, for
+    /// example because the audio output device changed. The microphone channel
+    /// keeps running, so the meeting is degraded rather than over, and saying so
+    /// is better than a transcript that quietly contains only one voice.
+    var onCaptureDegraded: ((String) -> Void)? { get set }
     func start() async throws
     func stop() async -> (micBuffer: [Float], systemBuffer: [Float])
     var elapsed: TimeInterval { get }
@@ -24,6 +29,7 @@ protocol MeetingAudioCapturing: AnyObject {
 /// Mic audio = "Me", system audio = "Others" — provides free basic diarization.
 final class DualStreamCapture: MeetingAudioCapturing {
     var onAudioChunk: ((TaggedAudioChunk) -> Void)?
+    var onCaptureDegraded: ((String) -> Void)?
 
     private let micRecorder = AudioRecorder()
     private let systemRecorder = SystemAudioRecorder()
@@ -62,10 +68,15 @@ final class DualStreamCapture: MeetingAudioCapturing {
             startTime = nil
             micRecorder.onConvertedAudioChunk = nil
             systemRecorder.onConvertedAudioChunk = nil
+        systemRecorder.onCaptureInterrupted = nil
             throw error
         }
 
         isActive = true
+
+        systemRecorder.onCaptureInterrupted = { [weak self] message in
+            self?.onCaptureDegraded?(message)
+        }
 
         do {
             try await systemRecorder.startRecording()
@@ -84,6 +95,7 @@ final class DualStreamCapture: MeetingAudioCapturing {
 
         micRecorder.onConvertedAudioChunk = nil
         systemRecorder.onConvertedAudioChunk = nil
+        systemRecorder.onCaptureInterrupted = nil
         startTime = nil
 
         return (micBuffer, systemBuffer)

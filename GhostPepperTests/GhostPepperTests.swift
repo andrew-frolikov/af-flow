@@ -90,6 +90,7 @@ private final class MeetingSpeechAnalyzerStub: SpeechAnalyzerTranscribing {
 
 private final class FakeMeetingAudioCapture: MeetingAudioCapturing {
     var onAudioChunk: ((TaggedAudioChunk) -> Void)?
+    var onCaptureDegraded: ((String) -> Void)?
     var onStop: (() -> Void)?
 
     func start() async throws {}

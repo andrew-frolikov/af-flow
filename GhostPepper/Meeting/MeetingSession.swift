@@ -19,6 +19,10 @@ final class MeetingSession: ObservableObject {
     @Published private(set) var isDraining = false
     @Published var fileURL: URL?
     @Published var noAudioDetected = false
+    /// Set when the "Others" channel stops mid-meeting, for example because the
+    /// output device changed. The microphone keeps recording, so the meeting
+    /// continues in a degraded state, and the UI can say which.
+    @Published var captureDegradedMessage: String?
     @Published private(set) var isTaggingRemoteSpeakers = false
 
     @Published var transcript: MeetingTranscript
@@ -109,6 +113,14 @@ final class MeetingSession: ObservableObject {
         newPipeline.onChunkSaved = { [weak self] url, source in
             Task { @MainActor [weak self] in
                 self?.recordSavedChunk(url: url, source: source)
+            }
+        }
+
+        capture.onCaptureDegraded = { [weak self] message in
+            Task { @MainActor [weak self] in
+                guard let self, self.isActive else { return }
+                self.captureDegradedMessage = message
+                print("MeetingSession: capture degraded: \(message)")
             }
         }
 

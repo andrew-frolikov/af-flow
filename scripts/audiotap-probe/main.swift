@@ -78,7 +78,7 @@ func osStatusText(_ status: OSStatus) -> String {
 }
 
 let sandboxState = ProcessInfo.processInfo.environment["AF_FLOW_PROBE_LABEL"] ?? "unlabelled"
-emit("AF Flow audio tap probe — \(sandboxState)")
+emit("AF Flow audio tap probe - \(sandboxState)")
 emit("macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
 emit("report: \(reportURL.path)")
 emit("")
@@ -328,7 +328,7 @@ if result.peak < 0.0001 {
     // than an error. It is also what you get when the process was launched from
     // a terminal, because TCC then attributes the request to the terminal
     // instead of to this app. Launch with `open -a` before believing this.
-    emit("VERDICT: SILENCED — frames arrived but all samples are zero.")
+    emit("VERDICT: SILENCED - frames arrived but all samples are zero.")
     emit("         Either audio capture is denied for this app, or it was")
     emit("         launched from a shell so TCC attributed the request to the")
     emit("         terminal. Relaunch with 'open -a' before concluding anything.")
