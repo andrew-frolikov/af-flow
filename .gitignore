@@ -60,6 +60,7 @@ docs
 docs/*
 !docs/index.html
 !docs/pre-deploy-privacy-security.md
+!docs/2026-07-27-meeting-transcripts-design.md
 .superpowers/
 inspo/
 
