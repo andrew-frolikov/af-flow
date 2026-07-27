@@ -12,6 +12,7 @@
 		00B000000000000000000002 /* WikiKindStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000002 /* WikiKindStore.swift */; };
 		00B000000000000000000003 /* QMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000003 /* QMDService.swift */; };
 		00B000000000000000000099 /* HomeWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000099 /* HomeWindow.swift */; };
+		00B000000000000000000101 /* RecordingStartBlockedReasonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000101 /* RecordingStartBlockedReasonTests.swift */; };
 		00B000000000000000000004 /* NewWikiSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000004 /* NewWikiSheet.swift */; };
 		00B000000000000000000007 /* LocalStructuredLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000007 /* LocalStructuredLLM.swift */; };
 		00B000000000000000000008 /* LocalWikiEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000008 /* LocalWikiEngine.swift */; };
@@ -233,6 +234,7 @@
 		00A000000000000000000002 /* WikiKindStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStore.swift; sourceTree = "<group>"; };
 		00A000000000000000000003 /* QMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QMDService.swift; sourceTree = "<group>"; };
 		00A000000000000000000099 /* HomeWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeWindow.swift; sourceTree = "<group>"; };
+		00A000000000000000000101 /* RecordingStartBlockedReasonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStartBlockedReasonTests.swift; sourceTree = "<group>"; };
 		00A000000000000000000004 /* NewWikiSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewWikiSheet.swift; sourceTree = "<group>"; };
 		00A000000000000000000007 /* LocalStructuredLLM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStructuredLLM.swift; sourceTree = "<group>"; };
 		00A000000000000000000008 /* LocalWikiEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalWikiEngine.swift; sourceTree = "<group>"; };
@@ -886,6 +888,7 @@
 				ABAC2D0F6C311FB1DA3E9ABF /* PostPasteLearningCoordinatorTests.swift */,
 				7ECFAFC0144B6B9203BF4EE0 /* RecognizedVoiceStoreTests.swift */,
 				80731398639640F62FFC4524 /* RecordingOCRPrefetchTests.swift */,
+				00A000000000000000000101 /* RecordingStartBlockedReasonTests.swift */,
 				AD0C972BC69839C41ACA2E8C /* RecordingSessionCoordinatorTests.swift */,
 				38C742095D3934D70BCE44E4 /* RuntimeModelInventoryTests.swift */,
 				231812B1BF8E3F2D5E0209F3 /* ShortcutCaptureStateTests.swift */,
@@ -1224,6 +1227,7 @@
 				41C94A48B97D3A6861EA1E92 /* PostPasteLearningCoordinatorTests.swift in Sources */,
 				4FCEB4322F0DA8C7F6FFD12D /* RecognizedVoiceStoreTests.swift in Sources */,
 				4DD74E9C222518EEB0DA2A9B /* RecordingOCRPrefetchTests.swift in Sources */,
+				00B000000000000000000101 /* RecordingStartBlockedReasonTests.swift in Sources */,
 				2E80774D95EAC6D6B53A226D /* RecordingSessionCoordinatorTests.swift in Sources */,
 				571085951E318B0ADD2B00EA /* RuntimeModelInventoryTests.swift in Sources */,
 				BE7701382D2CC62C1CEBF29C /* ShortcutCaptureStateTests.swift in Sources */,

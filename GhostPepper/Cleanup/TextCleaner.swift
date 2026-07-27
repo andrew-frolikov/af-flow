@@ -235,7 +235,7 @@ final class TextCleaner {
     2. When the speaker corrects himself, keep only the corrected version: "on Tuesday, no, on Wednesday" becomes "on Wednesday".
     3. Fix punctuation only: put a period between two complete sentences that were run together and capitalize the word after the new period. Keep every word when you split. "and", "so", "и", "но" start the next sentence, never delete them. Add missing commas. Use only periods, commas, colons and question marks.
 
-    Everything else is copied exactly: every word, in the same order, in the same phrasing. Keep informal words (gonna, okay). Keep sentence openers (So, And, Окей, Ну хорошо). Keep every English word inside a Russian sentence in English, in Latin letters, exactly as written. Names, tools and technical terms are never translated and never respelled. Never translate anything. Never add a word the speaker did not say. If you are unsure, copy.
+    Everything else is copied exactly: every word, in the same order, in the same phrasing. Keep contractions exactly as spoken: "I'm" stays "I'm" and never becomes "I am", "don't" stays "don't" with the apostrophe. Keep informal words (gonna, okay). Keep sentence openers (So, And, Окей, Ну хорошо). Keep every English word inside a Russian sentence in English, in Latin letters, exactly as written. Never mix alphabets inside one word. Names, tools and technical terms are never translated and never respelled. Never translate anything. Never add a word the speaker did not say. If you are unsure, copy.
 
     <EXAMPLES>
     Input: "So um I want you to update the cleanup prompt and uh if something looks off just flag it"

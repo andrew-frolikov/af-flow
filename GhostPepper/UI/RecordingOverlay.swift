@@ -9,9 +9,15 @@ enum OverlayMessage: Equatable {
     case clipboardFallback
     case noSoundDetected
     case learnedCorrection(MisheardReplacement)
+    /// Shown when a recording cannot start and none of the other messages fit.
+    /// Carries its own reason so a new blocked reason cannot be added without
+    /// telling Andrew something.
+    case cannotStart(String)
 
     var primaryText: String {
         switch self {
+        case .cannotStart:
+            return "Cannot record yet"
         case .recording:
             return "Recording..."
         case .modelLoading:
@@ -35,7 +41,7 @@ enum OverlayMessage: Equatable {
         switch self {
         case .recording, .modelLoading, .cleaningUp, .transcribing:
             return true
-        case .clipboardFallback, .noSoundDetected, .learnedCorrection:
+        case .clipboardFallback, .noSoundDetected, .learnedCorrection, .cannotStart:
             return false
         }
     }
@@ -48,6 +54,8 @@ enum OverlayMessage: Equatable {
             return "Check your mic in Settings → Recording"
         case .learnedCorrection(let replacement):
             return "\(replacement.wrong) → \(replacement.right)"
+        case .cannotStart(let reason):
+            return reason
         default:
             return nil
         }
@@ -139,7 +147,7 @@ class RecordingOverlayController {
 
     private func panelSize(for message: OverlayMessage) -> NSSize {
         switch message {
-        case .clipboardFallback, .learnedCorrection, .noSoundDetected:
+        case .clipboardFallback, .learnedCorrection, .noSoundDetected, .cannotStart:
             return NSSize(width: 420, height: 84)
         default:
             return NSSize(width: 300, height: 60)
@@ -148,7 +156,7 @@ class RecordingOverlayController {
 
     private func scheduleDismissIfNeeded(for message: OverlayMessage) {
         switch message {
-        case .clipboardFallback, .learnedCorrection, .noSoundDetected:
+        case .clipboardFallback, .learnedCorrection, .noSoundDetected, .cannotStart:
             let delay: TimeInterval = message == .noSoundDetected ? 5 : 3
             let workItem = DispatchWorkItem { [weak self] in
                 self?.dismiss()
@@ -205,7 +213,7 @@ struct OverlayPillView: View {
             return isBrand ? AFFlowPalette.gold : appTheme.accent
         case .clipboardFallback:
             return isBrand ? AFFlowPalette.teal : appTheme.accent
-        case .noSoundDetected:
+        case .noSoundDetected, .cannotStart:
             return isBrand ? AFFlowPalette.red : appTheme.accent
         case .learnedCorrection:
             return isBrand ? AFFlowPalette.teal : .green

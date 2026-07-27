@@ -866,24 +866,77 @@ class AppState: ObservableObject {
             && speechAnalyzerReloadsInFlight == 0
     }
 
+    /// Why a recording cannot start right now, or nil when it can.
+    ///
+    /// **This exists because the old code asked the question twice and got two
+    /// different answers.** A guard refused on four conditions, and the branch
+    /// that decided whether to SHOW him anything re-tested a different four.
+    /// `.transcribing`, `.cleaningUp` and `.error` satisfied the first and none
+    /// of the second, so pressing the keys again while the previous dictation
+    /// was still finishing did nothing at all, with no overlay and no sound.
+    /// His own traces put that window at 8.6 seconds after a long dictation,
+    /// which is exactly when a person draws breath and starts the next thought.
+    /// It feels identical to the app being broken.
+    ///
+    /// The second list was not incomplete; the second list WAS the defect. So
+    /// there is one list now, and `startRecording` switches over it
+    /// exhaustively. A new reason cannot be added without the compiler
+    /// demanding a message for it, which is the only version of this that
+    /// cannot rot.
+    enum RecordingStartBlockedReason: Equatable {
+        case appLoading
+        case speechModelNotReady
+        case speechModelMismatch(loaded: String, selected: String)
+        case speechAnalyzerReloading
+        case alreadyRecording
+        case transcribing
+        case cleaningUp
+        case appInErrorState(String?)
+    }
+
+    var recordingStartBlockedReason: RecordingStartBlockedReason? {
+        if speechAnalyzerReloadsInFlight > 0 { return .speechAnalyzerReloading }
+        switch status {
+        case .ready: break
+        case .loading: return .appLoading
+        case .recording: return .alreadyRecording
+        case .transcribing: return .transcribing
+        case .cleaningUp: return .cleaningUp
+        case .error: return .appInErrorState(errorMessage)
+        }
+        if !modelManager.isReady { return .speechModelNotReady }
+        if modelManager.modelName != speechModel {
+            return .speechModelMismatch(loaded: modelManager.modelName, selected: speechModel)
+        }
+        return nil
+    }
+
     private func startRecording() async {
-        // If the selected speech model isn't ready, show loading message
-        guard status == .ready,
-              modelManager.isReady,
-              modelManager.modelName == speechModel,
-              speechAnalyzerReloadsInFlight == 0 else {
+        if let blocked = recordingStartBlockedReason {
             debugLogStore.record(
                 category: .hotkey,
-                message: "Recording start skipped because app is not ready. status=\(status.rawValue), modelReady=\(modelManager.isReady), loadedSpeechModel=\(modelManager.modelName), selectedSpeechModel=\(speechModel), speechAnalyzerReloadsInFlight=\(speechAnalyzerReloadsInFlight)"
+                message: "Recording start blocked: \(blocked). status=\(status.rawValue), modelReady=\(modelManager.isReady), loadedSpeechModel=\(modelManager.modelName), selectedSpeechModel=\(speechModel), speechAnalyzerReloadsInFlight=\(speechAnalyzerReloadsInFlight)"
             )
-            if status == .loading
-                || !modelManager.isReady
-                || modelManager.modelName != speechModel
-                || speechAnalyzerReloadsInFlight > 0 {
-                overlay.show(message: .modelLoading)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                    self?.overlay.dismiss()
-                }
+            // Exhaustive on purpose. Every reason he can be refused for owes him
+            // a message; silence is what made this feel like a broken app.
+            let message: OverlayMessage
+            switch blocked {
+            case .appLoading, .speechModelNotReady, .speechAnalyzerReloading:
+                message = .modelLoading
+            case .speechModelMismatch:
+                message = .modelLoading
+            case .alreadyRecording:
+                message = .recording
+            case .transcribing:
+                message = .transcribing
+            case .cleaningUp:
+                message = .cleaningUp
+            case .appInErrorState(let detail):
+                message = .cannotStart(detail ?? "Open AF Flow to see what is wrong")
+            }
+            overlay.show(message: message)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.overlay.dismiss()
             }
             return
         }
