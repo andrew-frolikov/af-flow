@@ -181,14 +181,45 @@ def main():
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--model", default="qwen35_0_8b_q4_k_m")
     parser.add_argument("--out", default="")
+    parser.add_argument(
+        "--source",
+        default="lab",
+        choices=["lab", "wispr"],
+        help="lab = his AF Flow dictations; wispr = the archived corpus, which is "
+             "where his Russian lives. v1 is defined across EN, RU and mixed, and "
+             "the lab is almost all English, so RU coverage needs the archive.",
+    )
+    parser.add_argument("--lang", default="", choices=["", "ru", "mixed", "en"])
     args = parser.parse_args()
 
     if not LAB_INDEX.exists():
         print(f"No fixture corpus at {LAB_INDEX}", file=sys.stderr)
         return 1
 
-    rows = json.loads(LAB_INDEX.read_text())
-    rows = [r for r in rows if (r.get("rawTranscription") or "").strip()]
+    if args.source == "wispr":
+        archive = (
+            Path.home() / "Prototypes/af-flow-private/wispr-archive/text/history.json"
+        )
+        if not archive.exists():
+            print(f"No archive at {archive}", file=sys.stderr)
+            return 1
+        raw_rows = json.loads(archive.read_text())
+        rows = [
+            {"id": r.get("transcriptEntityId"), "rawTranscription": r["asrText"], "createdAt": r.get("timestamp", 0)}
+            for r in raw_rows
+            if isinstance(r, dict) and (r.get("asrText") or "").strip()
+        ]
+    else:
+        rows = json.loads(LAB_INDEX.read_text())
+        rows = [r for r in rows if (r.get("rawTranscription") or "").strip()]
+
+    if args.lang:
+        def share(text):
+            letters = [c for c in text if c.isalpha()]
+            return sum(1 for c in letters if 0x400 <= ord(c) <= 0x4FF) / len(letters) if letters else 0.0
+        bounds = {"ru": (0.6, 1.01), "mixed": (0.05, 0.6), "en": (-0.01, 0.05)}[args.lang]
+        rows = [r for r in rows if bounds[0] < share(r["rawTranscription"]) <= bounds[1]]
+
     rows.sort(key=lambda r: r.get("createdAt", 0))
     if args.limit:
         rows = rows[-args.limit :]
