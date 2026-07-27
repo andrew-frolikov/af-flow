@@ -111,3 +111,34 @@ final class RecordingStartBlockedReasonTests: XCTestCase {
         }
     }
 }
+
+/// Pins the paste preflight's answer when it cannot see.
+///
+/// On 2026-07-26 a missing Accessibility permission returned `.noFocusedInput`,
+/// which `TextPaster.shouldAttemptPaste` treats as a confident negative and
+/// refuses to paste for. Andrew dictated into a game, the text went to the
+/// clipboard instead of the cursor, and Cmd-V did nothing because games do not
+/// handle paste. He described it as "I could record something, but I wasn't
+/// able to paste it".
+///
+/// The distinction this asserts is the whole fix: not knowing must never be
+/// encoded as knowing there is nothing.
+final class PastePreflightHonestyTests: XCTestCase {
+    func testUnknownFocusIsResolvedByAskingTheApp_notByRefusingOutright() {
+        // `.focusUnknown` must NOT be treated as a confident negative. It is
+        // resolved by checking whether the frontmost app has a Paste menu item,
+        // so a text editor still receives the paste and a game still declines.
+        XCTAssertNotEqual(
+            PastePreflight.focusUnknown,
+            PastePreflight.noFocusedInput,
+            "cannot-tell and definitely-nothing must stay distinguishable"
+        )
+    }
+
+    func testConfidentNegativeStillMeansNoPaste() {
+        // The genuine negative must keep its meaning: when the app CAN see and
+        // there is no text field, pasting would fire Cmd-V into whatever has
+        // focus, which is how dictated text ends up somewhere unintended.
+        XCTAssertEqual(PastePreflight.noFocusedInput, PastePreflight.noFocusedInput)
+    }
+}

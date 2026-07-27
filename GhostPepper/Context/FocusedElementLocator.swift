@@ -277,9 +277,32 @@ final class FocusedElementLocator {
     }
 
     func pastePreflight() -> PastePreflight {
-        guard PermissionChecker.checkAccessibility(),
-              let application = NSWorkspace.shared.frontmostApplication else {
-            return .noFocusedInput
+        // "I CANNOT LOOK" IS NOT "THERE IS NOTHING TO SEE", and conflating them
+        // cost Andrew a dictation he could not paste on 2026-07-26.
+        //
+        // Without Accessibility this returned `.noFocusedInput`, which
+        // `TextPaster.shouldAttemptPaste` reads as a confident negative and
+        // refuses to paste at all, falling back to the clipboard silently. A
+        // missing permission is the strongest possible case of NOT KNOWING, and
+        // it was coded as the strongest possible case of knowing.
+        //
+        // It matters because the permission can go stale without him doing
+        // anything: replacing the app binary invalidated his Input Monitoring
+        // grant twice on this date, and Accessibility is granted the same way.
+        // The symptom is the app appearing to work, `paste=0ms` on every trace,
+        // and the text sitting on the clipboard. In a text field he presses
+        // Cmd-V and barely notices. In a game, which does not handle paste, the
+        // dictation simply vanishes.
+        //
+        // `.focusUnknown` is the honest answer, and it is not a guess either:
+        // `shouldAttemptPaste` resolves it by asking whether the frontmost app
+        // even has a Paste menu item, which is a real signal rather than an
+        // assumption. A game still correctly declines; a text editor does not.
+        guard PermissionChecker.checkAccessibility() else {
+            return .focusUnknown
+        }
+        guard let application = NSWorkspace.shared.frontmostApplication else {
+            return .focusUnknown
         }
 
         Self.pasteTargetMonitor.start()
