@@ -240,8 +240,19 @@ final class AudioRecorder {
 
         let result = snapshotBuffer()
         print("AudioRecorder: stopped, buffer has \(result.count) samples (\(Double(result.count) / 16000.0)s of audio)")
+        // The amplitude log used to be `result.map { abs($0) }.max()`, which
+        // ALLOCATES a second array the size of the recording and walks it, on the
+        // release-to-text path, to print one number. A 60-second brain-dump is
+        // 960,000 samples, so this was a megabyte of allocation and a full pass
+        // between him letting go of the key and seeing his text.
+        //
+        // Same number, no allocation, single pass.
         if !result.isEmpty {
-            let maxAmplitude = result.map { abs($0) }.max() ?? 0
+            var maxAmplitude: Float = 0
+            for sample in result {
+                let magnitude = abs(sample)
+                if magnitude > maxAmplitude { maxAmplitude = magnitude }
+            }
             print("AudioRecorder: max amplitude = \(maxAmplitude)")
         }
         return result

@@ -293,4 +293,143 @@ final class TextPasterTests: XCTestCase {
         // the method returns a Bool without crashing.
         _ = TextPaster.frontmostAppHasPasteMenuItem()
     }
+    // MARK: - Secure Input
+
+    /// While a password field anywhere on the system holds Secure Input, the
+    /// window server silently swallows every synthetic keystroke. Cmd-V is
+    /// posted, nothing happens, and his dictation disappears with no message
+    /// and no way to guess why. The product spec asked for this check by name
+    /// and it had never been written.
+    func testPasteRefusesToTypeWhileSecureInputIsActive() {
+        let pasteboard = NSPasteboard.withUniqueName()
+        pasteboard.clearContents()
+        pasteboard.setString("original content", forType: .string)
+
+        let paster = TextPaster(
+            pasteboard: pasteboard,
+            canPasteIntoFocusedElement: { true },
+            prepareCommandV: {
+                XCTFail("No keystroke may be prepared while Secure Input is active: it can never land.")
+                return nil
+            },
+            schedule: { _, _ in },
+            isSecureInputEnabled: { true }
+        )
+
+        let result = paster.paste(text: "his dictated words")
+
+        XCTAssertEqual(result, .blockedBySecureInput)
+        XCTAssertEqual(
+            pasteboard.string(forType: .string),
+            "his dictated words",
+            "The transcript must be left on the clipboard so he can paste it himself. Refusing to type AND losing the text would be the worse outcome."
+        )
+
+        pasteboard.releaseGlobally()
+    }
+
+    func testPastePreparesAKeystrokeWhenSecureInputIsNotActive() {
+        let pasteboard = NSPasteboard.withUniqueName()
+        pasteboard.clearContents()
+
+        var prepared = false
+        let paster = TextPaster(
+            pasteboard: pasteboard,
+            canPasteIntoFocusedElement: { true },
+            prepareCommandV: {
+                prepared = true
+                return {}
+            },
+            schedule: { _, _ in },
+            isSecureInputEnabled: { false }
+        )
+
+        _ = paster.paste(text: "his dictated words")
+
+        XCTAssertTrue(prepared, "With Secure Input off, the normal paste must still happen.")
+        pasteboard.releaseGlobally()
+    }
+
+    // MARK: - Clipboard preservation size limit
+
+    /// Clipboard preservation runs between him releasing the key and his text
+    /// appearing. It used to copy every representation of every item, so a
+    /// screenshot on the clipboard added its full size to that wait, purely to
+    /// restore something about to be overwritten anyway.
+    /// Renamed from "OversizedRepresentationsAreNotPreserved", which claimed
+    /// more than it checked: it only observed that the type was absent after a
+    /// restore, and passed even while the implementation fetched all 8 MB. The
+    /// saving comes from never asking for the image at all.
+    func testImageRepresentationsAreNotFetchedOrPreserved() {
+        let pasteboard = NSPasteboard.withUniqueName()
+        let paster = TextPaster(pasteboard: pasteboard)
+        pasteboard.clearContents()
+
+        let item = NSPasteboardItem()
+        item.setString("the text he actually wants back", forType: .string)
+        item.setData(Data(count: 8 * 1024 * 1024), forType: .tiff)
+        pasteboard.writeObjects([item])
+
+        let saved = paster.saveClipboard()
+        XCTAssertNotNil(saved, "An item with an oversized image must still be preserved for its text.")
+
+        pasteboard.clearContents()
+        pasteboard.setString("something else entirely", forType: .string)
+
+        paster.restoreClipboard(saved!)
+
+        XCTAssertEqual(
+            pasteboard.string(forType: .string),
+            "the text he actually wants back",
+            "The text half of the clipboard is what a restore is for and must survive the size limit."
+        )
+        XCTAssertNil(
+            pasteboard.data(forType: .tiff),
+            "The oversized image must have been skipped rather than copied on the paste path."
+        )
+
+        pasteboard.releaseGlobally()
+    }
+
+    /// The trade is deliberate and worth stating: an image on the clipboard is
+    /// NOT restored after a dictation, at any size.
+    ///
+    /// This test previously asserted that a small image survived, because the
+    /// first implementation filtered by byte count. The review showed that
+    /// approach saved nothing: the data had already been fetched across process
+    /// boundaries before its size could be measured. Filtering by type is what
+    /// actually removes the cost, and it cannot make an exception for small
+    /// images without asking for them first.
+    ///
+    /// So he loses the ability to re-paste a screenshot he copied before
+    /// dictating, and gains that time back on every dictation.
+    func testTextIsPreservedAndImagesAreNotAtAnySize() {
+        let pasteboard = NSPasteboard.withUniqueName()
+        let paster = TextPaster(pasteboard: pasteboard)
+        pasteboard.clearContents()
+
+        let item = NSPasteboardItem()
+        item.setString("plain text", forType: .string)
+        item.setData(Data(count: 1024), forType: .tiff)
+        pasteboard.writeObjects([item])
+
+        let saved = paster.saveClipboard()
+        XCTAssertNotNil(saved)
+
+        pasteboard.clearContents()
+        paster.restoreClipboard(saved!)
+
+        XCTAssertEqual(
+            pasteboard.string(forType: .string),
+            "plain text",
+            "Text is what a clipboard restore is for and must always survive."
+        )
+        XCTAssertNil(
+            pasteboard.data(forType: .tiff),
+            "Images are not preserved at any size. Making an exception for small ones would mean fetching every image to measure it, which is the cost this exists to avoid."
+        )
+
+        pasteboard.releaseGlobally()
+    }
+
 }

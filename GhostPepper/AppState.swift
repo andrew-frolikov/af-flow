@@ -1155,9 +1155,21 @@ class AppState: ObservableObject {
         }
 
         if shouldPaste {
-            let pasteResult = textPaster.paste(text: finalText)
-            if pasteResult == .copiedToClipboard {
+            // A `switch` rather than `== .copiedToClipboard`.
+            //
+            // The equality test is what let `.blockedBySecureInput` be added
+            // without anyone noticing it reached no message at all: an `==`
+            // gives no exhaustiveness warning, so the new case silently fell
+            // through and the text still vanished without explanation, which is
+            // the exact failure the case was added to end. A switch makes the
+            // next result impossible to add silently.
+            switch textPaster.paste(text: finalText) {
+            case .pasted:
+                break
+            case .copiedToClipboard:
                 showClipboardFallbackMessage()
+            case .blockedBySecureInput:
+                showSecureInputBlockedMessage()
             }
         }
 
@@ -1257,6 +1269,20 @@ class AppState: ObservableObject {
     func cleanedTranscription(_ text: String) async -> String {
         let result = await cleanedTranscriptionResult(text, windowContext: nil)
         return result.text
+    }
+
+    /// Shown longer than the ordinary clipboard fallback: Secure Input is held
+    /// by another app, usually Terminal's sticky "Secure Keyboard Entry", and he
+    /// needs time to read a cause he cannot otherwise see.
+    private func showSecureInputBlockedMessage() {
+        overlay.show(message: .secureInputBlocked)
+        debugLogStore.record(
+            category: .cleanup,
+            message: "Paste refused: Secure Input is active somewhere on the system, so no synthetic keystroke can land. Text left on the clipboard."
+        )
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { [weak self] in
+            self?.overlay.dismiss(ifShowing: .secureInputBlocked)
+        }
     }
 
     private func showClipboardFallbackMessage() {

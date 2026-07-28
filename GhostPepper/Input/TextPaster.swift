@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import Cocoa
 import ApplicationServices
 import CoreGraphics
@@ -10,6 +11,9 @@ struct ClipboardState {
 enum PasteResult: Equatable {
     case pasted
     case copiedToClipboard
+    /// Secure Input is active, so no keystroke this app posts can reach the
+    /// focused field. The text is on the clipboard and he can paste it himself.
+    case blockedBySecureInput
 }
 
 /// Pastes transcribed text into the focused text field by simulating Cmd+V.
@@ -76,6 +80,9 @@ final class TextPaster {
     private let pastePreflight: () -> PastePreflight
     private let prepareCommandV: () -> (() -> Void)?
     private let schedule: PasteScheduler
+    /// Whether the system is in Secure Input mode. Injected like every other
+    /// seam in this class rather than being a mutable property set afterwards.
+    private let isSecureInputEnabled: () -> Bool
 
     /// - Parameter canPasteIntoFocusedElement: Overrides the Accessibility preflight with a
     ///   definite answer. `nil` uses the real preflight, which can also report that it could not
@@ -89,7 +96,8 @@ final class TextPaster {
         },
         schedule: @escaping PasteScheduler = { delay, action in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
-        }
+        },
+        isSecureInputEnabled: @escaping () -> Bool = { IsSecureEventInputEnabled() }
     ) {
         self.pasteboard = pasteboard
         if let canPasteIntoFocusedElement {
@@ -100,12 +108,36 @@ final class TextPaster {
         self.prepareCommandV = prepareCommandV
         self.pasteSessionProvider = pasteSessionProvider
         self.schedule = schedule
+        self.isSecureInputEnabled = isSecureInputEnabled
     }
 
     // MARK: - Clipboard Operations
 
     /// Saves all pasteboard items with all their type representations.
     /// - Returns: A `ClipboardState` capturing the full clipboard contents, or `nil` if the clipboard is empty.
+    /// The representation types worth preserving across a paste.
+    ///
+    /// Filtering by TYPE, before fetching. The first version of this checked
+    /// `data.count` after calling `item.data(forType:)`, which had already
+    /// pulled the whole representation across process boundaries and allocated
+    /// it. So it avoided RETAINING the 30 MB screenshot and paid the entire cost
+    /// of fetching it anyway, on the path between him releasing the key and his
+    /// text appearing. The change did not do the thing it existed to do.
+    ///
+    /// These are what a clipboard restore is actually for. An image or a PDF is
+    /// not preserved, and that is the deliberate trade: he loses the ability to
+    /// re-paste a screenshot he had copied before dictating, and gains the
+    /// latency back on every single dictation.
+    private static let preservedTypes: Set<NSPasteboard.PasteboardType> = [
+        .string,
+        .rtf,
+        .rtfd,
+        .html,
+        .URL,
+        .fileURL,
+        .tabularText,
+    ]
+
     func saveClipboard() -> ClipboardState? {
         guard let items = pasteboard.pasteboardItems, !items.isEmpty else {
             return nil
@@ -114,11 +146,19 @@ final class TextPaster {
         var allItems: [[(NSPasteboard.PasteboardType, Data)]] = []
         for item in items {
             var itemData: [(NSPasteboard.PasteboardType, Data)] = []
-            for type in item.types {
+            for type in item.types where Self.preservedTypes.contains(type) {
                 if let data = item.data(forType: type) {
                     itemData.append((type, data))
                 }
             }
+
+            // Per ITEM, not per representation.
+            //
+            // Keeping an item that kept only some of its types can be worse than
+            // not restoring it: an image reduced to a bare file-url, or a
+            // proprietary marker type without its payload, is something an app
+            // may read as empty or paste as the wrong thing. An honest absence
+            // beats a misleading partial.
             if !itemData.isEmpty {
                 allItems.append(itemData)
             }
@@ -159,6 +199,19 @@ final class TextPaster {
     /// - Parameter text: The text to paste.
     func paste(text: String) -> PasteResult {
         onPasteStart?()
+
+        // Secure Input is checked BEFORE preserving the clipboard, because the
+        // preservation exists only to survive a paste that is about to be
+        // refused. Doing it first spent the very latency this path was tuned to
+        // remove, on work guaranteed to be thrown away.
+        if isSecureInputEnabled() {
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+            print("TextPaster: Secure Input is active, so no synthetic keystroke can land. Text left on the clipboard.")
+            onPasteEnd?()
+            return .blockedBySecureInput
+        }
+
         let savedState = saveClipboard()
 
         pasteboard.clearContents()

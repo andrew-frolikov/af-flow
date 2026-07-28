@@ -7,6 +7,12 @@ enum OverlayMessage: Equatable {
     case cleaningUp
     case transcribing
     case clipboardFallback
+    /// Secure Input is held by some app on the system, so no keystroke AF Flow
+    /// posts can reach the focused field. Named separately from
+    /// `clipboardFallback` because the cause and the remedy are different: this
+    /// one persists until he turns the holder off, and Terminal's "Secure
+    /// Keyboard Entry" is a sticky setting people forget is on.
+    case secureInputBlocked
     case noSoundDetected
     case learnedCorrection(MisheardReplacement)
     /// Shown when a recording cannot start and none of the other messages fit.
@@ -16,6 +22,8 @@ enum OverlayMessage: Equatable {
 
     var primaryText: String {
         switch self {
+        case .secureInputBlocked:
+            return "Text copied, not pasted"
         case .cannotStart:
             return "Cannot record yet"
         case .recording:
@@ -41,7 +49,7 @@ enum OverlayMessage: Equatable {
         switch self {
         case .recording, .modelLoading, .cleaningUp, .transcribing:
             return true
-        case .clipboardFallback, .noSoundDetected, .learnedCorrection, .cannotStart:
+        case .clipboardFallback, .secureInputBlocked, .noSoundDetected, .learnedCorrection, .cannotStart:
             return false
         }
     }
@@ -50,6 +58,12 @@ enum OverlayMessage: Equatable {
         switch self {
         case .clipboardFallback:
             return "⌘V to paste"
+        case .secureInputBlocked:
+            // Names the cause, because Secure Input is invisible and sticky.
+            // Terminal's "Secure Keyboard Entry" is the usual holder and stays
+            // on until it is turned off, so without naming it he would see
+            // pasting fail forever with no idea why.
+            return "Secure Input is on. ⌘V to paste"
         case .noSoundDetected:
             return "Check your mic in Settings → Recording"
         case .learnedCorrection(let replacement):
@@ -147,7 +161,7 @@ class RecordingOverlayController {
 
     private func panelSize(for message: OverlayMessage) -> NSSize {
         switch message {
-        case .clipboardFallback, .learnedCorrection, .noSoundDetected, .cannotStart:
+        case .clipboardFallback, .secureInputBlocked, .learnedCorrection, .noSoundDetected, .cannotStart:
             return NSSize(width: 420, height: 84)
         default:
             return NSSize(width: 300, height: 60)
@@ -156,7 +170,7 @@ class RecordingOverlayController {
 
     private func scheduleDismissIfNeeded(for message: OverlayMessage) {
         switch message {
-        case .clipboardFallback, .learnedCorrection, .noSoundDetected, .cannotStart:
+        case .clipboardFallback, .secureInputBlocked, .learnedCorrection, .noSoundDetected, .cannotStart:
             let delay: TimeInterval = message == .noSoundDetected ? 5 : 3
             let workItem = DispatchWorkItem { [weak self] in
                 self?.dismiss()
@@ -211,7 +225,7 @@ struct OverlayPillView: View {
             return isBrand ? AFFlowPalette.gold : appTheme.accent
         case .cleaningUp, .transcribing:
             return isBrand ? AFFlowPalette.gold : appTheme.accent
-        case .clipboardFallback:
+        case .clipboardFallback, .secureInputBlocked:
             return isBrand ? AFFlowPalette.teal : appTheme.accent
         case .noSoundDetected, .cannotStart:
             return isBrand ? AFFlowPalette.red : appTheme.accent

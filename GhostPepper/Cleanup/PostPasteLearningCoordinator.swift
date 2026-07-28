@@ -1,4 +1,5 @@
 import CoreGraphics
+import os
 import Foundation
 
 struct PostPasteLearningObservation: Equatable, Sendable {
@@ -15,6 +16,29 @@ final class PostPasteLearningCoordinator {
     private static let maximumReplacementWordCount = 2
     private static let maximumPollCount = Int(observationWindow / pollInterval) + 1
     private static let requiredStablePollCount = Int(quiescencePeriod / pollInterval)
+
+    /// Give up after this many consecutive polls that find nothing readable.
+    ///
+    /// The accessibility read is the expensive part, and where it fails it
+    /// generally fails for the whole window: a game, a canvas, a browser that
+    /// exposes nothing. Polling sixteen times to learn nothing sixteen times is
+    /// pure cost on his most common action, and it runs after EVERY dictation.
+    ///
+    /// Six rather than three, because `revisit` also returns nil when the
+    /// frontmost app is not the paste target. Glancing at another window for a
+    /// few seconds before correcting a word is ordinary, and
+    /// `testCoordinatorCanLearnAfterLateInitialSnapshotCapture` documents late
+    /// capture as supported. Three polls would have quietly withdrawn that.
+    private static let maximumUnreadablePollCount = 6
+
+    /// Incremented on every paste. Polls carry the value they started with, so
+    /// a new paste silently retires the previous session's remaining polls.
+    ///
+    /// Without this, two dictations inside the fifteen-second window ran two
+    /// full polling loops at once, each reading the accessibility tree once a
+    /// second. He dictates in bursts, so overlapping was the normal case rather
+    /// than the exception.
+    private let generation = LearningGeneration()
 
     var learningEnabled: Bool
     var onLearnedCorrection: ((MisheardReplacement) -> Void)?
@@ -45,6 +69,7 @@ final class PostPasteLearningCoordinator {
             return
         }
 
+        let startedGeneration = generation.next()
         debugLogger?(.cleanup, "Scheduled post-paste learning polling session.")
         schedulePoll(
             for: session,
@@ -52,7 +77,8 @@ final class PostPasteLearningCoordinator {
                 baselineText: Self.normalizedText(session.focusedElementText),
                 latestObservedText: nil,
                 stablePollCount: 0,
-                completedPollCount: 0
+                completedPollCount: 0,
+                generation: startedGeneration
             ),
             delay: 0
         )
@@ -69,6 +95,13 @@ final class PostPasteLearningCoordinator {
     private func poll(session: PasteSession, progress: LearningProgress) async {
         guard learningEnabled else {
             debugLogger?(.cleanup, "Post-paste learning skipped because it is disabled.")
+            return
+        }
+
+        // A newer paste has taken over. Stop rather than running two polling
+        // loops against the accessibility tree at once.
+        guard generation.isCurrent(progress.generation) else {
+            debugLogger?(.cleanup, "Post-paste learning poll retired: a newer paste superseded it.")
             return
         }
 
@@ -92,8 +125,30 @@ final class PostPasteLearningCoordinator {
                     "Post-paste learning observed \(nextProgress.stablePollCount)s of text-field quiescence."
                 )
             }
+            nextProgress.unreadablePollCount = 0
         } else {
+            nextProgress.unreadablePollCount += 1
             debugLogger?(.cleanup, "Post-paste learning poll found no readable focused text field.")
+
+            // Where the field cannot be read it usually stays unreadable for the
+            // whole window, so continuing costs accessibility reads a second
+            // apart and can never learn anything.
+            if nextProgress.baselineText == nil,
+               nextProgress.unreadablePollCount >= Self.maximumUnreadablePollCount {
+                debugLogger?(
+                    .cleanup,
+                    "Post-paste learning gave up: nothing readable after \(nextProgress.unreadablePollCount) polls."
+                )
+                return
+            }
+        }
+
+        // Checked again AFTER the await. A paste landing while `revisit` was in
+        // flight would otherwise let a retired session store a correction
+        // learned from the previous target's text field.
+        guard generation.isCurrent(progress.generation) else {
+            debugLogger?(.cleanup, "Post-paste learning poll retired mid-observation: a newer paste superseded it.")
+            return
         }
 
         if let baselineText = nextProgress.baselineText,
@@ -284,6 +339,10 @@ private struct LearningProgress: Sendable {
     var latestObservedText: String?
     var stablePollCount: Int
     var completedPollCount: Int
+    /// Which paste this poll belongs to. A poll from an older paste stops.
+    var generation: UInt64 = 0
+    /// Consecutive polls that found nothing readable to watch.
+    var unreadablePollCount: Int = 0
 }
 
 enum PostPasteLearningObservationProvider {
@@ -318,5 +377,26 @@ enum PostPasteLearningObservationProvider {
         _ = currentWindowReference
         _ = currentFocusedFrame
         return currentBundleIdentifier == session.frontmostAppBundleIdentifier
+    }
+}
+
+
+/// The current paste generation, readable from any thread.
+///
+/// The counter was previously a plain field written on the main thread by
+/// `handlePaste` and read from a detached `Task` in `poll`. The entire
+/// retirement mechanism rested on that one field, unsynchronised.
+private final class LearningGeneration: @unchecked Sendable {
+    private let lock = OSAllocatedUnfairLock(initialState: UInt64(0))
+
+    func next() -> UInt64 {
+        lock.withLock { value in
+            value &+= 1
+            return value
+        }
+    }
+
+    func isCurrent(_ candidate: UInt64) -> Bool {
+        lock.withLock { $0 == candidate }
     }
 }
