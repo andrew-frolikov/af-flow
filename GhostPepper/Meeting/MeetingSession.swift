@@ -27,6 +27,10 @@ final class MeetingSession: ObservableObject {
     /// output device changed. The microphone keeps recording, so the meeting
     /// continues in a degraded state, and the UI can say which.
     @Published var captureDegradedMessage: String?
+
+    /// Set when the transcript file cannot be written. A recording whose transcript
+    /// can never be saved must say so while he can still do something about it.
+    @Published var saveFailureMessage: String?
     @Published private(set) var isTaggingRemoteSpeakers = false
 
     @Published var transcript: MeetingTranscript
@@ -393,21 +397,80 @@ final class MeetingSession: ObservableObject {
             return segments
         }
 
-        let nonGenericRemoteSegments = segments.filter { segment in
+        // A SEGMENT IS ONLY REMOVED IF SOMETHING REPLACES IT.
+        //
+        // This used to drop every unnamed Others segment and add whatever the
+        // tagger returned, on the assumption that the tagged result covered all of
+        // them. When the tagger covers only part of a meeting, which is the normal
+        // outcome for a diarizer that ran out of evidence, the rest of the far
+        // side's words were deleted from his record with no warning and no way to
+        // get them back. A transcript with an unnamed speaker is worth far more
+        // than no transcript.
+        // AND ONLY IF THE REPLACEMENT COVERS THE WHOLE OF IT.
+        //
+        // Removing on any overlap at all was still wrong, and Codex caught that too:
+        // a thirty-second unnamed segment that the tagger managed one second of would
+        // have lost the other twenty-nine. So an original is dropped only when the
+        // tagged segments account for nearly all of its duration.
+        //
+        // The cost of this rule is a possible duplicate when coverage is partial: the
+        // original stays and the tagged fragment is added beside it. That is the right
+        // way round for this project. `MeetingEchoFilter` is built to under-remove for
+        // the same reason, and a duplicated line is something he can see and delete,
+        // while a deleted line is something he cannot know was ever there.
+        let replacedRanges = taggedSegments.map { ($0.startTime, max($0.endTime, $0.startTime)) }
+        let survivingSegments = segments.filter { segment in
             switch segment.speaker {
             case .remote(let name):
-                return name != nil
+                guard name == nil else { return true }
+                return Self.isFullyReplaced(segment, by: replacedRanges) == false
             case .me:
                 return true
             }
         }
 
-        return (nonGenericRemoteSegments + taggedSegments).sorted { lhs, rhs in
+        return (survivingSegments + taggedSegments).sorted { lhs, rhs in
             if lhs.startTime == rhs.startTime {
                 return lhs.endTime < rhs.endTime
             }
             return lhs.startTime < rhs.startTime
         }
+    }
+
+    /// Whether tagged output accounts for essentially all of an original segment.
+    ///
+    /// Ninety per cent, not all of it, because a diarizer's boundaries are its own
+    /// estimate and will not line up to the millisecond with the chunk boundaries
+    /// these segments came from. Anything less covered than this keeps the original.
+    nonisolated static func isFullyReplaced(
+        _ segment: TranscriptSegment,
+        by replacedRanges: [(TimeInterval, TimeInterval)]
+    ) -> Bool {
+        let duration = segment.endTime - segment.startTime
+        guard duration > 0 else {
+            // A zero-length segment is replaced if anything covers its instant.
+            return replacedRanges.contains { start, end in
+                segment.startTime >= start && segment.startTime <= end
+            }
+        }
+
+        // Merge the overlapping parts of the replacement ranges before measuring, or
+        // two overlapping tagged segments would each be counted in full.
+        let clipped = replacedRanges
+            .map { (max($0.0, segment.startTime), min($0.1, segment.endTime)) }
+            .filter { $0.1 > $0.0 }
+            .sorted { $0.0 < $1.0 }
+
+        var covered: TimeInterval = 0
+        var cursor: TimeInterval = segment.startTime
+        for (start, end) in clipped {
+            let from = max(start, cursor)
+            guard end > from else { continue }
+            covered += end - from
+            cursor = end
+        }
+
+        return covered >= duration * 0.9
     }
 
     private static func remoteTranscriptSegments(from speakerTaggedTranscript: SpeakerTaggedTranscript) -> [TranscriptSegment] {
@@ -697,8 +760,18 @@ final class MeetingSession: ObservableObject {
                 fileURL = url
                 print("MeetingSession: transcript file created at \(url.path)")
             }
+            saveFailureMessage = nil
         } catch {
-            print("MeetingSession: failed to save transcript: \(error.localizedDescription)")
+            // SAID OUT LOUD, not printed to a console nobody is watching.
+            //
+            // This used to `print` and carry on, so a meeting could record for an
+            // hour with every single save failing and nothing on screen to suggest
+            // the transcript was never going to exist. He would find out when he
+            // went looking for the file. Bug 6 of sixteen.
+            let message = "The transcript could not be saved to \(saveDirectory.path): \(error.localizedDescription)"
+            saveFailureMessage = message
+            onDiagnostic?(message)
+            print("MeetingSession: \(message)")
         }
     }
 

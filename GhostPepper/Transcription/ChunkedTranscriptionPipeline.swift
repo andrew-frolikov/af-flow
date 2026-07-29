@@ -160,13 +160,25 @@ final class ChunkedTranscriptionPipeline {
     private static let silenceRMSThreshold: Float = 0.001
 
     static func isEffectivelySilent(_ samples: [Float]) -> Bool {
-        guard !samples.isEmpty else { return true }
+        rms(of: samples) < silenceRMSThreshold
+    }
+
+    /// Above this RMS a chunk the model could not transcribe is marked in the
+    /// transcript. Roughly -40 dBFS: comfortably below normal speech and well above
+    /// typing, rustling and room tone, so the marker keeps meaning something.
+    private static let markMissingRMSThreshold: Float = 0.01
+
+    static func isLoudEnoughToMarkAsMissing(_ samples: [Float]) -> Bool {
+        rms(of: samples) >= markMissingRMSThreshold
+    }
+
+    private static func rms(of samples: [Float]) -> Float {
+        guard !samples.isEmpty else { return 0 }
         var sumOfSquares: Float = 0
         for sample in samples {
             sumOfSquares += sample * sample
         }
-        let rms = (sumOfSquares / Float(samples.count)).squareRoot()
-        return rms < silenceRMSThreshold
+        return (sumOfSquares / Float(samples.count)).squareRoot()
     }
 
     init(
@@ -176,11 +188,12 @@ final class ChunkedTranscriptionPipeline {
         maxInferenceDuration: TimeInterval = 30.0
     ) {
         self.transcribeChunk = { samples -> String? in
-            // Silence never reaches the model, so it can never be turned into
-            // words. See `silenceRMSThreshold`.
-            guard !ChunkedTranscriptionPipeline.isEffectivelySilent(samples) else { return nil }
+            // The silence gate is NOT here any more, it is in `processChunk`, so
+            // that a nil from this closure means one thing: the model was asked and
+            // gave nothing back. See the gate there and `silenceRMSThreshold`.
+            //
             // Meeting chunks yield to push-to-talk, which he is waiting on.
-            return await transcriber.transcribe(audioBuffer: samples, priority: .background)
+            await transcriber.transcribe(audioBuffer: samples, priority: .background)
         }
         self.chunkDirectory = chunkDirectory
         self.chunkInterval = chunkInterval
@@ -589,11 +602,20 @@ final class ChunkedTranscriptionPipeline {
         chunkIndex += 1
         bufferLock.unlock()
 
-        // Save chunk audio to disk for crash resilience and optional post-meeting diarization.
+        // Save chunk audio to disk for crash resilience and optional post-meeting
+        // diarization.
+        //
+        // ATOMICALLY, AND ONLY REPORTED WHEN IT WORKED. This was `try?` with
+        // `onChunkSaved` firing regardless, so the session recorded chunks it might
+        // later be asked to read back for speaker tagging and which may never have
+        // existed. A half-written WAV is also worse than none: it would be read back
+        // as truncated audio and silently misalign everything after it.
         let sourceLabel = source == .mic ? "mic" : "system"
         let chunkFile = chunkDirectory.appendingPathComponent("chunk-\(index)-\(sourceLabel).wav")
-        if let wavData = try? AudioRecorder.serializePlayableArchiveAudioBuffer(samples) {
-            try? wavData.write(to: chunkFile)
+        do {
+            let wavData = try AudioRecorder.serializePlayableArchiveAudioBuffer(samples)
+            try FileManager.default.createDirectory(at: chunkDirectory, withIntermediateDirectories: true)
+            try wavData.write(to: chunkFile, options: .atomic)
             // Delivered on the main queue like the segments, so `stop()` can flush
             // both with one barrier and the speaker tagger cannot run before the
             // chunks it needs have been recorded.
@@ -601,10 +623,46 @@ final class ChunkedTranscriptionPipeline {
             DispatchQueue.main.async {
                 saved?(chunkFile, source, startTime)
             }
+        } catch {
+            onDiagnostic?("Meeting chunk audio could not be written to \(chunkFile.path): \(error.localizedDescription). The transcript is unaffected; the audio for this chunk is not recoverable.")
         }
 
-        // Transcribe the chunk.
-        guard let rawText = await transcribeChunk(samples) else { return }
+        // SILENCE IS DECIDED HERE, so that nil from the model means one thing.
+        //
+        // The silence gate used to live inside the injected closure, which made a
+        // nil result mean either "this was silence, we never asked" or "the model
+        // failed", and the pipeline could not tell them apart. That is why a failed
+        // chunk vanished: it looked exactly like a pause. The audio is still written
+        // above either way, so a silent chunk is still recoverable.
+        guard !Self.isEffectivelySilent(samples) else { return }
+
+        var transcribed = await transcribeChunk(samples)
+        if transcribed == nil {
+            onDiagnostic?("A meeting chunk at \(Int(startTime))s returned nothing from the model. Trying once more.")
+            transcribed = await transcribeChunk(samples)
+        }
+
+        guard let rawText = transcribed else {
+            // A GAP MUST NOT READ LIKE A PAUSE.
+            //
+            // Marked only when the audio was loud enough to have been somebody
+            // speaking. A meeting is full of quiet non-speech, typing and rustling,
+            // and marking all of it would make the marker mean nothing, which is
+            // how a warning stops being read.
+            guard Self.isLoudEnoughToMarkAsMissing(samples) else { return }
+            onDiagnostic?("A meeting chunk at \(Int(startTime))s could not be transcribed after a retry. Marked in the transcript.")
+            let marker = ChunkedTranscriptResult(
+                source: source,
+                startTime: startTime,
+                endTime: endTime,
+                text: "[audio not transcribed]"
+            )
+            let deliver = onSegmentTranscribed
+            DispatchQueue.main.async {
+                deliver?(marker)
+            }
+            return
+        }
         let cleaned = SpeechTranscriber.removeArtifacts(from: rawText)
         guard !cleaned.isEmpty else { return }
 

@@ -103,6 +103,13 @@ private final class FakeMeetingAudioCapture: MeetingAudioCapturing {
     var elapsed: TimeInterval { 0 }
 }
 
+/// Counts the replies the termination delegate makes, so "exactly once" is testable.
+@MainActor
+private final class ReplyCounter {
+    private(set) var count = 0
+    func record() { count += 1 }
+}
+
 @MainActor
 private final class AsyncTestGate {
     private var isReleased = false
@@ -963,6 +970,99 @@ final class GhostPepperTests: XCTestCase {
         }
         XCTAssertTrue(appState.activeMeetingSession === first)
         await first.stop()
+    }
+
+    /// QUITTING MUST NOT DESTROY THE END OF A MEETING.
+    ///
+    /// `prepareForTermination` fired `Task { await session.stop() }` from
+    /// `willTerminateNotification` and returned, so the process exited while that
+    /// Task was still on its first await: the final buffer, the pending
+    /// transcriptions, the end date and the summary could all be lost. Bug 4 of
+    /// sixteen. The finalisation now runs where termination can be deferred, and it
+    /// must actually finish the meeting.
+    func testFinishingBeforeTerminationStopsTheMeetingAndStampsItsEnd() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        let session = MeetingSession(
+            meetingName: "Interrupted by a quit",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("GhostPepperTests-\(UUID().uuidString)"),
+            captureStartOverride: {}
+        )
+        try await session.start()
+        appState.activeMeetingSession = session
+
+        XCTAssertTrue(appState.hasMeetingToFinishBeforeQuitting, "a running meeting must hold up the quit")
+
+        await appState.finishActiveMeetingBeforeTermination()
+
+        XCTAssertFalse(session.isActive, "the meeting must be stopped, not left running into termination")
+        XCTAssertNotNil(session.transcript.endDate, "the end date is written by the stop, and losing it loses the meeting's duration")
+        XCTAssertNil(appState.activeMeetingSession, "and the app must no longer be holding it")
+        XCTAssertFalse(appState.hasMeetingToFinishBeforeQuitting, "so a second quit does not wait on nothing")
+    }
+
+    /// The delegate itself, which is where the two defects the review found lived.
+    ///
+    /// The first version raced the finalisation against a timeout with
+    /// `withTaskGroup` plus `cancelAll()`, which bounds nothing because a task group
+    /// waits for every child including cancelled ones. And nothing made the reply
+    /// single-flight, so a second Quit could start a second finalisation and the app
+    /// could be told twice that it may terminate.
+    @MainActor
+    func testTheQuitDeadlineRepliesWithoutWaitingForAMeetingThatWillNotFinish() async {
+        let delegate = AppReopenDelegate()
+        let replies = ReplyCounter()
+        let neverFinishes = AsyncTestGate()
+        delegate.hasMeetingToFinish = { true }
+        delegate.finishMeeting = { await neverFinishes.wait() }
+        delegate.replyToTermination = { _ in replies.record() }
+        delegate.waitForQuitGrace = { try? await Task.sleep(nanoseconds: 50_000_000) }
+
+        let reply = delegate.applicationShouldTerminate(NSApplication.shared)
+        XCTAssertEqual(reply, .terminateLater)
+
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertEqual(
+            replies.count,
+            1,
+            "the deadline must reply even though the finalisation is still stuck, and exactly once"
+        )
+
+        // A second Quit while the first is in flight must not start another one.
+        let second = delegate.applicationShouldTerminate(NSApplication.shared)
+        XCTAssertEqual(second, .terminateLater)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(replies.count, 1, "the app must never be told twice that it may terminate")
+
+        neverFinishes.release()
+    }
+
+    @MainActor
+    func testQuittingWithNoMeetingTerminatesImmediately() {
+        let delegate = AppReopenDelegate()
+        delegate.hasMeetingToFinish = { false }
+        delegate.finishMeeting = { }
+        XCTAssertEqual(delegate.applicationShouldTerminate(NSApplication.shared), .terminateNow)
+    }
+
+    /// And quitting with no meeting running must not be delayed at all.
+    func testThereIsNothingToFinishWhenNoMeetingIsRunning() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        XCTAssertFalse(appState.hasMeetingToFinishBeforeQuitting)
     }
 
     /// And it must not refuse forever: once the previous meeting has finished,

@@ -1251,12 +1251,16 @@ final class OpenMeetingTab: ObservableObject, Identifiable {
     /// added to fix.
     @Published var captureDegradedMessage: String?
 
+    /// Republished for the same reason as `captureDegradedMessage`.
+    @Published var saveFailureMessage: String?
+
     var session: MeetingSession? // nil = loaded from disk
     private var sessionObserver: Any?
     private let onRecordingStateChanged: (() -> Void)?
 
     private var fileURLObserver: Any?
     private var captureDegradedObserver: Any?
+    private var saveFailureObserver: Any?
 
     init(
         transcript: MeetingTranscript,
@@ -1283,6 +1287,10 @@ final class OpenMeetingTab: ObservableObject, Identifiable {
             captureDegradedMessage = session.captureDegradedMessage
             captureDegradedObserver = session.$captureDegradedMessage.sink { [weak self] message in
                 self?.captureDegradedMessage = message
+            }
+            saveFailureMessage = session.saveFailureMessage
+            saveFailureObserver = session.$saveFailureMessage.sink { [weak self] message in
+                self?.saveFailureMessage = message
             }
         }
     }
@@ -8535,6 +8543,13 @@ struct MeetingTabContentView: View {
                 captureDegradedWarning(degraded)
             }
 
+            // A transcript that cannot be written at all. This used to be a console
+            // print, so a meeting could record for an hour with nothing to say the
+            // file was never going to exist.
+            if let saveFailure = tab.saveFailureMessage {
+                saveFailureWarning(saveFailure)
+            }
+
             // Content
             ScrollViewReader { proxy in
                 ScrollView {
@@ -8692,6 +8707,16 @@ struct MeetingTabContentView: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(Color.orange.opacity(0.1))
+    }
+
+    private func saveFailureWarning(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red).font(.caption)
+            Text(message).font(.caption)
+            Spacer()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     private func captureDegradedWarning(_ message: String) -> some View {

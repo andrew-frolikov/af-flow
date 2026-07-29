@@ -1299,6 +1299,113 @@ final class ChunkedTranscriptionPipelineTimingTests: XCTestCase {
         )
     }
 
+    /// A CHUNK THAT WAS NOT SAVED MUST NOT BE REPORTED AS SAVED.
+    ///
+    /// The write was `try?` into the temp directory and `onChunkSaved` fired
+    /// regardless, so the session recorded a chunk it could later be asked to read
+    /// back for speaker tagging and which might never have existed. The 2026-07-29
+    /// audio survived only because it was copied out of that temp folder by hand
+    /// before macOS cleared it. Bug 5 of sixteen.
+    func testAChunkThatCouldNotBeWrittenIsNotReportedAsSaved() async {
+        let saved = SavedChunkRecorder()
+        let segments = SegmentRecorder()
+        let diagnostics = DiagnosticRecorder()
+        let pipeline = ChunkedTranscriptionPipeline(
+            transcribeChunk: { _ in "text" },
+            // A path under an existing FILE, so the directory can never be created
+            // and no write into it can ever succeed.
+            chunkDirectory: URL(fileURLWithPath: "/etc/hosts/af-flow-cannot-write-here"),
+            chunkInterval: 30
+        )
+        pipeline.onChunkSaved = { url, _, _ in saved.record(url) }
+        pipeline.onSegmentTranscribed = { segments.record($0) }
+        pipeline.onDiagnostic = { diagnostics.record($0) }
+        pipeline.start()
+
+        pipeline.appendAudio(TaggedAudioChunk(source: .mic, samples: Self.speech(seconds: 2), timestamp: 0))
+        await pipeline.stop()
+
+        XCTAssertEqual(saved.count, 0, "a chunk that was never written was reported as saved")
+        XCTAssertEqual(
+            segments.segments.count,
+            1,
+            "and the words must still be transcribed: failing to keep the audio is not a reason to lose the transcript too"
+        )
+        XCTAssertTrue(
+            diagnostics.notes.contains { $0.lowercased().contains("could not") || $0.lowercased().contains("failed") },
+            "a failed write must say so in the log: \(diagnostics.notes)"
+        )
+    }
+
+    /// A CHUNK THE MODEL FAILED ON MUST LEAVE A MARK.
+    ///
+    /// An inference error became nil, and nil was indistinguishable from silence, so
+    /// a failed chunk left no retry, no marker and no warning. A gap in his meeting
+    /// then reads exactly like a pause, which is the worst possible way for it to
+    /// read. Bug 8 of sixteen.
+    func testAChunkTheModelFailsOnIsRetriedAndThenMarked() async {
+        let attempts = ChunkRecorder()
+        let segments = SegmentRecorder()
+        let diagnostics = DiagnosticRecorder()
+        let pipeline = ChunkedTranscriptionPipeline(
+            transcribeChunk: { samples in
+                attempts.record(samples)
+                return nil
+            },
+            chunkDirectory: Self.scratchDirectory(),
+            chunkInterval: 30
+        )
+        pipeline.onSegmentTranscribed = { segments.record($0) }
+        pipeline.onDiagnostic = { diagnostics.record($0) }
+        pipeline.start()
+
+        pipeline.appendAudio(TaggedAudioChunk(source: .mic, samples: Self.speech(seconds: 2), timestamp: 0))
+        await pipeline.stop()
+
+        XCTAssertEqual(attempts.count, 2, "a chunk the model failed on must be tried once more before being given up on")
+        XCTAssertEqual(segments.segments.count, 1, "the failure must appear in the transcript rather than vanishing")
+        XCTAssertTrue(
+            segments.segments.first?.text.contains("not transcribed") == true,
+            "the marker must say what happened, got: \(segments.segments.first?.text ?? "nothing")"
+        )
+        XCTAssertTrue(
+            diagnostics.notes.contains { $0.lowercased().contains("transcribe") },
+            "and it must be in the log: \(diagnostics.notes)"
+        )
+    }
+
+    /// Silence must NOT be marked, or every quiet moment in a meeting becomes a
+    /// warning and the marker means nothing.
+    func testSilenceIsNotMarkedAsAFailure() async {
+        let attempts = ChunkRecorder()
+        let segments = SegmentRecorder()
+        let pipeline = ChunkedTranscriptionPipeline(
+            transcribeChunk: { samples in
+                attempts.record(samples)
+                return nil
+            },
+            chunkDirectory: Self.scratchDirectory(),
+            chunkInterval: 30
+        )
+        pipeline.onSegmentTranscribed = { segments.record($0) }
+        pipeline.start()
+
+        pipeline.appendAudio(
+            TaggedAudioChunk(source: .mic, samples: [Float](repeating: 0, count: 32_000), timestamp: 0)
+        )
+        await pipeline.stop()
+
+        XCTAssertEqual(attempts.count, 0, "silence must never reach the model at all")
+        XCTAssertEqual(segments.segments.count, 0, "and silence must never produce a marker")
+    }
+
+    private final class DiagnosticRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var recorded: [String] = []
+        func record(_ note: String) { lock.lock(); recorded.append(note); lock.unlock() }
+        var notes: [String] { lock.lock(); defer { lock.unlock() }; return recorded }
+    }
+
     private final class QuietRecorder: @unchecked Sendable {
         private let lock = NSLock()
         private var reported: [AudioStreamSource] = []

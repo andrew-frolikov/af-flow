@@ -74,3 +74,184 @@ final class MeetingAutoStopToleranceTests: XCTestCase {
         XCTAssertFalse(MeetingSession.shouldAutomaticallyStop(afterConsecutiveInactivePolls: 0))
     }
 }
+
+/// SPEAKER TAGGING MUST NEVER DELETE WORDS SOMEBODY SAID.
+///
+/// `transcriptSegments(byApplyingRemoteSpeakerTags:to:)` kept only the segments
+/// that already had a name, then added whatever the tagger returned. So every
+/// unnamed Others segment was thrown away on the assumption that the tagged result
+/// replaced all of them. When the tagger covers only part of the meeting, which is
+/// the normal case for a diarizer that ran out of evidence, the rest of the far
+/// side's words are simply gone from his record. Bug 7 of sixteen.
+@MainActor
+final class RemoteSpeakerTaggingSafetyTests: XCTestCase {
+
+    private func segment(_ speaker: SpeakerLabel, _ text: String, _ start: TimeInterval, _ end: TimeInterval) -> TranscriptSegment {
+        TranscriptSegment(id: UUID(), speaker: speaker, startTime: start, endTime: end, text: text)
+    }
+
+    private func tagged(_ name: String, _ text: String, _ start: TimeInterval, _ end: TimeInterval) -> SpeakerTaggedTranscript.Segment {
+        SpeakerTaggedTranscript.Segment(
+            speakerID: name,
+            startTime: start,
+            endTime: end,
+            text: text,
+            attribution: SpeakerTaggedTranscript.Attribution(
+                speakerID: name,
+                displayName: name,
+                confidence: 0.9,
+                evidenceDuration: end - start,
+                source: .diarization
+            )
+        )
+    }
+
+    func testAPartialTaggingResultDoesNotDeleteTheUntaggedRemainder() {
+        let original = [
+            segment(.me, "my bit", 0, 10),
+            segment(.remote(name: nil), "the first thing they said", 10, 20),
+            segment(.remote(name: nil), "the second thing they said", 30, 40),
+        ]
+        // The tagger only managed the first of the two remote segments.
+        let result = MeetingSession.transcriptSegments(
+            byApplyingRemoteSpeakerTags: SpeakerTaggedTranscript(segments: [tagged("Maya", "the first thing they said", 10, 20)]),
+            to: original
+        )
+
+        let text = result.map(\.text).joined(separator: " | ")
+        XCTAssertTrue(
+            text.contains("the second thing they said"),
+            "Tagging deleted a segment it had no replacement for. What survived: \(text)"
+        )
+        XCTAssertTrue(text.contains("my bit"))
+        XCTAssertTrue(text.contains("the first thing they said"))
+    }
+
+    /// THE CASE THE FIRST FIX STILL GOT WRONG.
+    ///
+    /// Codex found it: removing on ANY overlap meant a thirty-second unnamed segment
+    /// the tagger managed one second of lost the other twenty-nine. Partial coverage
+    /// must keep the original, even at the price of a visible duplicate.
+    func testATagCoveringOnlyPartOfASegmentDoesNotDeleteTheRest() {
+        let original = [
+            segment(.remote(name: nil), "a long stretch of things they said over thirty seconds", 0, 30),
+        ]
+        let result = MeetingSession.transcriptSegments(
+            byApplyingRemoteSpeakerTags: SpeakerTaggedTranscript(segments: [tagged("Maya", "things they said", 0, 1)]),
+            to: original
+        )
+
+        let text = result.map(\.text).joined(separator: " | ")
+        XCTAssertTrue(
+            text.contains("a long stretch of things they said over thirty seconds"),
+            "One second of tagging deleted a thirty-second segment. What survived: \(text)"
+        )
+    }
+
+    func testCoverageIsMeasuredWithoutDoubleCountingOverlappingTags() {
+        let segment = TranscriptSegment(
+            id: UUID(),
+            speaker: .remote(name: nil),
+            startTime: 0,
+            endTime: 10,
+            text: "ten seconds"
+        )
+        // Two tags that overlap each other cover 5 seconds between them, not 8.
+        XCTAssertFalse(
+            MeetingSession.isFullyReplaced(segment, by: [(0, 4), (1, 5)]),
+            "overlapping tags were counted twice, which would delete a segment they do not cover"
+        )
+        XCTAssertTrue(MeetingSession.isFullyReplaced(segment, by: [(0, 5), (5, 10)]))
+    }
+
+    /// And the point of the feature must still work: where the tagger DID produce a
+    /// name, the untagged copy of that same moment must not be left behind as a
+    /// duplicate.
+    func testTheTaggedSegmentReplacesTheUntaggedCopyOfTheSameMoment() {
+        let original = [
+            segment(.remote(name: nil), "hello there", 10, 20),
+        ]
+        let result = MeetingSession.transcriptSegments(
+            byApplyingRemoteSpeakerTags: SpeakerTaggedTranscript(segments: [tagged("Maya", "hello there", 10, 20)]),
+            to: original
+        )
+
+        XCTAssertEqual(result.count, 1, "the same moment must not appear twice")
+        XCTAssertEqual(result.first?.speaker, .remote(name: "Maya"))
+    }
+
+    /// An empty result changes nothing, which was already true and is worth pinning.
+    func testAnEmptyTaggingResultLeavesTheTranscriptAlone() {
+        let original = [segment(.remote(name: nil), "they said this", 0, 5)]
+        let result = MeetingSession.transcriptSegments(
+            byApplyingRemoteSpeakerTags: SpeakerTaggedTranscript(segments: []),
+            to: original
+        )
+        XCTAssertEqual(result.map(\.text), ["they said this"])
+    }
+
+    /// A transcript that can never be written must say so while he can still act.
+    ///
+    /// `autoSave` caught the error and printed it, so recording continued happily
+    /// with every save failing and nothing on screen. He would find out when he went
+    /// looking for the file. Bug 6 of sixteen.
+    func testASessionThatCannotSaveItsTranscriptSaysSo() async {
+        let session = MeetingSession(
+            meetingName: "Nowhere to write",
+            transcriber: SpeechTranscriber(modelManager: ModelManager()),
+            // A path under an existing FILE, so no directory can be created here.
+            saveDirectory: URL(fileURLWithPath: "/etc/hosts/af-flow-cannot-save-here"),
+            captureStartOverride: {}
+        )
+
+        try? await session.start()
+        let message = session.saveFailureMessage
+        await session.stop()
+
+        XCTAssertNotNil(
+            message,
+            "The transcript could not be written and the session reported nothing, so he would record a whole meeting into nowhere."
+        )
+        XCTAssertNil(session.fileURL, "and it must not claim a file it does not have")
+    }
+
+    /// And the message must reach the view, and must clear when saving works again.
+    ///
+    /// Round two of the review caught `captureDegradedMessage` being set since
+    /// 2026-07-27 while nothing read it. The same trap applies here, so this observes
+    /// through the tab the window actually watches rather than through the session.
+    func testTheSaveFailureReachesTheTabAndClearsWhenSavingWorks() async throws {
+        let session = MeetingSession(
+            meetingName: "Nowhere then somewhere",
+            transcriber: SpeechTranscriber(modelManager: ModelManager()),
+            saveDirectory: URL(fileURLWithPath: "/etc/hosts/af-flow-cannot-save-here"),
+            captureStartOverride: {}
+        )
+        let tab = OpenMeetingTab(transcript: session.transcript, session: session)
+
+        try? await session.start()
+        XCTAssertNotNil(
+            tab.saveFailureMessage,
+            "the failure never reached the tab the meeting window observes, so no banner could ever appear"
+        )
+
+        await session.stop()
+    }
+
+    func testTheSaveFailureIsAbsentWhenSavingWorks() async throws {
+        let session = MeetingSession(
+            meetingName: "Somewhere writable",
+            transcriber: SpeechTranscriber(modelManager: ModelManager()),
+            saveDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("GhostPepperTests-\(UUID().uuidString)"),
+            captureStartOverride: {}
+        )
+        let tab = OpenMeetingTab(transcript: session.transcript, session: session)
+
+        try await session.start()
+        XCTAssertNil(tab.saveFailureMessage, "a working save must not raise a warning")
+        XCTAssertNotNil(session.fileURL)
+
+        await session.stop()
+    }
+}

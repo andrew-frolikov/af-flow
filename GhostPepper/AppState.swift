@@ -2984,6 +2984,32 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Whether quitting right now would interrupt a meeting.
+    var hasMeetingToFinishBeforeQuitting: Bool {
+        guard let session = activeMeetingSession else { return false }
+        return session.isActive || session.isStarting || session.isDraining
+    }
+
+    /// Finishes the meeting in progress so quitting cannot destroy its ending.
+    ///
+    /// `prepareForTermination` used to fire `Task { await session.stop() }` from
+    /// `willTerminateNotification` and return, and the process then exited while that
+    /// Task was still on its first await. So quitting during a meeting could lose the
+    /// final audio buffer, every transcription still in flight, the end date, and the
+    /// summary. Bug 4 of sixteen.
+    ///
+    /// This runs from `applicationShouldTerminate` instead, where termination can
+    /// actually be deferred until the work is done, and it uses the SAME finalisation
+    /// path as a normal stop rather than a second one that could drift from it.
+    func finishActiveMeetingBeforeTermination() async {
+        guard let session = activeMeetingSession else { return }
+        debugLogStore.record(
+            category: .model,
+            message: "Quit requested during a meeting. Finishing '\(session.transcript.meetingName)' before terminating."
+        )
+        await finishMeetingSession(session, logPrefix: "Meeting transcription stopped for quit")
+    }
+
     func prepareForTermination() {
         recordingOCRPrefetch.cancel()
         // Ledger 27: releasing GGML resources under a running generation calls
@@ -2992,9 +3018,13 @@ class AppState: ObservableObject {
         // the synchronous variant shuts down when nothing is running and skips
         // when something is.
         textCleanupManager.shutdownBackendForTermination()
-        if let session = activeMeetingSession {
-            Task { await session.stop() }
-        }
+        // The meeting is NOT stopped from here any more.
+        //
+        // It used to be `Task { await session.stop() }`, which returns immediately
+        // and lets the process exit while the stop is still on its first await. The
+        // stop now happens in `finishActiveMeetingBeforeTermination`, called from
+        // `applicationShouldTerminate`, which is the one place termination can be
+        // deferred until the work has finished.
     }
 
     func acquirePipeline(for owner: PipelineOwner) -> Bool {

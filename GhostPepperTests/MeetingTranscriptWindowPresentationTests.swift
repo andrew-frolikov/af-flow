@@ -414,12 +414,32 @@ final class MeetingSessionSpeakerTaggingTests: XCTestCase {
             to: originalSegments
         )
 
-        XCTAssertEqual(updated.count, 3)
-        XCTAssertEqual(updated[0].speaker, .me)
-        XCTAssertEqual(updated[1].speaker, .remote(name: "Speaker 1"))
-        XCTAssertEqual(updated[1].text, "Remote speaker one")
-        XCTAssertEqual(updated[2].speaker, .remote(name: "Speaker 2"))
-        XCTAssertEqual(updated[2].text, "Remote speaker two")
+        // THIS TEST USED TO ASSERT THE DATA LOSS, and it is corrected here rather
+        // than worked around.
+        //
+        // It expected 3 segments: the 30-second "Generic remote side" DELETED and
+        // replaced by two 3-second tagged fragments. The tags cover 6 seconds of 30,
+        // so the assertion was that 22 seconds of the far side's words should
+        // disappear from his record. A passing test was pinning the bug, which is why
+        // bug 7 of 2026-07-29 survived a suite of 534 tests.
+        //
+        // The rule now: a segment is removed only when the tagged output accounts for
+        // nearly all of it. Partial coverage keeps the original alongside the tagged
+        // fragments, because a visible duplicate is recoverable and a deletion is not.
+        XCTAssertEqual(updated.count, 4)
+        let texts = Set(updated.map(\.text))
+        XCTAssertTrue(texts.contains("Mic side"))
+        XCTAssertTrue(
+            texts.contains("Generic remote side"),
+            "the untagged remainder of the far side was deleted again"
+        )
+        XCTAssertTrue(texts.contains("Remote speaker one"))
+        XCTAssertTrue(texts.contains("Remote speaker two"))
+        let speakers = updated.map(\.speaker)
+        XCTAssertTrue(speakers.contains(.me))
+        XCTAssertTrue(speakers.contains(.remote(name: nil)))
+        XCTAssertTrue(speakers.contains(.remote(name: "Speaker 1")))
+        XCTAssertTrue(speakers.contains(.remote(name: "Speaker 2")))
     }
 
     func testApplyingRemoteSpeakerTagsUsesSavedDisplayNameWhenPresent() {

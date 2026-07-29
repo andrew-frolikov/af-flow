@@ -82,6 +82,8 @@ struct GhostPepperApp: App {
                 // AF Flow's own front door is the only thing launching the app
                 // or clicking the Dock icon should ever show.
                 reopenDelegate.openMainWindow = { appState.showHomeWindow() }
+                reopenDelegate.hasMeetingToFinish = { appState.hasMeetingToFinishBeforeQuitting }
+                reopenDelegate.finishMeeting = { await appState.finishActiveMeetingBeforeTermination() }
                 if Self.forceOnboarding {
                     onboardingCompleted = false
                     onboardingController.show(appState: appState) {
@@ -121,10 +123,87 @@ struct GhostPepperApp: App {
 final class AppReopenDelegate: NSObject, NSApplicationDelegate {
     var openMainWindow: (() -> Void)?
 
+    /// Whether quitting now would interrupt a meeting, and how to finish it.
+    var hasMeetingToFinish: (() -> Bool)?
+    var finishMeeting: (() async -> Void)?
+
+    /// How long quitting may be held while a meeting finishes.
+    ///
+    /// Bounded because an unbounded hold would turn a stuck transcription into an
+    /// app he cannot quit. The pipeline's own stop is bounded too; this is the outer
+    /// limit on the whole finalisation.
+    static let quitGrace: TimeInterval = 30
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows {
             openMainWindow?()
         }
         return true
+    }
+
+    /// Defers termination until the meeting in progress has been written out.
+    ///
+    /// The previous code stopped the meeting from `willTerminateNotification` with a
+    /// detached Task, which the exiting process then killed, so quitting during a
+    /// meeting could lose the final buffer, the pending transcriptions, the end date
+    /// and the summary. `applicationShouldTerminate` is the only hook that can
+    /// actually hold termination open.
+    /// Replaced by tests so the reply can be observed without terminating.
+    var replyToTermination: ((Bool) -> Void) = { NSApplication.shared.reply(toApplicationShouldTerminate: $0) }
+
+    /// Sleeps for the quit grace period. Replaced by tests.
+    var waitForQuitGrace: (() async -> Void) = {
+        try? await Task.sleep(nanoseconds: UInt64(AppReopenDelegate.quitGrace * 1_000_000_000))
+    }
+
+    /// SINGLE FLIGHT, AND EXACTLY ONE REPLY.
+    ///
+    /// Both are on the main actor, so a plain flag is enough. Without them a second
+    /// Quit while the first is finishing would start a second finalisation, and a
+    /// timeout that lost its race would still reply, so the app could be told twice
+    /// that it may terminate.
+    private var terminationInFlight = false
+    private var hasRepliedToTermination = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if terminationInFlight {
+            // Already finishing. Do not start a second finalisation and do not say
+            // "go ahead" while the first one is still writing the summary.
+            return .terminateLater
+        }
+        guard hasMeetingToFinish?() == true, let finishMeeting else {
+            return .terminateNow
+        }
+        terminationInFlight = true
+
+        // TWO INDEPENDENT TASKS, NOT A TASK GROUP.
+        //
+        // The first version used `withTaskGroup` with `cancelAll()`, which does not
+        // bound anything: a task group waits for every child, including cancelled
+        // ones, and neither the transcription wait nor the summary is cancellable. So
+        // the "30 second" limit would still have waited as long as the meeting took,
+        // which is the hang it was written to prevent. Codex caught it.
+        Task { @MainActor in
+            await finishMeeting()
+            self.replyOnceToTermination(reason: nil)
+        }
+        Task { @MainActor in
+            await self.waitForQuitGrace()
+            self.replyOnceToTermination(
+                reason: "the meeting did not finish within \(Self.quitGrace)s of the quit"
+            )
+        }
+
+        return .terminateLater
+    }
+
+    @MainActor
+    private func replyOnceToTermination(reason: String?) {
+        guard !hasRepliedToTermination else { return }
+        hasRepliedToTermination = true
+        if let reason {
+            print("AppReopenDelegate: \(reason). Terminating anyway.")
+        }
+        replyToTermination(true)
     }
 }
