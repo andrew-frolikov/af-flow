@@ -11,7 +11,11 @@ final class MeetingSession: ObservableObject {
     private struct SavedChunkRecord {
         let url: URL
         let source: AudioStreamSource
-        let chunkIndex: Int
+        /// When this chunk's audio was captured, in seconds since the meeting
+        /// started. Used to be derived from the chunk's ordinal times a fixed 30
+        /// seconds, which assumed a drain schedule that on 2026-07-29 fired once
+        /// in 51 minutes.
+        let startTime: TimeInterval
     }
 
     @Published var isActive = false
@@ -28,6 +32,11 @@ final class MeetingSession: ObservableObject {
     @Published var transcript: MeetingTranscript
 
     var onAutoStopRequested: ((MeetingSession) -> Void)?
+
+    /// Carries the pipeline's own account of what it is doing into the app's
+    /// debug log. On 2026-07-29 the drain schedule failed silently for 51
+    /// minutes; the log is the only place that could have said so.
+    var onDiagnostic: ((String) -> Void)?
 
     private let capture: any MeetingAudioCapturing
     private var pipeline: ChunkedTranscriptionPipeline?
@@ -142,9 +151,36 @@ final class MeetingSession: ObservableObject {
             self.autoSave()
         }
 
-        newPipeline.onChunkSaved = { [weak self] url, source in
+        // Called on the main queue by the pipeline, in order, and flushed by its
+        // `stop()`. It used to hop through a detached Task, which is not ordered
+        // against the segment deliveries and could still have been pending when
+        // the speaker tagger asked for the chunks.
+        newPipeline.onChunkSaved = { [weak self] url, source, startTime in
+            self?.recordSavedChunk(url: url, source: source, startTime: startTime)
+        }
+
+        newPipeline.onDiagnostic = { [weak self] note in
             Task { @MainActor [weak self] in
-                self?.recordSavedChunk(url: url, source: source)
+                self?.onDiagnostic?(note)
+                print("MeetingSession: \(note)")
+            }
+        }
+
+        // A channel that dies mid-meeting is now said out loud.
+        //
+        // On 2026-07-29 his microphone stopped delivering audio 32 minutes into a
+        // 51-minute call and the app carried on as though it were recording. The
+        // system channel had `onCaptureInterrupted` for this; the microphone had
+        // nothing, and the only silence check covers the first ten seconds.
+        newPipeline.onSourceWentQuiet = { [weak self] source in
+            Task { @MainActor [weak self] in
+                guard let self, self.isActive else { return }
+                let message = source == .mic
+                    ? "Your microphone stopped sending audio. The other side is still being recorded."
+                    : "The Others channel stopped sending audio. Your microphone is still being recorded."
+                self.captureDegradedMessage = message
+                self.onDiagnostic?("Meeting capture degraded: \(message)")
+                print("MeetingSession: capture degraded: \(message)")
             }
         }
 
@@ -271,11 +307,8 @@ final class MeetingSession: ObservableObject {
         print("MeetingSession: stopped '\(transcript.meetingName)': \(transcript.segments.count) segments, \(transcript.formattedDuration)")
     }
 
-    private func recordSavedChunk(url: URL, source: AudioStreamSource) {
-        guard let chunkIndex = Self.chunkIndex(from: url) else {
-            return
-        }
-        savedChunkRecords.append(SavedChunkRecord(url: url, source: source, chunkIndex: chunkIndex))
+    private func recordSavedChunk(url: URL, source: AudioStreamSource, startTime: TimeInterval) {
+        savedChunkRecords.append(SavedChunkRecord(url: url, source: source, startTime: startTime))
     }
 
     private func applyRemoteSpeakerTaggingIfAvailable() async {
@@ -311,10 +344,10 @@ final class MeetingSession: ObservableObject {
         let records = savedChunkRecords
             .filter { $0.source == source }
             .sorted { lhs, rhs in
-                if lhs.chunkIndex == rhs.chunkIndex {
+                if lhs.startTime == rhs.startTime {
                     return lhs.url.path < rhs.url.path
                 }
-                return lhs.chunkIndex < rhs.chunkIndex
+                return lhs.startTime < rhs.startTime
             }
         guard records.isEmpty == false else {
             return nil
@@ -328,11 +361,24 @@ final class MeetingSession: ObservableObject {
                 continue
             }
 
-            let startIndex = max(0, Int((Double(record.chunkIndex) * Self.chunkInterval * Self.sampleRate).rounded(.down)))
+            // Align on the capture time the chunk actually carries. Chunks now
+            // overlap by a second and a late drain can produce several at once,
+            // so ordinal times a fixed interval no longer describes where any of
+            // them sit on the timeline.
+            let startIndex = max(0, Int((record.startTime * Self.sampleRate).rounded(.down)))
             if output.count < startIndex {
                 output.append(contentsOf: repeatElement(Float.zero, count: startIndex - output.count))
             }
-            output.append(contentsOf: samples)
+            if startIndex < output.count {
+                // Overlapping chunk: keep what is already there and append only
+                // the part that extends the timeline, so a word is not doubled in
+                // the buffer the speaker tagger sees.
+                let alreadyCovered = output.count - startIndex
+                guard alreadyCovered < samples.count else { continue }
+                output.append(contentsOf: samples[alreadyCovered...])
+            } else {
+                output.append(contentsOf: samples)
+            }
         }
 
         return output.isEmpty ? nil : output
@@ -417,17 +463,6 @@ final class MeetingSession: ObservableObject {
         }
     }
 
-    private static func chunkIndex(from url: URL) -> Int? {
-        let name = url.deletingPathExtension().lastPathComponent
-        let parts = name.split(separator: "-")
-        guard parts.count >= 3,
-              parts[0] == "chunk" else {
-            return nil
-        }
-        return Int(parts[1])
-    }
-
-    private static let chunkInterval: TimeInterval = 30.0
     private static let sampleRate: Double = 16_000
 
     /// Elapsed time since meeting started.
@@ -735,14 +770,29 @@ final class MeetingSession: ObservableObject {
             return
         }
 
-        // One strike, not two. This check used to run every 5 seconds, where two
-        // strikes meant about 10 seconds of grace. At 60 seconds it would mean
-        // TWO MINUTES of recording, transcribing and holding the shared model
-        // after his call ended, which is worse than the occasional early stop
-        // the second strike guarded against.
         inactiveMeetingPollCount += 1
-        guard inactiveMeetingPollCount >= 1 else { return }
+        guard Self.shouldAutomaticallyStop(afterConsecutiveInactivePolls: inactiveMeetingPollCount) else { return }
         requestAutomaticStop(reason: "meeting windows no longer look active")
+    }
+
+    /// How many consecutive polls that fail to see an active meeting window it
+    /// takes to end the recording.
+    ///
+    /// TWO, not one, and the reason is a regression I caused on 2026-07-27. The
+    /// poll moved from every 5 seconds to every 60 seconds and the threshold
+    /// moved from two strikes to one IN THE SAME EDIT, and I justified the
+    /// threshold change in terms of the grace period being too long while having
+    /// made the interval twelve times longer. At one strike a single failed
+    /// Accessibility read of Zoom's window tree ends the recording, which is what
+    /// killed his 10:03 meeting after 76 seconds on 2026-07-29.
+    ///
+    /// Two strikes at 60 seconds is up to two minutes of recording after a call
+    /// really has ended. That is the cost, it is paid only when Zoom stays open
+    /// after the call, and it is far cheaper than ending a meeting he is still in:
+    /// the fast path for a call that is genuinely over is
+    /// `didTerminateApplicationNotification`, which needs no polling at all.
+    nonisolated static func shouldAutomaticallyStop(afterConsecutiveInactivePolls polls: Int) -> Bool {
+        polls >= 2
     }
 
     private func requestAutomaticStop(reason: String) {

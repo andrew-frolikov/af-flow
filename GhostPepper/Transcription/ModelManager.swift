@@ -350,14 +350,52 @@ final class ModelManager: ObservableObject {
         return english * englishPrior >= russian * russianPrior ? "en" : "ru"
     }
 
+    /// Picks a language from Whisper's probabilities, falling back to the single
+    /// language it reports when the probabilities contain no answer for either of
+    /// the two languages he speaks.
+    ///
+    /// THE SAME DEFECT THROUGH A DIFFERENT DOOR, found on 2026-07-29. WhisperKit
+    /// can return an EMPTY `langProbs` while `detection.language` holds the
+    /// answer. Reading only the probabilities meant declining, and declining
+    /// hands the decode back to unrestricted detection across 99 languages, which
+    /// is the exact failure the restriction exists to prevent. His log:
+    /// `Language detection returned neither en nor ru (raw: ru)`, and his Russian
+    /// came back as Portuguese, Dutch, Afrikaans, Korean, Chinese, Greek and Urdu
+    /// inside one paragraph.
+    ///
+    /// The probabilities still decide whenever they carry an answer, so the
+    /// measured prior that fixed his accented English is untouched.
+    ///
+    /// Stated precisely, because the first version of this comment claimed the
+    /// fallback runs only on an empty map and the code is broader than that: the
+    /// reported language is consulted whenever the probabilities yield no answer
+    /// for EITHER of his two languages. That covers the empty map WhisperKit
+    /// returned on 2026-07-29 and also a map that scores only other languages. It
+    /// is the behaviour worth having, since a map naming only Bulgarian is exactly
+    /// as useless to him as an empty one, and it is still restricted to en and ru:
+    /// this must not become a third door into the 99.
+    static func chooseLanguage(from probabilities: [String: Float], rawLanguage: String?) -> String? {
+        if let chosen = chooseLanguage(from: probabilities) {
+            return chosen
+        }
+        guard let reported = rawLanguage?.lowercased(),
+              supportedAutoDetectLanguages.contains(reported) else {
+            return nil
+        }
+        return reported
+    }
+
     private func detectRestrictedLanguage(audioBuffer: [Float]) async -> String? {
         guard let whisperKit else { return nil }
         do {
             let detection = try await whisperKit.detectLangauge(audioArray: audioBuffer)
-            guard let chosen = Self.chooseLanguage(from: detection.langProbs) else {
+            guard let chosen = Self.chooseLanguage(
+                from: detection.langProbs,
+                rawLanguage: detection.language
+            ) else {
                 debugLogger?(
                     .model,
-                    "Language detection returned neither en nor ru (raw: \(detection.language)). Falling back to Whisper's own detection."
+                    "Language detection returned neither en nor ru (raw: \(detection.language), \(detection.langProbs.count) probabilities). Falling back to Whisper's own detection."
                 )
                 return nil
             }

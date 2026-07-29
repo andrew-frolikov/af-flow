@@ -1068,10 +1068,16 @@ enum MeetingTranscriptWindowPresentation {
 
 enum MeetingRecordingStartError: LocalizedError {
     case unavailable(String)
+    /// A meeting is already being recorded. Starting a second one used to
+    /// overwrite the first silently, leaving it capturing with nothing pointing
+    /// at it to stop it.
+    case alreadyRecording
 
     var errorDescription: String? {
         switch self {
         case .unavailable(let message): return message
+        case .alreadyRecording:
+            return "A meeting is already being recorded. Stop that one first, then start this one."
         }
     }
 }
@@ -1237,11 +1243,20 @@ final class OpenMeetingTab: ObservableObject, Identifiable {
     @Published var transcript: MeetingTranscript
     @Published var fileURL: URL?
     @Published var isRecording = false
+
+    /// Republished from the session, because the view observes this tab and NOT the
+    /// session. A banner reading `session.captureDegradedMessage` directly would
+    /// only appear when some unrelated change happened to redraw the view, which is
+    /// the same "the capability exists and nothing uses it" failure the message was
+    /// added to fix.
+    @Published var captureDegradedMessage: String?
+
     var session: MeetingSession? // nil = loaded from disk
     private var sessionObserver: Any?
     private let onRecordingStateChanged: (() -> Void)?
 
     private var fileURLObserver: Any?
+    private var captureDegradedObserver: Any?
 
     init(
         transcript: MeetingTranscript,
@@ -1264,6 +1279,10 @@ final class OpenMeetingTab: ObservableObject, Identifiable {
                 if let url = url {
                     self?.fileURL = url
                 }
+            }
+            captureDegradedMessage = session.captureDegradedMessage
+            captureDegradedObserver = session.$captureDegradedMessage.sink { [weak self] message in
+                self?.captureDegradedMessage = message
             }
         }
     }
@@ -8504,6 +8523,18 @@ struct MeetingTabContentView: View {
                 noAudioWarning
             }
 
+            // A channel that stopped mid-meeting.
+            //
+            // `captureDegradedMessage` had been set by the system channel since
+            // 2026-07-27 with a comment saying "the UI can say which", and nothing
+            // read it, so it never said anything. The microphone watchdog added on
+            // 2026-07-29 writes to the same property, and this is what makes both
+            // of them visible while he is still in the call, which is the only
+            // time the warning is worth anything.
+            if let degraded = tab.captureDegradedMessage {
+                captureDegradedWarning(degraded)
+            }
+
             // Content
             ScrollViewReader { proxy in
                 ScrollView {
@@ -8658,6 +8689,16 @@ struct MeetingTabContentView: View {
             Spacer()
             Button("Open Settings") { state.onOpenSettings?() }
                 .font(.caption.weight(.medium)).buttonStyle(.borderedProminent).tint(.orange).controlSize(.small)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .background(Color.orange.opacity(0.1))
+    }
+
+    private func captureDegradedWarning(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "waveform.slash").foregroundColor(.orange).font(.caption)
+            Text(message).font(.caption)
+            Spacer()
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(Color.orange.opacity(0.1))

@@ -897,6 +897,99 @@ final class GhostPepperTests: XCTestCase {
         XCTAssertEqual(appState.status, .ready)
     }
 
+    /// Starting a meeting used to overwrite `activeMeetingSession` with no check
+    /// at all, so a second recording could run its own capture over the first
+    /// while the first became unreachable: still capturing, still holding the
+    /// microphone, with nothing left pointing at it to stop it.
+    ///
+    /// This is the best explanation for what Andrew reported on 2026-07-29 as "I
+    /// started it a few times". His log shows three starts that morning.
+    func testStartingASecondMeetingIsRefusedWhileOneIsRecording() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        let first = MeetingSession(
+            meetingName: "The call he is actually on",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+        )
+        first.isActive = true
+        appState.activeMeetingSession = first
+
+        XCTAssertThrowsError(try appState.createMeetingSession(name: "A second one")) { error in
+            guard case MeetingRecordingStartError.alreadyRecording = error else {
+                return XCTFail("expected alreadyRecording, got \(error)")
+            }
+        }
+        XCTAssertTrue(
+            appState.activeMeetingSession === first,
+            "the running meeting must still be the one the app is holding, or nothing can stop it"
+        )
+        XCTAssertTrue(first.isActive)
+    }
+
+    /// The window that actually matters, which the test above does not reach.
+    ///
+    /// `createMeetingSession` returns before its start Task has run, so for a
+    /// moment the session it just installed has none of its three flags set and
+    /// looks idle. Two clicks in that moment is the real double-start, and the
+    /// first version of the guard let it straight through. Codex found the hole.
+    func testASecondStartInTheSameMomentAsTheFirstIsRefused() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        // Pinned so the unrelated SpeechAnalyzer readiness guard cannot decide this
+        // test: `speechModel` lives in the shared defaults domain, and a suite that
+        // leaves a SpeechAnalyzer model behind would make the start refuse for a
+        // reason this test is not about.
+        appState.speechModel = SpeechModelCatalog.defaultModelID
+
+        // No await between these two calls, so the first session's start Task has
+        // not run and none of its flags are set yet.
+        let first = try appState.createMeetingSession(name: "First click")
+        XCTAssertThrowsError(try appState.createMeetingSession(name: "Second click")) { error in
+            guard case MeetingRecordingStartError.alreadyRecording = error else {
+                return XCTFail("expected alreadyRecording, got \(error)")
+            }
+        }
+        XCTAssertTrue(appState.activeMeetingSession === first)
+        await first.stop()
+    }
+
+    /// And it must not refuse forever: once the previous meeting has finished,
+    /// starting the next one has to work, or the guard is worse than the bug.
+    func testAMeetingCanStartOnceTheLastOneHasFinished() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        appState.speechModel = SpeechModelCatalog.defaultModelID
+
+        let finished = MeetingSession(
+            meetingName: "Yesterday's call",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+        )
+        finished.isActive = false
+        appState.activeMeetingSession = finished
+
+        let next = try appState.createMeetingSession(name: "Today's call")
+        XCTAssertTrue(appState.activeMeetingSession === next)
+        await next.stop()
+    }
+
     func testMeetingSessionStopWaitsForStartupToFinish() async throws {
         let startGate = AsyncTestGate()
         let session = MeetingSession(

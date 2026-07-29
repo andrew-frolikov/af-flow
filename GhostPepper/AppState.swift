@@ -1598,6 +1598,14 @@ class AppState: ObservableObject {
         return controller
     }()
     @Published var activeMeetingSession: MeetingSession?
+
+    /// When the last meeting start was attempted, so the "already starting"
+    /// refusal can expire instead of becoming permanent. See `createMeetingSession`.
+    private var lastMeetingStartAttempt: Date?
+
+    /// How long a start attempt may hold off another one. The real race is
+    /// milliseconds; this is generous and still bounded.
+    private static let meetingStartRaceWindow: TimeInterval = 60
     private(set) lazy var pepperChatSession: PepperChatSession = {
         let session = PepperChatSession(transcriber: transcriber)
         session.debugLogger = debugLogStore.record
@@ -1791,6 +1799,49 @@ class AppState: ObservableObject {
     /// Creates a new MeetingSession, starts recording, and returns it.
     /// Called by the window state when the user clicks "+" or auto-detection triggers.
     func createMeetingSession(name: String, detectedMeeting: DetectedMeeting? = nil) throws -> MeetingSession {
+        // ONE MEETING AT A TIME, checked before anything else is built.
+        //
+        // This assignment used to be unconditional, so a second start overwrote
+        // `activeMeetingSession` and the first session became unreachable while
+        // still capturing: two dual-stream captures competing for the microphone,
+        // two transcript files, and no way left to stop the first except quitting.
+        // It is the best explanation for what Andrew reported as "I started it a
+        // few times" on 2026-07-29, where the log shows three starts.
+        //
+        // A session that has finished, failed or been stopped is not a reason to
+        // refuse, or the guard would lock him out of recording anything after the
+        // first meeting of a session.
+        // `pendingMeetingSessionStarts` is counted because none of the session's
+        // own three flags are set yet at this point: `start()` runs in a Task that
+        // has not begun, so a second start arriving in that window would have
+        // found a session that looked idle and overwritten it anyway. Codex found
+        // this hole in the first version of this guard.
+        //
+        // BUT THE REFUSAL EXPIRES, and that matters more than the guard does. A
+        // startup that never returns, or a stop that never finishes, would
+        // otherwise leave this counter positive for the life of the process and the
+        // guard would then refuse every recording he ever tried again: a hang in
+        // one meeting would take the feature away until he quit the app. The real
+        // race is milliseconds wide, so a minute closes it completely while leaving
+        // no state that can permanently lock him out.
+        if pendingMeetingSessionStarts > 0,
+           let since = lastMeetingStartAttempt,
+           Date().timeIntervalSince(since) < Self.meetingStartRaceWindow {
+            debugLogStore.record(
+                category: .model,
+                message: "Meeting transcription start refused: a meeting is already starting."
+            )
+            throw MeetingRecordingStartError.alreadyRecording
+        }
+        if let existing = activeMeetingSession,
+           existing.isActive || existing.isStarting || existing.isDraining {
+            debugLogStore.record(
+                category: .model,
+                message: "Meeting transcription start refused: '\(existing.transcript.meetingName)' is already recording."
+            )
+            throw MeetingRecordingStartError.alreadyRecording
+        }
+
         guard canStartSpeechAnalyzerConsumer else {
             let message = "Meeting recording is still getting the speech model ready. Wait a moment, then click Start recording again."
             debugLogStore.record(category: .model, message: "Meeting transcription start skipped because the SpeechAnalyzer model is loading.")
@@ -1815,9 +1866,17 @@ class AppState: ObservableObject {
                 await self?.finishMeetingSession(session, logPrefix: "Meeting transcription auto-stopped")
             }
         }
+        // The pipeline's own account of what it is doing, into the log he can
+        // read. The 51-minute failure of 2026-07-29 was diagnosed from this log,
+        // and it could have been caught during the call if the pipeline had ever
+        // said anything.
+        session.onDiagnostic = { [weak self] note in
+            self?.debugLogStore.record(category: .model, message: note)
+        }
         activeMeetingSession = session
 
         pendingMeetingSessionStarts += 1
+        lastMeetingStartAttempt = Date()
         Task { @MainActor in
             defer {
                 if pendingMeetingSessionStarts > 0 {
