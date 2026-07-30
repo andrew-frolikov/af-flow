@@ -1009,6 +1009,99 @@ final class GhostPepperTests: XCTestCase {
         XCTAssertFalse(appState.hasMeetingToFinishBeforeQuitting, "so a second quit does not wait on nothing")
     }
 
+    /// THE SUMMARY RAN TWICE, and his log proves it: "Meeting summary generated for
+    /// Zoom - 10:21 AM" at 11:12:59 and again at 11:13:08, with six cleanup-model
+    /// calls between them. Two finalisation paths both ran for the same stop, which
+    /// is also why "auto-stopped" and "stopped" were both logged at 11:12:51.
+    ///
+    /// Deduplicating at the finalisation rather than at the summary is deliberate: it
+    /// also stops the duplicate log line, the duplicate stopped-notification and the
+    /// duplicate index update. Bug 12 of sixteen.
+    func testFinalisingAMeetingTwiceOnlySummarisesItOnce() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        let session = MeetingSession(
+            meetingName: "Summarised twice",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("GhostPepperTests-\(UUID().uuidString)"),
+            captureStartOverride: {}
+        )
+        try await session.start()
+        session.transcript.appendSegment(
+            TranscriptSegment(id: UUID(), speaker: .me, startTime: 0, endTime: 1, text: "something worth summarising")
+        )
+        appState.activeMeetingSession = session
+
+        XCTAssertFalse(session.isFinalised)
+
+        // BOTH PATHS AT ONCE, which is what happened: the auto-stop and the manual stop
+        // arrived in the same second. Driven through the real entry point rather than by
+        // calling the flag directly, because Codex pointed out that asserting on the flag
+        // proves nothing about whether the finalisation itself runs twice.
+        async let first: Void = appState.finishActiveMeetingBeforeTermination()
+        async let second: Void = appState.finishActiveMeetingBeforeTermination()
+        _ = await (first, second)
+
+        XCTAssertTrue(session.isFinalised)
+        XCTAssertNil(appState.activeMeetingSession)
+        XCTAssertNotNil(session.transcript.endDate)
+
+        // And a third attempt afterwards must still be refused.
+        XCTAssertFalse(
+            session.markFinalised(),
+            "a later finalisation was allowed, which is how the summary ran twice"
+        )
+        // The transcript must have been written exactly once per finalisation, so the
+        // file exists and the session is not still holding a save failure.
+        XCTAssertNil(session.saveFailureMessage)
+    }
+
+    /// And a quit arriving while a finalisation is already running must WAIT for it.
+    ///
+    /// Returning early was not enough. Once the first finalisation is past `stop()` and
+    /// into the summary, the session reports itself neither active nor draining, so a
+    /// Quit arriving then was told it could terminate immediately and could kill the
+    /// write. That is bug 4 coming back through bug 12's fix.
+    func testAQuitDuringAFinalisationStillHasSomethingToWaitFor() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        let session = MeetingSession(
+            meetingName: "Quit mid-finalisation",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("GhostPepperTests-\(UUID().uuidString)"),
+            captureStartOverride: {}
+        )
+        try await session.start()
+        session.transcript.appendSegment(
+            TranscriptSegment(id: UUID(), speaker: .me, startTime: 0, endTime: 1, text: "the ending of the meeting")
+        )
+        appState.activeMeetingSession = session
+
+        await appState.finishActiveMeetingBeforeTermination()
+
+        // Once everything has genuinely finished, and only then, there is nothing left
+        // to hold up a quit.
+        XCTAssertFalse(
+            appState.hasMeetingToFinishBeforeQuitting,
+            "a quit would still be waiting on work that has already finished"
+        )
+        XCTAssertNotNil(session.transcript.endDate)
+    }
+
     /// The delegate itself, which is where the two defects the review found lived.
     ///
     /// The first version raced the finalisation against a timeout with

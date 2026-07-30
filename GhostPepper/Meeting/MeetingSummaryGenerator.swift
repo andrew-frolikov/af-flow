@@ -54,6 +54,15 @@ final class MeetingSummaryGenerator {
     - If the meeting is too short or too thin to contain decisions or facts, say only that, in one line. Do not pad.
     """
 
+    /// What the stored `meetingSummaryPrompt` setting defaults to.
+    ///
+    /// ONE DEFAULT, because there were two. `AppState` defaulted that key to
+    /// `defaultPrompt`, the per-chunk prompt, while the meeting window's editor
+    /// defaulted the same key to `finalSummaryPrompt`. So the text he saw depended on
+    /// which object read the key first, and neither default was wrong on its own.
+    /// The key is passed as the FINAL prompt, so this is the final prompt.
+    static let storedSummaryPromptDefault = finalSummaryPrompt
+
     init(cleanupManager: TextCleanupManager) {
         self.cleanupManager = cleanupManager
     }
@@ -130,10 +139,22 @@ final class MeetingSummaryGenerator {
         return chunks
     }
 
+    /// Splits a summarisation call into the two things the model needs kept apart.
+    ///
+    /// THE INSTRUCTIONS ARE NOT INPUT. This used to build `prompt + "\n\n" + text` and
+    /// hand the whole thing over as the text to CLEAN UP, with the prompt argument nil,
+    /// so the cleanup model was told to tidy up a block that began with instructions and
+    /// did exactly that. "Part 2" of his 2026-07-29 summary is the summarisation prompt
+    /// word for word. The 0.8B model was not imitating a shape it had been shown; it was
+    /// obeying the instruction it was actually given.
+    nonisolated static func cleanupRequest(input: String, prompt: String) -> (text: String, prompt: String?) {
+        (text: input, prompt: prompt)
+    }
+
     private func runLLM(text: String, prompt: String) async -> String? {
         do {
-            let fullPrompt = "\(prompt)\n\n\(text)"
-            let result = try await cleanupManager.clean(text: fullPrompt, prompt: nil)
+            let request = Self.cleanupRequest(input: text, prompt: prompt)
+            let result = try await cleanupManager.clean(text: request.text, prompt: request.prompt)
             let trimmed = result.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         } catch {

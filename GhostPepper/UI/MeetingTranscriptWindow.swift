@@ -1058,6 +1058,46 @@ private final class WikiGenerationRun: ObservableObject, Identifiable {
 }
 
 enum MeetingTranscriptWindowPresentation {
+    /// Why the meeting window is being shown.
+    enum OpenReason {
+        /// He asked for it, so it must come to the front.
+        case userOpened
+        /// A recording started and the window came with it. That is not a request to
+        /// look at it.
+        case recordingStarted
+    }
+
+    /// Whether showing the window should pull AF Flow in front of everything else.
+    ///
+    /// HE COULD NOT SEE THE FACE OF THE PERSON HE WAS TALKING TO. Starting a meeting
+    /// from the menu called `NSApp.activate(ignoringOtherApps: true)` and
+    /// `makeKeyAndOrderFront`, so a 960-point, full-screen-height window came up over
+    /// his Zoom call and took the keyboard with it. Bug 11 of sixteen.
+    static func shouldActivateApp(for reason: OpenReason) -> Bool {
+        reason == .userOpened
+    }
+
+    /// Whether the window may be placed above the windows of other applications.
+    ///
+    /// FALSE FOR A RECORDING, and this is the half of bug 11 the first fix missed.
+    /// Not activating the app stopped the keyboard being stolen and did nothing about
+    /// the covering, because `orderFrontRegardless()` is documented to bring an
+    /// inactive app's window in front of the active app's window: exactly the thing he
+    /// complained about. `orderFront(nil)` on an inactive app puts the window at the
+    /// front of AF Flow's own windows and leaves AF Flow behind Zoom, which is what he
+    /// asked for. Codex caught it.
+    static func shouldOrderAboveOtherApps(for reason: OpenReason) -> Bool {
+        reason == .userOpened
+    }
+
+    /// Whether the window sits above other apps while recording, by default.
+    ///
+    /// FALSE. It was true, and combined with a full-height window and the focus theft
+    /// above it meant a recording covered the call it was recording. Floating is still
+    /// available in Settings for anyone who wants a transcript visible over a
+    /// fullscreen app; it is no longer what happens to him without asking.
+    static let floatsWhileRecordingDefault = false
+
     static func windowLevel(
         shouldFloatWhileRecording: Bool,
         hasActiveRecording: Bool
@@ -1112,15 +1152,17 @@ final class MeetingTranscriptWindowController: NSObject, NSWindowDelegate {
 
     private(set) var windowState: MeetingWindowState?
 
-    func show(session: MeetingSession? = nil) {
+    func show(
+        session: MeetingSession? = nil,
+        reason: MeetingTranscriptWindowPresentation.OpenReason = .userOpened
+    ) {
         if let window = window {
             // Add session as a tab if provided
             if let session = session, let state = windowState {
                 state.addRecordingTab(session: session)
             }
             updateWindowLevel()
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            Self.bringForward(window, reason: reason)
             return
         }
 
@@ -1182,10 +1224,29 @@ final class MeetingTranscriptWindowController: NSObject, NSWindowDelegate {
         // The dictation overlay keeps those flags; a document window does not.
         window.hidesOnDeactivate = false
         window.setFrame(NSRect(x: screenFrame.midX - windowWidth / 2, y: screenFrame.minY, width: windowWidth, height: windowHeight), display: true)
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
         self.window = window
         updateWindowLevel()
+        Self.bringForward(window, reason: reason)
+    }
+
+    /// Shows the window, taking focus only when he asked for it.
+    ///
+    /// `orderFrontRegardless` puts the window on screen without activating AF Flow or
+    /// taking the keyboard, so a recording that starts while he is on a call leaves the
+    /// call in front and the keystrokes going to it.
+    private static func bringForward(
+        _ window: NSWindow,
+        reason: MeetingTranscriptWindowPresentation.OpenReason
+    ) {
+        if MeetingTranscriptWindowPresentation.shouldActivateApp(for: reason) {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else if MeetingTranscriptWindowPresentation.shouldOrderAboveOtherApps(for: reason) {
+            window.orderFrontRegardless()
+        } else {
+            // Ordered within AF Flow's own windows only. The app stays behind his call.
+            window.orderFront(nil)
+        }
     }
 
     func close() {
@@ -8417,7 +8478,7 @@ struct MeetingTabContentView: View {
     @State private var showSummaryPrompt = false
     @State private var speakerLabelDrafts: [String: String] = [:]
     @State private var speakerReviewError: String?
-    @AppStorage("meetingSummaryPrompt") private var summaryPrompt: String = MeetingSummaryGenerator.finalSummaryPrompt
+    @AppStorage("meetingSummaryPrompt") private var summaryPrompt: String = MeetingSummaryGenerator.storedSummaryPromptDefault
     @AppStorage("selectedCleanupModelKind") private var selectedModelKind: String = LocalCleanupModelKind.qwen35_0_8b_q4_k_m.rawValue
     @FocusState private var searchFocused: Bool
 

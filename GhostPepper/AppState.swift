@@ -246,8 +246,8 @@ class AppState: ObservableObject {
     // string away from working. Removed per CLAUDE.md hard rule 1.
     @AppStorage("meetingTranscriptEnabled") var meetingTranscriptEnabled: Bool = false
     @AppStorage("meetingAutoDetectEnabled") var meetingAutoDetectEnabled: Bool = true
-    @AppStorage("meetingWindowFloatsWhileRecording") var meetingWindowFloatsWhileRecording: Bool = true
-    @AppStorage("meetingSummaryPrompt") var meetingSummaryPrompt: String = MeetingSummaryGenerator.defaultPrompt
+    @AppStorage("meetingWindowFloatsWhileRecording") var meetingWindowFloatsWhileRecording: Bool = MeetingTranscriptWindowPresentation.floatsWhileRecordingDefault
+    @AppStorage("meetingSummaryPrompt") var meetingSummaryPrompt: String = MeetingSummaryGenerator.storedSummaryPromptDefault
     @AppStorage("claudeAPIModel") var claudeAPIModel: String = ClaudeAPIModel.sonnet.rawValue
     @AppStorage("pauseMediaWhileRecording") var pauseMediaWhileRecording: Bool = true
     @Published private(set) var pushToTalkChord: KeyChord
@@ -630,6 +630,31 @@ class AppState: ObservableObject {
     }
 
     func initialize(skipPermissionPrompts: Bool = false) async {
+        // Meeting audio is durable now, so something has to clean it up. Andrew chose
+        // 7 days on 2026-07-29: long enough to recover a meeting he cares about, short
+        // enough that roughly 230 MB an hour of two-channel audio does not fill his disk.
+        //
+        // OFF THE MAIN THREAD. Deleting a week of chunk files is file IO measured in
+        // gigabytes, and running it inline here would have held up launch by however
+        // long the disk took. Nothing waits on the result.
+        Task.detached(priority: .utility) {
+            MeetingAudioStore.pruneRecordings()
+        }
+
+        // One-time correction of the stored summary prompt.
+        //
+        // The `meetingSummaryPrompt` key had two different defaults, so an install that
+        // saved it while the editor was showing the CHUNK prompt is now holding the chunk
+        // prompt where the final prompt belongs. Replaced only when it matches that old
+        // default exactly, so a prompt he wrote himself is never touched.
+        if meetingSummaryPrompt == MeetingSummaryGenerator.defaultPrompt {
+            meetingSummaryPrompt = MeetingSummaryGenerator.storedSummaryPromptDefault
+            debugLogStore.record(
+                category: .model,
+                message: "Corrected the stored meeting summary prompt: it held the per-chunk prompt, which was one of the two defaults that key used to have."
+            )
+        }
+
         // Enable launch at login by default on first run
         if !UserDefaults.standard.bool(forKey: "hasSetLaunchAtLogin") {
             UserDefaults.standard.set(true, forKey: "hasSetLaunchAtLogin")
@@ -1303,7 +1328,7 @@ class AppState: ObservableObject {
     private lazy var meetingTranscriptWindowController: MeetingTranscriptWindowController = {
         let controller = MeetingTranscriptWindowController()
         controller.shouldFloatWhileRecording = { [weak self] in
-            self?.meetingWindowFloatsWhileRecording ?? true
+            self?.meetingWindowFloatsWhileRecording ?? MeetingTranscriptWindowPresentation.floatsWhileRecordingDefault
         }
         controller.pushToTalkDisplayProvider = { [weak self] in
             self?.pushToTalkChord.displayString ?? ""
@@ -1931,7 +1956,10 @@ class AppState: ObservableObject {
         sourceURL: String? = nil,
         detectedMeeting: DetectedMeeting? = nil
     ) {
-        meetingTranscriptWindowController.show()
+        // Shown WITHOUT taking focus. Starting a recording is not a request to look at
+        // the transcript window, and on 2026-07-29 it pulled AF Flow in front of the
+        // Zoom call he was recording. Bug 11 of sixteen.
+        meetingTranscriptWindowController.show(reason: .recordingStarted)
         meetingTranscriptWindowController.requestRecording(
             name: meetingName,
             skipConsent: skipConsent,
@@ -2002,7 +2030,41 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Finalises a meeting exactly once, and makes every other caller wait for it.
+    ///
+    /// Two finalisation paths reach here for one stop, and on 2026-07-29 both ran: his
+    /// log shows "auto-stopped" and "stopped" in the same second, then two summaries
+    /// nine seconds apart with six cleanup-model calls between them. Each duplicate also
+    /// duplicated the stopped-notification and the index update.
     private func finishMeetingSession(_ session: MeetingSession, logPrefix: String) async {
+        let sessionID = session.transcript.sessionID
+
+        if let inFlight = finalisationTasks[sessionID] {
+            debugLogStore.record(
+                category: .model,
+                message: "\(logPrefix) is waiting for the finalisation already running for '\(session.transcript.meetingName)'."
+            )
+            await inFlight.value
+            return
+        }
+
+        guard session.markFinalised() else {
+            debugLogStore.record(
+                category: .model,
+                message: "\(logPrefix) skipped: '\(session.transcript.meetingName)' has already been finalised."
+            )
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            await self?.performFinishMeetingSession(session, logPrefix: logPrefix)
+            self?.finalisationTasks[sessionID] = nil
+        }
+        finalisationTasks[sessionID] = task
+        await task.value
+    }
+
+    private func performFinishMeetingSession(_ session: MeetingSession, logPrefix: String) async {
         await session.stop()
         if activeMeetingSession === session {
             activeMeetingSession = nil
@@ -2984,8 +3046,19 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Finalisations that have started and not yet finished, by session.
+    ///
+    /// A second caller AWAITS the first rather than returning, and quitting waits for
+    /// all of them. Returning early was not enough: once the first finalisation is past
+    /// `stop()` and into the summary, the session reports itself neither active nor
+    /// draining, so a Quit arriving then was told to terminate immediately and could
+    /// kill the write. That is bug 4 coming back through bug 12's fix, and Codex caught
+    /// it in the same review.
+    private var finalisationTasks: [UUID: Task<Void, Never>] = [:]
+
     /// Whether quitting right now would interrupt a meeting.
     var hasMeetingToFinishBeforeQuitting: Bool {
+        if !finalisationTasks.isEmpty { return true }
         guard let session = activeMeetingSession else { return false }
         return session.isActive || session.isStarting || session.isDraining
     }
@@ -3002,12 +3075,18 @@ class AppState: ObservableObject {
     /// actually be deferred until the work is done, and it uses the SAME finalisation
     /// path as a normal stop rather than a second one that could drift from it.
     func finishActiveMeetingBeforeTermination() async {
-        guard let session = activeMeetingSession else { return }
-        debugLogStore.record(
-            category: .model,
-            message: "Quit requested during a meeting. Finishing '\(session.transcript.meetingName)' before terminating."
-        )
-        await finishMeetingSession(session, logPrefix: "Meeting transcription stopped for quit")
+        if let session = activeMeetingSession {
+            debugLogStore.record(
+                category: .model,
+                message: "Quit requested during a meeting. Finishing '\(session.transcript.meetingName)' before terminating."
+            )
+            await finishMeetingSession(session, logPrefix: "Meeting transcription stopped for quit")
+        }
+        // And wait for anything another path already started, which by now may have
+        // cleared `activeMeetingSession` while still writing the summary.
+        while let inFlight = finalisationTasks.values.first {
+            await inFlight.value
+        }
     }
 
     func prepareForTermination() {

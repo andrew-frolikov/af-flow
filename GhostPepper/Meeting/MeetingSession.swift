@@ -1,6 +1,79 @@
 import AppKit
 import Foundation
 
+/// Where a meeting's chunk audio lives, and how long it stays.
+///
+/// It used to live in `FileManager.default.temporaryDirectory`, which macOS clears
+/// whenever it likes. That is why the 51-minute recording of 2026-07-29 had to be
+/// copied out by hand before it vanished, and why a meeting interrupted by a crash
+/// or a force quit was unrecoverable.
+///
+/// Andrew chose durable storage with a 7-day retention on 2026-07-29. Two-channel
+/// meeting audio is roughly 230 MB an hour, so a week is the trade he picked between
+/// being able to recover a meeting and letting the disk fill up quietly.
+enum MeetingAudioStore {
+    static let retentionDays = 7
+
+    static var root: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library")
+                .appendingPathComponent("Application Support")
+        return base
+            .appendingPathComponent("GhostPepper")
+            .appendingPathComponent("meeting-audio")
+    }
+
+    static func chunkDirectory(forSession sessionID: UUID) -> URL {
+        root
+            .appendingPathComponent("meeting-\(sessionID.uuidString)")
+            .appendingPathComponent("chunks")
+    }
+
+    /// Whether a directory name is one this store created, and may therefore delete.
+    ///
+    /// Checked rather than assumed, because this function calls `removeItem` in a loop.
+    /// A prune that trusts whatever it finds is one symlink or one stray folder away
+    /// from deleting something that is not its own.
+    static func isOwnRecordingDirectory(_ name: String) -> Bool {
+        guard name.hasPrefix("meeting-") else { return false }
+        return UUID(uuidString: String(name.dropFirst("meeting-".count))) != nil
+    }
+
+    /// Deletes recordings older than the retention window. Called at launch, off the
+    /// main thread.
+    static func pruneRecordings(olderThan days: Int = retentionDays, in directory: URL = root) {
+        let cutoff = Date().addingTimeInterval(-Double(days) * 24 * 60 * 60)
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+
+        for entry in entries {
+            guard isOwnRecordingDirectory(entry.lastPathComponent) else { continue }
+            guard let values = try? entry.resourceValues(
+                forKeys: [.contentModificationDateKey, .isDirectoryKey, .isSymbolicLinkKey]
+            ) else {
+                continue
+            }
+            // A symlink is never followed and never deleted: following one would take
+            // this loop outside its own directory.
+            guard values.isSymbolicLink != true, values.isDirectory == true else { continue }
+            guard let modified = values.contentModificationDate, modified < cutoff else { continue }
+
+            do {
+                try FileManager.default.removeItem(at: entry)
+                print("MeetingAudioStore: pruned \(entry.lastPathComponent), older than \(days) days")
+            } catch {
+                print("MeetingAudioStore: could not prune \(entry.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+    }
+}
+
 /// Orchestrates a single meeting transcription session.
 /// Owns DualStreamCapture + ChunkedTranscriptionPipeline + MeetingTranscript.
 @MainActor
@@ -36,6 +109,26 @@ final class MeetingSession: ObservableObject {
     @Published var transcript: MeetingTranscript
 
     var onAutoStopRequested: ((MeetingSession) -> Void)?
+
+    /// Whether this session has already been written out and summarised.
+    ///
+    /// More than one finalisation path calls into the same code, and on 2026-07-29
+    /// both ran for one stop: his log records "auto-stopped" and "stopped" in the same
+    /// second and then two summaries, at 11:12:59 and 11:13:08, with six cleanup-model
+    /// calls between them. Bug 12 of sixteen.
+    private(set) var isFinalised = false
+
+    /// Claims the finalisation. Returns false if it has already been claimed, so the
+    /// second caller does nothing rather than summarising, logging, notifying and
+    /// re-indexing the same meeting again.
+    ///
+    /// Safe without a lock because every caller is on the main actor, and the check
+    /// and the set happen together with no await between them.
+    func markFinalised() -> Bool {
+        guard !isFinalised else { return false }
+        isFinalised = true
+        return true
+    }
 
     /// Carries the pipeline's own account of what it is doing into the app's
     /// debug log. On 2026-07-29 the drain schedule failed silently for 51
@@ -120,10 +213,7 @@ final class MeetingSession: ObservableObject {
             waiters.forEach { $0.resume() }
         }
 
-        let chunkDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("GhostPepper")
-            .appendingPathComponent("meeting-\(transcript.sessionID.uuidString)")
-            .appendingPathComponent("chunks")
+        let chunkDir = MeetingAudioStore.chunkDirectory(forSession: transcript.sessionID)
 
         let newPipeline = ChunkedTranscriptionPipeline(
             transcriber: transcriber,

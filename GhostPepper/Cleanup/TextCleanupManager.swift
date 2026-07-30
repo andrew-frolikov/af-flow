@@ -547,6 +547,23 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
                     preparedCompletionInput = completionInput
                     self.preparedPromptContext = nil
                 } else {
+                    // A PREPARED CONTEXT WE CANNOT USE HERE MUST BE DROPPED.
+                    //
+                    // The prepared context describes model state that this generation
+                    // is about to overwrite. Leaving it in place meant the next
+                    // dictation would take the prepared fast path against a KV cache
+                    // that no longer holds what the metadata claims.
+                    //
+                    // It could not happen before 2026-07-29 because every caller
+                    // reached here with the same cleanup prompt, so the branch above
+                    // always matched and always cleared. Meeting summaries now pass
+                    // their own prompt, which is the fix for the summary echoing its
+                    // instructions, and that is what made this reachable. Codex found
+                    // it in the same review.
+                    //
+                    // The cost is one lost prefetch, which is latency on a rare
+                    // overlap. The alternative is a wrong prefix on his dictation.
+                    self.preparedPromptContext = nil
                     preparedCompletionInput = nil
                 }
 

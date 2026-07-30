@@ -3,6 +3,151 @@ import XCTest
 @testable import GhostPepper
 
 final class MeetingTranscriptWindowPresentationTests: XCTestCase {
+
+    /// HE COULD NOT SEE THE FACE OF THE PERSON HE WAS TALKING TO.
+    ///
+    /// Starting a meeting from the menu called `NSApp.activate(ignoringOtherApps:)`
+    /// and `makeKeyAndOrderFront`, which pulls AF Flow in front of Zoom, and the
+    /// window is 960 points wide and the full height of the screen, and floating was
+    /// on by default so it stayed above the call. Bug 11 of sixteen.
+    ///
+    /// Opening the window because a recording started is not a request to look at it.
+    func testStartingARecordingDoesNotStealFocusFromTheCall() {
+        XCTAssertFalse(
+            MeetingTranscriptWindowPresentation.shouldActivateApp(for: .recordingStarted),
+            "Starting a recording pulled AF Flow in front of his video call."
+        )
+    }
+
+    /// But when he opens the window himself, it must come to the front. A window that
+    /// will not show itself when asked is a worse bug than the one above.
+    func testOpeningTheWindowHimselfDoesBringItToTheFront() {
+        XCTAssertTrue(MeetingTranscriptWindowPresentation.shouldActivateApp(for: .userOpened))
+        XCTAssertTrue(MeetingTranscriptWindowPresentation.shouldOrderAboveOtherApps(for: .userOpened))
+    }
+
+    /// THE HALF OF BUG 11 THE FIRST FIX MISSED.
+    ///
+    /// Not activating the app stopped the keyboard being stolen and did nothing about the
+    /// covering, because `orderFrontRegardless()` is documented to place an inactive
+    /// app's window in front of the active app's window. So the 960-point full-height
+    /// window still sat over Zoom and he still could not see the face of the person he
+    /// was talking to. Codex caught it.
+    func testStartingARecordingDoesNotPutTheWindowOverTheCall() {
+        XCTAssertFalse(
+            MeetingTranscriptWindowPresentation.shouldOrderAboveOtherApps(for: .recordingStarted),
+            "The window was still ordered above his call, which is the actual complaint."
+        )
+    }
+
+    /// The prune only ever deletes directories it created.
+    func testPruningOnlyRecognisesItsOwnDirectories() {
+        XCTAssertTrue(MeetingAudioStore.isOwnRecordingDirectory("meeting-\(UUID().uuidString)"))
+        XCTAssertFalse(MeetingAudioStore.isOwnRecordingDirectory("meeting-not-a-uuid"))
+        XCTAssertFalse(MeetingAudioStore.isOwnRecordingDirectory("Documents"))
+        XCTAssertFalse(MeetingAudioStore.isOwnRecordingDirectory(""))
+    }
+
+    /// And it must not float over the call unless he asks for that.
+    func testFloatingOverTheCallIsNotTheDefault() {
+        XCTAssertFalse(
+            MeetingTranscriptWindowPresentation.floatsWhileRecordingDefault,
+            "A full-height window floating above everything is what covered his call."
+        )
+    }
+
+    /// THE SUMMARY PRINTED ITS OWN INSTRUCTIONS INTO HIS TRANSCRIPT.
+    ///
+    /// "Part 2" of the summary in `Meetings/2026-07-29/zoom-10-21-am.md` is the
+    /// summarisation prompt, word for word, starting "Extract only what was decided".
+    /// `runLLM` concatenated the prompt onto the front of the transcript and passed
+    /// the whole thing as the text to CLEAN UP, with the prompt argument nil. So the
+    /// model was told to tidy up a block of text that began with instructions, and it
+    /// did exactly that. The 0.8B model was not imitating a shape; it was obeying.
+    /// Bug 13 of sixteen.
+    func testTheSummaryPromptIsSentAsThePromptAndNotAsTheTextToCleanUp() {
+        let prompt = "Extract only what was decided, agreed, or committed to in this meeting excerpt."
+        let transcript = "Meeting transcript:\n\n[00:00] Me: we agreed to ship on Friday"
+
+        let request = MeetingSummaryGenerator.cleanupRequest(input: transcript, prompt: prompt)
+
+        XCTAssertEqual(request.prompt, prompt, "the instructions belong in the prompt")
+        XCTAssertEqual(request.text, transcript, "and the text must be only the transcript")
+        XCTAssertFalse(
+            request.text.contains(prompt),
+            "The instructions were inside the text to clean up, which is why they came back as his summary."
+        )
+    }
+
+    /// And the two defaults for the stored summary prompt must agree.
+    ///
+    /// `AppState` defaulted the `meetingSummaryPrompt` key to the CHUNK prompt while
+    /// the meeting window defaulted the same key to the FINAL prompt, so which text he
+    /// saw in the editor depended on which object read the key first. The key is
+    /// passed as the final prompt, so the final prompt is what it defaults to.
+    func testTheStoredSummaryPromptDefaultsToTheFinalPrompt() {
+        XCTAssertEqual(
+            MeetingSummaryGenerator.storedSummaryPromptDefault,
+            MeetingSummaryGenerator.finalSummaryPrompt
+        )
+        XCTAssertNotEqual(
+            MeetingSummaryGenerator.defaultPrompt,
+            MeetingSummaryGenerator.finalSummaryPrompt,
+            "these are two genuinely different prompts, which is what made one key holding either of them a bug"
+        )
+    }
+
+    /// MEETING AUDIO MUST OUTLIVE THE TEMP FOLDER.
+    ///
+    /// Chunk WAVs went to `FileManager.default.temporaryDirectory`, which macOS can
+    /// clear whenever it likes. That is why the 51-minute recording of 2026-07-29 had
+    /// to be copied out by hand before it disappeared. Andrew chose durable storage
+    /// with a 7-day retention on 2026-07-29.
+    func testMeetingAudioIsNotStoredInTheTemporaryDirectory() {
+        let directory = MeetingAudioStore.chunkDirectory(forSession: UUID())
+        XCTAssertFalse(
+            directory.path.hasPrefix(FileManager.default.temporaryDirectory.path),
+            "meeting audio is still somewhere macOS can delete: \(directory.path)"
+        )
+        XCTAssertTrue(directory.path.contains("Application Support"))
+        XCTAssertTrue(directory.lastPathComponent == "chunks")
+    }
+
+    func testPruningKeepsRecentRecordingsAndDeletesOldOnes() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GhostPepperTests-\(UUID().uuidString)")
+        // Named the way production names them, because the prune now refuses to delete
+        // anything that is not a "meeting-<uuid>" directory it created.
+        let recent = root.appendingPathComponent("meeting-\(UUID().uuidString)")
+        let old = root.appendingPathComponent("meeting-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: recent, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: recent.appendingPathComponent("chunk-0-mic.wav"))
+        try Data([1, 2, 3]).write(to: old.appendingPathComponent("chunk-0-mic.wav"))
+        // Backdate the old one past the retention window.
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-8 * 24 * 60 * 60)],
+            ofItemAtPath: old.path
+        )
+
+        MeetingAudioStore.pruneRecordings(olderThan: 7, in: root)
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: recent.path),
+            "a recording from this week was deleted, which is the whole point of keeping it"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: old.path),
+            "a recording older than the retention window was kept, so the folder grows without limit"
+        )
+
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    func testTheRetentionWindowIsTheOneHeChose() {
+        XCTAssertEqual(MeetingAudioStore.retentionDays, 7)
+    }
+
     func testWindowStaysNormalWhenFloatingPreferenceIsDisabled() {
         XCTAssertEqual(
             MeetingTranscriptWindowPresentation.windowLevel(
