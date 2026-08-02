@@ -366,10 +366,29 @@ class AppState: ObservableObject {
     private static let speechModelErrorPrefix = "Failed to load speech model: "
     static let liveRecordingNoInputErrorMessage = "Failed to start recording: No audio input device available."
 
+    /// Hold Globe, speak, release. One key, which is what the v1 spec asked for from
+    /// the beginning: "hold fn/globe primary AND hold Right Command fallback".
+    ///
+    /// Restored on 2026-08-02 after his log showed ten solitary Globe taps that started
+    /// nothing. His stored binding had become Left Control PLUS Globe, so pressing the
+    /// one key he reaches for did nothing at all and the app said nothing about it. He
+    /// confirmed those were dictation attempts.
+    ///
+    /// This needs System Settings, Keyboard, "Press Globe key to" set to "Do Nothing",
+    /// which the onboarding covers. Without it macOS also acts on the key.
     nonisolated static let defaultPushToTalkChord = KeyChord(keys: Set([
-        PhysicalKey(keyCode: 54),  // Right Command
-        PhysicalKey(keyCode: 61)   // Right Option
+        PhysicalKey(keyCode: 63)   // Fn / Globe
     ]))!
+
+    /// The bindings the 2026-08-02 migration replaces, and only these.
+    ///
+    /// Left Control plus Globe is what his machine actually held. Right Command plus
+    /// Right Option was the previous shipped default. A binding he chose himself that
+    /// is neither of these is left exactly as it is.
+    nonisolated static let supersededPushToTalkChords: [KeyChord] = [
+        KeyChord(keys: Set([PhysicalKey(keyCode: 59), PhysicalKey(keyCode: 63)]))!,
+        KeyChord(keys: Set([PhysicalKey(keyCode: 54), PhysicalKey(keyCode: 61)]))!
+    ]
 
     nonisolated static let defaultToggleToTalkChord = KeyChord(keys: Set([
         PhysicalKey(keyCode: 54),  // Right Command
@@ -647,6 +666,26 @@ class AppState: ObservableObject {
         // saved it while the editor was showing the CHUNK prompt is now holding the chunk
         // prompt where the final prompt belongs. Replaced only when it matches that old
         // default exactly, so a prompt he wrote himself is never touched.
+        // Push-to-talk becomes Globe alone, by his decision of 2026-08-02, but only if
+        // what is stored is one of the two bindings this replaces.
+        if let stored = chordBindingStore.binding(for: .pushToTalk),
+           Self.supersededPushToTalkChords.contains(stored) {
+            do {
+                try chordBindingStore.setBinding(Self.defaultPushToTalkChord, for: .pushToTalk)
+                pushToTalkChord = Self.defaultPushToTalkChord
+                hotkeyMonitor.updateBindings(shortcutBindings)
+                debugLogStore.record(
+                    category: .hotkey,
+                    message: "Push-to-talk moved from \(stored.displayString) to \(Self.defaultPushToTalkChord.displayString). Ten solitary Globe presses in his log started nothing."
+                )
+            } catch {
+                debugLogStore.record(
+                    category: .hotkey,
+                    message: "Could not move push-to-talk to Globe: \(error.localizedDescription). Left as \(stored.displayString)."
+                )
+            }
+        }
+
         if meetingSummaryPrompt == MeetingSummaryGenerator.defaultPrompt {
             meetingSummaryPrompt = MeetingSummaryGenerator.storedSummaryPromptDefault
             debugLogStore.record(
