@@ -392,7 +392,18 @@ final class TextCleaner {
             // It only applies from 8 words up, because on very short utterances
             // the ratio is meaningless: "um yes" to "yes" is a correct cleanup
             // that keeps half the words.
-            if Self.droppedTooMuch(input: text, output: sanitizedText) {
+            // A model that would not stop is trimmed BEFORE the retention check, or a
+            // doubled output would sail through it: repeating his words keeps 200 per
+            // cent of them, and a guard that only looks downward cannot see that.
+            let deduplicatedText = Self.withoutRepeatedCopy(sanitizedText, spokenInput: text)
+            if deduplicatedText != sanitizedText {
+                debugLogger?(
+                    .cleanup,
+                    "Cleanup emitted its answer twice (\(sanitizedText.count) characters for a \(text.count) character input). Kept the first copy."
+                )
+            }
+
+            if Self.droppedTooMuch(input: text, output: deduplicatedText) {
                 debugLogger?(
                     .cleanup,
                     "Cleanup dropped too much of the transcription, returning raw text instead."
@@ -419,7 +430,7 @@ final class TextCleaner {
                 )
             }
 
-            guard !sanitizedText.isEmpty else {
+            guard !deduplicatedText.isEmpty else {
                 debugLogger?(
                     .cleanup,
                     "Cleanup output was entirely model reasoning, returning raw transcription."
@@ -428,7 +439,7 @@ final class TextCleaner {
                     prompt: activePrompt,
                     input: formattedInput,
                     rawOutput: cleanedText,
-                    sanitizedOutput: sanitizedText,
+                    sanitizedOutput: deduplicatedText,
                     finalOutput: text
                 )
                 return TextCleanerResult(
@@ -450,11 +461,11 @@ final class TextCleaner {
                 prompt: activePrompt,
                 input: formattedInput,
                 rawOutput: cleanedText,
-                sanitizedOutput: sanitizedText,
-                finalOutput: sanitizedText
+                sanitizedOutput: deduplicatedText,
+                finalOutput: deduplicatedText
             )
             return TextCleanerResult(
-                text: sanitizedText,
+                text: deduplicatedText,
                 performance: TextCleanerPerformance(
                     modelCallDuration: modelCallDuration,
                     postProcessDuration: Date().timeIntervalSince(postProcessStart)
@@ -599,6 +610,97 @@ final class TextCleaner {
 
     private static func wordCount(_ text: String) -> Int {
         text.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).count
+    }
+
+    /// Shortest output the repetition guard will inspect.
+    ///
+    /// Measured, not chosen. Across the 47 dictations in his transcription lab the
+    /// longest legitimate cleanup output was 567 characters and every one of them came
+    /// back at a length ratio of 1.00. The single doubled output was 1849 characters
+    /// from a 937-character input. 600 sits above every honest case in the sample.
+    static let repetitionCheckMinimumCharacters = 600
+
+    /// How much of the output's opening must reappear before it counts as a restart.
+    static let repetitionSignatureLength = 80
+
+    /// How far through the output a restart must begin. A second copy starts around
+    /// halfway or later; a periodic echo starts near the beginning.
+    static let repetitionRestartMinimumShare = 0.4
+
+    /// Removes a second copy of the output when a small model has emitted its answer
+    /// and then started again.
+    ///
+    /// THIS IS THE DOUBLE PASTE. Andrew reported "it pasted the text two times" on
+    /// 2026-08-02. The paste path posts exactly one keystroke and was never at fault:
+    /// the 2B cleanup model was handed 937 characters, produced a correct cleanup, and
+    /// then reproduced the whole passage a second time. His lab shows it in one case
+    /// out of 47, and that case is the longest input in the sample by 1.8 times.
+    ///
+    /// Deterministic on purpose. The failure is a model that will not stop, and asking
+    /// the same model more nicely does not fix a model that will not stop.
+    ///
+    /// It engages only when the output restarts with its own opening AND everything
+    /// after that point is a prefix of what came before, so a passage that merely
+    /// repeats a phrase is left alone. Damaging a correct cleanup would be worse than
+    /// the bug, which is the standing ranking on this project.
+    /// - Parameter spokenInput: what he actually said. If the same late repetition is
+    ///   already in his own words, the model did not invent it and trimming would
+    ///   delete something he said. Codex found this hole: a dictation that opens and
+    ///   closes with the same long sentence would have been cut at the closing one,
+    ///   and losing under a quarter of the words slips past the retention guard.
+    static func withoutRepeatedCopy(_ output: String, spokenInput: String = "") -> String {
+        let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count >= repetitionCheckMinimumCharacters else { return output }
+
+        let signature = String(text.prefix(repetitionSignatureLength))
+        guard !signature.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return output }
+
+        // ONLY THE FIRST RECURRENCE IS CONSIDERED, and that is what separates a model
+        // that restarted from prose that happens to repeat itself.
+        //
+        // Writing the test for this caught the guard over-trimming. A passage built
+        // from one sentence repeated twelve times matches its own opening every 68
+        // characters, and a version of this that kept searching found a later match at
+        // the halfway point and cut the passage in half. Requiring the FIRST
+        // recurrence to be the late one rejects periodic prose outright, because its
+        // first recurrence is always early, while a genuine second copy has nothing
+        // matching before it.
+        //
+        // Losing his words to a guard against duplicated words would be the same
+        // defect wearing the opposite coat, and the standing ranking on this project
+        // says the uncut version is the safer answer whenever it is a close call.
+        let searchStart = text.index(text.startIndex, offsetBy: repetitionSignatureLength)
+        guard let found = text.range(of: signature, range: searchStart..<text.endIndex) else {
+            return output
+        }
+
+        let firstCopyLength = text.distance(from: text.startIndex, to: found.lowerBound)
+        guard Double(firstCopyLength) / Double(text.count) >= repetitionRestartMinimumShare else {
+            return output
+        }
+
+        // The tail must be a re-run of the beginning: either the whole output starts
+        // with it, or it is a second copy the model cut short partway.
+        let tail = String(text[found.lowerBound...])
+        guard text.hasPrefix(tail) || tail.hasPrefix(text[..<found.lowerBound]) else {
+            return output
+        }
+
+        // If his own speech already contains this repetition, he said it twice and the
+        // model simply kept it. Trimming here would delete his words.
+        let spoken = spokenInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !spoken.isEmpty, spoken.range(of: signature, options: [], range: nil) != nil {
+            let firstInSpoken = spoken.range(of: signature)!
+            let afterFirst = spoken.index(firstInSpoken.lowerBound, offsetBy: 1)
+            if afterFirst < spoken.endIndex,
+               spoken.range(of: signature, range: afterFirst..<spoken.endIndex) != nil {
+                return output
+            }
+        }
+
+        let firstCopy = String(text[..<found.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return firstCopy.isEmpty ? output : firstCopy
     }
 
     static func formatCleanupInput(userInput: String) -> String {

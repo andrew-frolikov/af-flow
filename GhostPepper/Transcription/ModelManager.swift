@@ -274,16 +274,18 @@ final class ModelManager: ObservableObject {
                     // failure: 1220 dictations, 887 English, 332 Russian, and one
                     // Bulgarian. Every language but two is a pure loss.
                     //
-                    // So detection runs explicitly, the answer is constrained to
-                    // en and ru, and the decision is logged with both
-                    // probabilities. This costs no extra work: passing an
-                    // explicit language makes WhisperKit skip the detection pass
-                    // it would otherwise run itself.
-                    if let detected = await detectRestrictedLanguage(audioBuffer: audioBuffer) {
-                        decodeOptions.language = detected
-                    } else {
-                        decodeOptions.detectLanguage = true
-                    }
+                    // So detection runs explicitly and the answer is constrained to
+                    // en and ru. This costs no extra work: passing an explicit
+                    // language makes WhisperKit skip the detection pass it would
+                    // otherwise run itself.
+                    //
+                    // THERE IS NO ELSE BRANCH ANY MORE, and that is the point.
+                    // `decodeOptions.detectLanguage = true` was the door to all 99
+                    // languages, and until 2026-08-02 every single dictation went
+                    // through it, because the gate in front of it could never
+                    // return a value. Andrew closed the door by decision on that
+                    // date: en or ru, always.
+                    decodeOptions.language = await detectRestrictedLanguage(audioBuffer: audioBuffer)
                 }
                 let results: [TranscriptionResult] = try await whisperKit.transcribe(audioArray: audioBuffer, decodeOptions: decodeOptions)
                 let text = results
@@ -339,20 +341,33 @@ final class ModelManager: ObservableObject {
     static let englishPrior: Float = 887
     static let russianPrior: Float = 332
 
-    /// Picks between English and Russian from Whisper's language probabilities.
+    // `chooseLanguage(from:)` was deleted on 2026-08-02. It guarded on
+    // `english > 0 || russian > 0`, which a log probability can never satisfy, so it
+    // returned nil on every dictation he has ever made and the prior below never once
+    // decided anything. It was dead code that six passing tests pinned as working.
+    // `restrictedLanguage(probabilities:reportedLanguage:)` replaces it.
+
+    /// Below this confidence a single-language detection is treated as no better
+    /// than a guess, and his measured prior decides instead.
+    static let lowConfidenceFloor: Float = 0.5
+
+    /// Reads whichever shape WhisperKit hands back as a probability in 0 to 1.
     ///
-    /// Pure and static so it can be tested without a model, which matters: this
-    /// sits directly on the path of every word he dictates.
-    static func chooseLanguage(from probabilities: [String: Float]) -> String? {
-        let english = probabilities["en"] ?? 0
-        let russian = probabilities["ru"] ?? 0
-        guard english > 0 || russian > 0 else { return nil }
-        return english * englishPrior >= russian * russianPrior ? "en" : "ru"
+    /// IT HANDS BACK LOG PROBABILITIES, and that is the whole bug. His live log on
+    /// 2026-08-02 shows `p(en)=-0.00074`, `p(en)=-2.154`, `p(ru)=-0.293`, and a map
+    /// with exactly one entry in it ("1 probabilities"). Across all 23 logged
+    /// decisions: zero positive values, 23 negative, 23 absent.
+    ///
+    /// A present value of exactly zero is read as a log probability of 1.0, which is
+    /// the only sensible reading when the map contains the winning language: a linear
+    /// probability of zero would not be reported as the winner.
+    static func normalisedProbability(_ value: Float) -> Float {
+        guard value.isFinite else { return 0 }
+        if value > 1 { return 0 }   // not a probability at all; treat as no evidence
+        return value > 0 ? value : exp(value)
     }
 
-    /// Picks a language from Whisper's probabilities, falling back to the single
-    /// language it reports when the probabilities contain no answer for either of
-    /// the two languages he speaks.
+    /// Picks between the two languages he speaks. ALWAYS answers, never falls open.
     ///
     /// THE SAME DEFECT THROUGH A DIFFERENT DOOR, found on 2026-07-29. WhisperKit
     /// can return an EMPTY `langProbs` while `detection.language` holds the
@@ -374,48 +389,92 @@ final class ModelManager: ObservableObject {
     /// is the behaviour worth having, since a map naming only Bulgarian is exactly
     /// as useless to him as an empty one, and it is still restricted to en and ru:
     /// this must not become a third door into the 99.
-    static func chooseLanguage(from probabilities: [String: Float], rawLanguage: String?) -> String? {
-        if let chosen = chooseLanguage(from: probabilities) {
-            return chosen
+    static func restrictedLanguage(probabilities: [String: Float], reportedLanguage: String?) -> String {
+        let english = probabilities["en"].map(normalisedProbability)
+        let russian = probabilities["ru"].map(normalisedProbability)
+
+        // Both scored: the measured prior weights them against each other. This is
+        // the path the original code was written for, and the path WhisperKit does
+        // not currently produce. It is kept because it is correct if it ever does.
+        if let english, let russian {
+            return english * englishPrior >= russian * russianPrior ? "en" : "ru"
         }
-        guard let reported = rawLanguage?.lowercased(),
-              supportedAutoDetectLanguages.contains(reported) else {
-            return nil
+
+        // One scored, which is the real shape. Absence carries NO information here:
+        // the map holds only the winner, so the other language being missing says
+        // nothing about it. The only usable signal is which language won and how
+        // sure it was, so the prior can act only as a tie-break on a weak detection.
+        //
+        // Said plainly because the old comment overclaimed: this does NOT rescue
+        // confident mis-detections. His accented English scored as Russian at 98 per
+        // cent would still come back Russian, and the fix for that is a better
+        // detector or a force-language control, not a prior.
+        if english != nil || russian != nil {
+            // TRUST THE WINNER, because there is nothing to weigh it against.
+            //
+            // The first version of this applied the prior below a confidence floor, and
+            // Codex showed that unsound: Russian at 0.40 becomes English even though the
+            // absent English score might be 0.01, with the rest of the mass sitting on a
+            // third language entirely. Absence is not a low score, it is no score, and
+            // this comment said exactly that two paragraphs before contradicting itself.
+            //
+            // So the prior acts only where it has something to decide: an unsupported
+            // winner, or no winner at all. It cannot rescue a confident mis-detection,
+            // and pretending otherwise is what the deleted code did for a year.
+            return english != nil ? "en" : "ru"
         }
-        return reported
+
+        // Neither scored, so Whisper named a third language, or nothing at all.
+        //
+        // NEVER FALL OPEN. Andrew ratified this on 2026-08-02: en and ru are the only
+        // possible answers, always. Handing the decode back to unrestricted detection
+        // is what turned his English into Urdu on 2026-07-31 and his Russian into
+        // seven languages in the 51-minute meeting. With no evidence about either of
+        // his languages, his measured 887-to-332 prior decides, and English wins it.
+        //
+        // The cost, stated rather than hidden: a meeting participant genuinely
+        // speaking a third language will now be decoded as English or Russian.
+        if let reported = reportedLanguage?.lowercased(),
+           supportedAutoDetectLanguages.contains(reported) {
+            return reported
+        }
+        return englishPrior >= russianPrior ? "en" : "ru"
     }
 
-    private func detectRestrictedLanguage(audioBuffer: [Float]) async -> String? {
-        guard let whisperKit else { return nil }
+    /// Always returns en or ru. There is no third answer and no fall-through, by
+    /// Andrew's decision of 2026-08-02.
+    private func detectRestrictedLanguage(audioBuffer: [Float]) async -> String {
+        let priorDefault = Self.englishPrior >= Self.russianPrior ? "en" : "ru"
+        guard let whisperKit else { return priorDefault }
         do {
             let detection = try await whisperKit.detectLangauge(audioArray: audioBuffer)
-            guard let chosen = Self.chooseLanguage(
-                from: detection.langProbs,
-                rawLanguage: detection.language
-            ) else {
-                debugLogger?(
-                    .model,
-                    "Language detection returned neither en nor ru (raw: \(detection.language), \(detection.langProbs.count) probabilities). Falling back to Whisper's own detection."
-                )
-                return nil
-            }
-            let english = detection.langProbs["en"] ?? 0
-            let russian = detection.langProbs["ru"] ?? 0
+            let chosen = Self.restrictedLanguage(
+                probabilities: detection.langProbs,
+                reportedLanguage: detection.language
+            )
             // Logged on every dictation, including agreements, because the
             // failure this fixes is INVISIBLE in the output. A wrong choice
             // produces fluent, correct-looking text in the wrong language, so
             // the only place it can ever be caught is here.
+            //
+            // The confidence is logged as a real probability now, not as the raw
+            // log value, because reading "-2.15" as "unconfident" is exactly the
+            // step nobody took for the life of this bug.
+            let named = detection.langProbs[detection.language].map {
+                String(format: "%.1f%%", Self.normalisedProbability($0) * 100)
+            } ?? "no score"
+            let agrees = chosen == detection.language
             debugLogger?(
                 .model,
-                "Language chosen: \(chosen). whisper said \(detection.language), p(en)=\(english), p(ru)=\(russian)."
+                "Language chosen: \(chosen). whisper said \(detection.language) at \(named)\(agrees ? "" : ", OVERRULED by the en/ru restriction")."
             )
             return chosen
         } catch {
             debugLogger?(
                 .model,
-                "Language detection failed (\(error.localizedDescription)). Falling back to Whisper's own detection."
+                "Language detection failed (\(error.localizedDescription)). Using \(priorDefault) from his measured prior rather than opening the decode to 99 languages."
             )
-            return nil
+            return priorDefault
         }
     }
 

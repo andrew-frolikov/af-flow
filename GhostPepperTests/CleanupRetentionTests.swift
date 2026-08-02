@@ -13,6 +13,93 @@ import XCTest
 /// request is not a guarantee, and this project's standing ranking is that
 /// uncleaned text is an annoyance while missing text is unrecoverable.
 final class CleanupRetentionTests: XCTestCase {
+
+    // MARK: - The symmetric hole: the model repeating itself
+
+    /// THE DOUBLE PASTE, diagnosed 2026-08-02 and reported by Andrew as "it pasted
+    /// the text two times".
+    ///
+    /// It was never the paste path. His transcription lab holds 47 dictations with
+    /// text: 46 came back at a length ratio of 1.00 and one came back at 1.97. That
+    /// one is 2026-08-02 14:40, 111.5 seconds of audio and 937 characters, the
+    /// longest input in the sample by a factor of 1.8. The cleanup model produced a
+    /// correctly cleaned version, then started again and produced the whole thing a
+    /// second time, and the paste faithfully pasted what it was handed.
+    ///
+    /// There was already a guard for the model deleting his words and none for it
+    /// repeating them, which is the same hole facing the other way.
+    func testAnOutputThatRestartsItselfIsTruncatedToOneCopy() {
+        let once = "However, I want Opus 5 to act as an evaluator whenever you're going to be "
+            + "spawning some sub-agents. And that evaluator needs to understand for what exact "
+            + "tasks what model is required. I want you to rely on Codex, whenever you can. The "
+            + "reason why I'm asking that because I want to save tokens as much as possible."
+        let doubled = once + " " + once
+
+        XCTAssertEqual(
+            TextCleaner.withoutRepeatedCopy(doubled),
+            once,
+            "The model emitted his passage twice and the second copy reached his document."
+        )
+    }
+
+    /// A second copy that the model cut short must still be removed.
+    func testATruncatedSecondCopyIsAlsoRemoved() {
+        let once = "So the plan is to fix the language decision first, because that one is on the "
+            + "path of every word I dictate and it has never actually worked. Then the cleanup "
+            + "guard, then a runtime probe script that reads the log at session start, then the "
+            + "paste and hotkey instrumentation. After that the three remaining meeting bugs, "
+            + "in the order sixteen, fifteen, fourteen, because the first two are mechanical "
+            + "and the third one needs a design decision about voice activity detection."
+        let doubled = once + " " + String(once.prefix(160))
+
+        XCTAssertEqual(TextCleaner.withoutRepeatedCopy(doubled), once)
+    }
+
+    /// AND IT MUST NOT OVER-TRIM, which writing the test above is what caught.
+    ///
+    /// A passage built from one sentence repeated matches its own opening every few
+    /// characters, and a guard that trimmed at the first match would cut it down to a
+    /// single sentence. Losing his words to a guard against duplicated words would be
+    /// the same defect wearing the opposite coat.
+    func testALongRepetitivePassageIsNotCutDown() {
+        let periodic = String(repeating: "I want to be smart about my tokens and not overpay for any of this. ", count: 12)
+            .trimmingCharacters(in: .whitespaces)
+        XCTAssertGreaterThan(periodic.count, TextCleaner.repetitionCheckMinimumCharacters)
+        XCTAssertEqual(
+            TextCleaner.withoutRepeatedCopy(periodic),
+            periodic,
+            "A legitimately repetitive passage was trimmed, which loses his words."
+        )
+    }
+
+    /// And it must not touch ordinary text, including text that legitimately repeats a
+    /// phrase. Damaging a correct cleanup would be worse than the bug.
+    func testOrdinaryOutputIsLeftCompletelyAlone() {
+        let normal = "I want to be smart about my tokens. I want to be smart about my tokens in "
+            + "meetings too, and I want the transcript to be readable afterwards, which is a "
+            + "different thing from being short."
+        XCTAssertEqual(TextCleaner.withoutRepeatedCopy(normal), normal)
+
+        let short = "Yes, that works."
+        XCTAssertEqual(TextCleaner.withoutRepeatedCopy(short), short)
+
+        // Deliberately repetitive but not a restart.
+        let listy = "First the language gate. Then the cleanup guard. Then the runtime probe. "
+            + "Then the paste instrumentation. Then bugs sixteen, fifteen and fourteen."
+        XCTAssertEqual(TextCleaner.withoutRepeatedCopy(listy), listy)
+    }
+
+    /// The real numbers from his lab, so the threshold is measured rather than chosen.
+    func testTheGuardOnlyEngagesOnLongOutputs() {
+        // 46 of 47 dictations came back at ratio 1.00; the longest legitimate one was
+        // 567 characters. The doubled one was 1849. A short repeated phrase must not
+        // trip the guard.
+        let shortRepeat = "okay okay"
+        XCTAssertEqual(TextCleaner.withoutRepeatedCopy(shortRepeat), shortRepeat)
+    }
+
+    // MARK: - The original guard: the model deleting what he said
+
     /// The real case, in his own words.
     func testTheClauseDeletionHeHitIsRejected() {
         let said = "Я проверил, и это работает хорошо, если вы нужны мой вердикт"

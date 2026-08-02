@@ -305,6 +305,47 @@ final class TextCleanerTests: XCTestCase {
         XCTAssertFalse(sensitiveMessages.contains(where: { $0.contains("Post-cleanup corrections") }))
     }
 
+    /// THE TEST THAT WOULD HAVE CAUGHT IT.
+    ///
+    /// The first version of the repetition guard computed the trimmed text, logged
+    /// "Kept the first copy", and then returned the untrimmed value anyway, so the
+    /// double paste was entirely unfixed while every focused test passed. They all
+    /// exercised the helper in isolation. Codex found it in review.
+    ///
+    /// This one goes through the real cleanup path and asserts on what the caller
+    /// actually receives.
+    func testACleanupThatRepeatsItselfReachesTheCallerAsOneCopy() async {
+        let once = "So the plan is to fix the language decision first, because that one is on the "
+            + "path of every word I dictate and it has never actually worked. Then the cleanup "
+            + "guard, then a runtime probe script that reads the log at session start, then the "
+            + "paste and hotkey instrumentation. After that the three remaining meeting bugs, "
+            + "in the order sixteen, fifteen, fourteen, because the first two are mechanical."
+        let localBackend = SpyCleanupBackend(nextResult: .success(once + " " + once))
+        let cleaner = TextCleaner(localBackend: localBackend)
+
+        let result = await cleaner.cleanWithPerformance(text: once, prompt: "unused prompt")
+
+        XCTAssertEqual(
+            result.text,
+            once,
+            "The caller received the passage twice, which is exactly what landed in his document."
+        )
+    }
+
+    /// And an ordinary cleanup must arrive untouched through the same path.
+    func testAnOrdinaryCleanupIsUnchangedByTheRepetitionGuard() async {
+        let cleaned = "So the plan is to fix the language decision first, because that one sits on "
+            + "the path of every word I dictate. Then the cleanup guard, then a runtime probe "
+            + "script, then the paste and hotkey instrumentation, and after that the three "
+            + "remaining meeting bugs in the order sixteen, fifteen and fourteen."
+        let localBackend = SpyCleanupBackend(nextResult: .success(cleaned))
+        let cleaner = TextCleaner(localBackend: localBackend)
+
+        let result = await cleaner.cleanWithPerformance(text: cleaned, prompt: "unused prompt")
+
+        XCTAssertEqual(result.text, cleaned)
+    }
+
     func testCleanerReportsModelAndPostProcessingDurations() async {
         let localBackend = SpyCleanupBackend(
             nextResult: .success(
