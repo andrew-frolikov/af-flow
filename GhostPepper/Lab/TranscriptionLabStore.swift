@@ -33,7 +33,17 @@ final class TranscriptionLabStore {
             let entries = try decoder.decode([TranscriptionLabEntry].self, from: data)
             return pruneUndisplayableEntries(from: entries).sorted { $0.createdAt > $1.createdAt }
         } catch {
-            resetStoredArchive()
+            // This used to call `resetStoredArchive()`, which deletes the index,
+            // the timings AND the whole audio directory. One malformed byte took
+            // every dictation and every WAV he had, and `insert()` calls this, so
+            // it could fire while SAVING a new recording rather than only at
+            // launch.
+            //
+            // A read failure means "I could not read this", never "this should be
+            // destroyed". The audio is irreplaceable and the index is not, so the
+            // index is moved aside and the audio is left exactly where it is,
+            // orphaned but recoverable by hand.
+            quarantineUnreadableFile(at: indexURL)
             return []
         }
     }
@@ -54,7 +64,11 @@ final class TranscriptionLabStore {
                 return (entryID, value)
             })
         } catch {
-            resetStoredArchive()
+            // This file holds two durations per entry and nothing else. It is
+            // purely cosmetic, and it used to be able to delete every transcript
+            // and every WAV: the least important file on disk destroying the most
+            // important data. Losing the timings costs a number in the UI.
+            quarantineUnreadableFile(at: timingsURL)
             return [:]
         }
     }
@@ -176,6 +190,39 @@ final class TranscriptionLabStore {
         try timingsData.write(to: timingsURL, options: .atomic)
     }
 
+    /// Moves a file that could not be decoded out of the way, keeping its bytes.
+    ///
+    /// Deliberately a rename and not a delete. Whatever is in there was written
+    /// by this app and may still hold recoverable entries; a human with a text
+    /// editor can get them back, and nothing else on disk is touched. The
+    /// counter means a second corruption cannot overwrite the first copy, which
+    /// would otherwise lose the recovery file on the very next launch.
+    ///
+    /// Failing silently is correct here. This runs on a path that is already
+    /// handling one failure, and being unable to move the file is not a reason
+    /// to make the app unusable: the caller carries on with an empty archive
+    /// either way, and the audio is untouched regardless.
+    private func quarantineUnreadableFile(at url: URL) {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: url.path) else { return }
+
+        let base = url.deletingPathExtension().lastPathComponent
+        let ext = url.pathExtension
+        var counter = 1
+        var destination = directoryURL.appendingPathComponent("\(base).unreadable-\(counter).\(ext)")
+        while fileManager.fileExists(atPath: destination.path) {
+            counter += 1
+            destination = directoryURL.appendingPathComponent("\(base).unreadable-\(counter).\(ext)")
+        }
+
+        try? fileManager.moveItem(at: url, to: destination)
+    }
+
+    /// Deletes everything: index, timings and audio.
+    ///
+    /// **Only for Clear History**, where destroying it all is exactly what he
+    /// asked for. It must never be reachable from an error path; that is the
+    /// 2026-08-03 bug, and the reason this comment says so.
     private func resetStoredArchive() {
         try? FileManager.default.removeItem(at: indexURL)
         try? FileManager.default.removeItem(at: timingsURL)
