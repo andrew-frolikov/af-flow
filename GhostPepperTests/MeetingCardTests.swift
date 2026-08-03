@@ -1,6 +1,11 @@
 import XCTest
 @testable import GhostPepper
 
+/// `@MainActor` because every helper it exercises is. Added 2026-08-02, when
+/// `scripts/test-registration-check.py` found this file had never been in the
+/// project's Sources phase and so had never compiled, let alone run. The
+/// isolation errors below are what it would have failed on the whole time.
+@MainActor
 final class MeetingCardTests: XCTestCase {
     private var tempDir: URL!
 

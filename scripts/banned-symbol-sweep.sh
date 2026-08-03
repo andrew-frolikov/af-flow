@@ -417,6 +417,15 @@ if ! python3 "$(dirname "$0")/state-check.py"; then
   fail=1
 fi
 
+# A test file the project does not build reports "Executed 0 tests" and then
+# "TEST EXECUTE SUCCEEDED". The suite cannot catch this: a test that does not
+# exist cannot fail. Added 2026-08-02, when a new file ran nothing and said it
+# passed, and the check then found SIX existing files in the same state.
+echo ""
+if ! python3 "$(dirname "$0")/test-registration-check.py"; then
+  fail=1
+fi
+
 echo ""
 if [ "$fail" -eq 0 ]; then
   if [ -e "$SCANNER_FAILED_SENTINEL" ]; then

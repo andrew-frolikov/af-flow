@@ -331,8 +331,41 @@ final class MeetingDetector {
     }
 
     private static func suggestedMeetingName(appName: String) -> String {
+        meetingName(appName: appName, at: Date())
+    }
+
+    /// What a recording is called before anything better is known.
+    ///
+    /// **Date and time first, then the app**, e.g. `2026-08-02 14:30 Zoom`.
+    /// It used to be app first on a 12-hour clock, which produced
+    /// `zoom-10-21-am.md`, and his verdict on 2026-07-29 was that it tells him
+    /// nothing. Leading with the timestamp costs two things and buys two:
+    ///
+    /// 1. It says when, in the name, without opening anything.
+    /// 2. **It sorts.** `MeetingHistory` orders a day's files by filename
+    ///    descending to get newest first, so an app-first name sorted the day
+    ///    by app: a 09:00 Teams call listed above a 14:30 Zoom one. The clock
+    ///    is 24-hour for the same reason, because as text "10-21-am" sorts
+    ///    after "02-30-pm".
+    ///
+    /// A calendar event name, when one is found, replaces this. This is the
+    /// answer for the meetings that are not on his calendar, which he has said
+    /// is some of them.
+    ///
+    /// The formatter is pinned to POSIX and takes an explicit time zone: the
+    /// name is an identifier that ends up in a filename, so it must not move
+    /// around when the machine's locale does. There is deliberately no locale
+    /// parameter — a caller able to change it is a caller able to reintroduce
+    /// a 12-hour clock, which is half of what this replaces.
+    nonisolated static func meetingName(
+        appName: String,
+        at date: Date,
+        timeZone: TimeZone = .current
+    ) -> String {
         let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return "\(appName) - \(formatter.string(from: Date()))"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return "\(formatter.string(from: date)) \(appName)"
     }
 }

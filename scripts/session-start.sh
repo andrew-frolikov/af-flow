@@ -35,6 +35,10 @@ echo "### Is the state file honest"
 python3 scripts/state-check.py 2>&1 | sed -n '3,$p'
 
 echo
+echo "### Do the tests in the repo actually run"
+python3 scripts/test-registration-check.py 2>&1 | sed -n '3,$p'
+
+echo
 echo "======================================================================"
 echo " Now read STATE.md. Do NOT read PROGRESS.md whole."
 echo ""
