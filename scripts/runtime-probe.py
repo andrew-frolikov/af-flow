@@ -33,7 +33,11 @@ from collections import Counter, defaultdict
 CONTAINER = os.path.expanduser(
     "~/Library/Containers/com.frolikov.afflow/Data/Library/Application Support/GhostPepper"
 )
-LOG = os.path.join(CONTAINER, "debug-log.json")
+LOG = os.path.join(CONTAINER, "debug-log.jsonl")
+# Read from before the 2026-08-02 format change if the app has not launched
+# since. The store migrates the array into the line file on first launch, so
+# this fallback stops the probe going blind in the window between the two.
+LEGACY_LOG = os.path.join(CONTAINER, "debug-log.json")
 LAB = os.path.join(CONTAINER, "transcription-lab", "transcription-lab-index.json")
 
 # CFAbsoluteTime is seconds since 2001-01-01 UTC.
@@ -59,13 +63,48 @@ def load(path):
         return []
 
 
+def load_log():
+    """The debug log, one JSON object per line, newest last.
+
+    A line that does not parse is skipped rather than fatal, matching the
+    store: a process killed mid-append leaves half an object on the last line,
+    and that must cost one entry rather than the whole history.
+    """
+    if not os.path.exists(LOG):
+        if os.path.exists(LEGACY_LOG):
+            print("  reading the pre-2026-08-02 array format; the app has not "
+                  "launched since the change")
+            return load(LEGACY_LOG)
+        print("  not found: %s" % LOG)
+        return []
+
+    entries, skipped = [], 0
+    try:
+        with open(LOG) as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except ValueError:
+                    skipped += 1
+    except Exception as error:
+        print("  could not read %s: %s" % (LOG, error))
+        return []
+
+    if skipped:
+        print("  %d unparseable line(s) skipped" % skipped)
+    return entries
+
+
 def section(title):
     print("\n" + title)
     print("-" * len(title))
 
 
 def probe_log(entries, since):
-    section("Dictation decisions, from debug-log.json")
+    section("Dictation decisions, from debug-log.jsonl")
     if not entries:
         return
 
@@ -76,8 +115,8 @@ def probe_log(entries, since):
              first.strftime("%a %m-%d %H:%M") if first else "?",
              last.strftime("%a %m-%d %H:%M") if last else "?"))
     if span < 3:
-        print("  WARNING: the log holds under three days. Any question about a change")
-        print("           older than that cannot be answered from it. Raise the cap.")
+        print("  NOTE: the log holds under three days so far. Retention is thirty days")
+        print("        as of 2026-08-02, so this fills in rather than rolling over.")
 
     number = r"(-?\d+(?:\.\d+)?(?:e-?\d+)?)"
     chosen = Counter()
@@ -259,7 +298,7 @@ def main():
     if since:
         print("since %s" % since.strftime("%a %Y-%m-%d %H:%M"))
 
-    probe_log(load(LOG), since)
+    probe_log(load_log(), since)
     probe_lab(load(LAB), since)
     probe_settings()
     probe_bundles()
