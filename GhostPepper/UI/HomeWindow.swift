@@ -122,9 +122,30 @@ struct AFFlowHomeView: View {
         }
     }
 
+    /// The languages the app can actually return, read from the allowlist that
+    /// decides it rather than written out by hand.
+    ///
+    /// This said "English, Russian, auto" until 2026-08-02, as a hardcoded
+    /// string. The word "auto" stopped being true when `detectLanguage = true`
+    /// was deleted and en/ru became the only possible answers, and the front
+    /// page of his app went on claiming otherwise. **The literal is the bug**:
+    /// a label that restates a policy instead of reading it is a label that
+    /// goes stale silently, which is this project's signature defect wearing a
+    /// label rather than a comment or a test.
+    static var languageSummary: String {
+        let names = [
+            "en": "English",
+            "ru": "Russian",
+            "uk": "Ukrainian"
+        ]
+        return ModelManager.supportedAutoDetectLanguages
+            .map { names[$0] ?? $0.uppercased() }
+            .joined(separator: ", ")
+    }
+
     private var footer: some View {
         HStack(spacing: 0) {
-            FooterCell(label: "Language", value: "English, Russian, auto")
+            FooterCell(label: "Language", value: Self.languageSummary)
             Divider().overlay(Palette.line)
             FooterCell(label: "Model", value: SpeechModelCatalog.currentDisplayName)
             Divider().overlay(Palette.line)
