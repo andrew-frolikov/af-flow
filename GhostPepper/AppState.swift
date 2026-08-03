@@ -739,11 +739,7 @@ class AppState: ObservableObject {
 
         // Wire up "save as note" to open in meetings view
         pepperChatWindowController.onOpenInMeetings = { [weak self] url in
-            self?.meetingTranscriptWindowController.show()
-            // Small delay to let window appear, then open the file
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                self?.meetingTranscriptWindowController.windowState?.openFile(url)
-            }
+            self?.openMeetingFile(url)
         }
 
         // Wire up "no sound" overlay to open settings
@@ -2041,6 +2037,19 @@ class AppState: ObservableObject {
 
     func showMeetingTranscriptWindow() {
         meetingTranscriptWindowController.show()
+    }
+
+    /// Opens a saved meeting transcript in the meeting window.
+    ///
+    /// There is no delay here, and there does not need to be one:
+    /// `MeetingTranscriptWindowController.show()` builds `windowState` before it
+    /// returns, so the state always exists by the time the next line runs. The
+    /// older "save as note" call site guessed 0.3 seconds and now routes through
+    /// this instead. A guess that happens to work is still a guess, and two ways
+    /// to open the same file is how they drift apart.
+    func openMeetingFile(_ url: URL) {
+        meetingTranscriptWindowController.show()
+        meetingTranscriptWindowController.windowState?.openFile(url)
     }
 
     func showOrCreateMeetingWindow() {

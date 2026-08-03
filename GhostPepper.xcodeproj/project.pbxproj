@@ -37,6 +37,7 @@
 		0A1823314AE4FF4E17DCF627 /* sprite_frame_0.png in Resources */ = {isa = PBXBuildFile; fileRef = 2AF744C59EEAE51FC81BE6D6 /* sprite_frame_0.png */; };
 		0AC7A5C3B9E8424694D7A001 /* cytoscape.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 0AC7A5C3B9E8424694D7A000 /* cytoscape.min.js */; };
 		0BC5D4645D21CA8AA000972E /* RecordingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A3540C6212101C885EA22CD /* RecordingOverlay.swift */; };
+		BE671FE0948C0B99894AF9EE /* MeetingHistorySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE671FE0948C0B99894AF9EE /* MeetingHistorySection.swift */; };
 		0CDA12F05A7C7464334FDD37 /* RecordingOCRPrefetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94E9AADC67C525B0A9E382AB /* RecordingOCRPrefetch.swift */; };
 		0D32E8DDD47F77F86D9C1816 /* CleanupModelProbeRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B93B4F9F40EE6BD8525677 /* CleanupModelProbeRunnerTests.swift */; };
 		0ECF7A214F925A7EBAF7FDA6 /* IndexKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2402355479C57FB26A884B /* IndexKind.swift */; };
@@ -179,6 +180,7 @@
 		C1949C00F2F721B802EC237E /* PepperChatWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB753C40197FA7255E1DEA29 /* PepperChatWindow.swift */; };
 		C1A07FBD7318A26BA879232A /* ModelInventoryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B68F46BA90BDD633868A8CE /* ModelInventoryViews.swift */; };
 		C4E8739F267E3096E97FBE71 /* DebugLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FE9E126BC8CAD84D453AD72 /* DebugLogStoreTests.swift */; };
+		BD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift */; };
 		B1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift */; };
 		BCA9EDF7D9FD10DD873ECFF3 /* WikiEntityResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCA9EDF7D9FD10DD873ECFF3 /* WikiEntityResolverTests.swift */; };
 		B3AB3B38926B53A3BDA8EFA9 /* QMDServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3AB3B38926B53A3BDA8EFA9 /* QMDServiceTests.swift */; };
@@ -284,6 +286,7 @@
 		1AFEA05207B7965A3D44D000 /* MeetingQAAgentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingQAAgentTests.swift; sourceTree = "<group>"; };
 		1DC632CC6DD4F55F2FA05480 /* FrontmostWindowOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmostWindowOCRService.swift; sourceTree = "<group>"; };
 		1FE9E126BC8CAD84D453AD72 /* DebugLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogStoreTests.swift; sourceTree = "<group>"; };
+		FD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistorySectionTests.swift; sourceTree = "<group>"; };
 		F1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStoreTests.swift; sourceTree = "<group>"; };
 		FCA9EDF7D9FD10DD873ECFF3 /* WikiEntityResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiEntityResolverTests.swift; sourceTree = "<group>"; };
 		F3AB3B38926B53A3BDA8EFA9 /* QMDServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QMDServiceTests.swift; sourceTree = "<group>"; };
@@ -395,6 +398,7 @@
 		960D35875D60655B17574DF8 /* AudioRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorderTests.swift; sourceTree = "<group>"; };
 		97408213D206AAF1B1C29FFC /* PepperChatBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PepperChatBackend.swift; sourceTree = "<group>"; };
 		9A3540C6212101C885EA22CD /* RecordingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingOverlay.swift; sourceTree = "<group>"; };
+		FE671FE0948C0B99894AF9EE /* MeetingHistorySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistorySection.swift; sourceTree = "<group>"; };
 		9A54422D17879836781B7F71 /* KeyChord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyChord.swift; sourceTree = "<group>"; };
 		9AA71CE818E7248813A08248 /* SpeakerIdentityResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerIdentityResolver.swift; sourceTree = "<group>"; };
 		9CA473A11BE2285D5F27714C /* ClaudeAPIModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeAPIModel.swift; sourceTree = "<group>"; };
@@ -721,6 +725,7 @@
 				AF10422C55DDA1F8B026ADA7 /* QAAnswerView.swift */,
 				8F95A4E9746B97273AFA6904 /* QAAttachment.swift */,
 				9A3540C6212101C885EA22CD /* RecordingOverlay.swift */,
+				FE671FE0948C0B99894AF9EE /* MeetingHistorySection.swift */,
 				4EA211C873C6A5836ADA89EB /* RightSidebarView.swift */,
 				207AAC1CBC60052D1493D13D /* SettingsWindow.swift */,
 				A91C299194463F439E81D6BC /* ShortcutRecorderView.swift */,
@@ -898,6 +903,7 @@
 				AA783B889855B0811E210751 /* CleanupPromptEvalTests.swift */,
 				350AC3A5A34A78F96226831C /* CorrectionStoreTests.swift */,
 				1FE9E126BC8CAD84D453AD72 /* DebugLogStoreTests.swift */,
+				FD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift */,
 				F1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift */,
 				FCA9EDF7D9FD10DD873ECFF3 /* WikiEntityResolverTests.swift */,
 				F3AB3B38926B53A3BDA8EFA9 /* QMDServiceTests.swift */,
@@ -1182,6 +1188,7 @@
 				A3E327275ED67114E0400C99 /* RecognizedVoiceStore.swift in Sources */,
 				0CDA12F05A7C7464334FDD37 /* RecordingOCRPrefetch.swift in Sources */,
 				0BC5D4645D21CA8AA000972E /* RecordingOverlay.swift in Sources */,
+				BE671FE0948C0B99894AF9EE /* MeetingHistorySection.swift in Sources */,
 				759A9AD44DEF66C03D435B0F /* RecordingSessionCoordinator.swift in Sources */,
 				1D6267B10B14E90561E8BD46 /* RightSidebarView.swift in Sources */,
 				80C9E55FF57A1A03033DDDAE /* SettingsWindow.swift in Sources */,
@@ -1251,6 +1258,7 @@
 				E62BA209042B0FA8B53E2C76 /* CleanupPromptEvalTests.swift in Sources */,
 				3512549BBD28CC74C0137FA3 /* CorrectionStoreTests.swift in Sources */,
 				C4E8739F267E3096E97FBE71 /* DebugLogStoreTests.swift in Sources */,
+				BD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift in Sources */,
 				B1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift in Sources */,
 				BCA9EDF7D9FD10DD873ECFF3 /* WikiEntityResolverTests.swift in Sources */,
 				B3AB3B38926B53A3BDA8EFA9 /* QMDServiceTests.swift in Sources */,

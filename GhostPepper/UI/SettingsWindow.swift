@@ -1570,12 +1570,26 @@ struct SettingsView: View {
                 )
 
                 if !appState.transcriptionLabEnabled {
-                    Text("Voice-to-text history is off. Audio from dictation is not saved to disk. Meeting transcripts are saved separately as markdown files.")
+                    Text("Voice-to-text history is off. Audio from dictation is not saved to disk. Meeting transcripts are saved separately as markdown files, and are still listed below.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 transcriptionLabBrowser
+
+                Divider()
+
+                // Meetings live under the dictations rather than mixed in with
+                // them: his choice on 2026-08-02 over one interleaved timeline.
+                // It is deliberately NOT gated on `transcriptionLabEnabled` —
+                // that toggle governs whether dictation AUDIO is kept, and
+                // meeting transcripts are files on disk either way.
+                MeetingHistorySection(
+                    searchText: transcriptionLabController.searchText,
+                    onOpen: { url in
+                        appState.openMeetingFile(url)
+                    }
+                )
             }
         }
     }
@@ -1647,7 +1661,7 @@ struct SettingsView: View {
                 Text("This permanently removes all saved recordings and transcriptions.")
             }
 
-            TextField("Search transcriptions", text: $transcriptionLabController.searchText)
+            TextField("Search dictations and meetings", text: $transcriptionLabController.searchText)
                 .textFieldStyle(.roundedBorder)
 
             if transcriptionLabController.filteredEntries.isEmpty {
