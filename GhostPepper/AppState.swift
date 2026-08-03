@@ -366,27 +366,39 @@ class AppState: ObservableObject {
     private static let speechModelErrorPrefix = "Failed to load speech model: "
     static let liveRecordingNoInputErrorMessage = "Failed to start recording: No audio input device available."
 
-    /// Hold Globe, speak, release. One key, which is what the v1 spec asked for from
-    /// the beginning: "hold fn/globe primary AND hold Right Command fallback".
+    /// Hold Globe and Left Control together, speak, release.
     ///
-    /// Restored on 2026-08-02 after his log showed ten solitary Globe taps that started
-    /// nothing. His stored binding had become Left Control PLUS Globe, so pressing the
-    /// one key he reaches for did nothing at all and the app said nothing about it. He
-    /// confirmed those were dictation attempts.
+    /// ANDREW'S ORIGINAL BINDING, RESTORED 2026-08-02 after I removed it the same day
+    /// on a bad reading of the evidence.
     ///
-    /// This needs System Settings, Keyboard, "Press Globe key to" set to "Do Nothing",
-    /// which the onboarding covers. Without it macOS also acts on the key.
+    /// The v1 spec says "hold fn/globe primary", and his log showed about ten solitary
+    /// Globe presses that started nothing, so I concluded his stored two-key chord was
+    /// drift from the spec and moved him to Globe alone. It was not drift. **He has
+    /// three keyboard layouts installed, Canadian, Russian and Ukrainian-PC, and with
+    /// more than one layout macOS's own default for the Globe key is to cycle between
+    /// them.** So a bare Globe press starts a dictation AND rotates his keyboard, and he
+    /// would not find out until the next thing he typed came out in Cyrillic.
+    ///
+    /// The chord exists precisely to avoid that collision. His configuration encoded a
+    /// constraint the spec was written without, and I trusted the spec over the machine.
+    ///
+    /// It is also strictly better than Globe alone for him mechanically: the engine
+    /// matches on the SET of pressed keys, so Globe-then-Control and Control-then-Globe
+    /// both work. Globe alone only started a recording when Globe was pressed first,
+    /// which his log shows failing one time in six.
     nonisolated static let defaultPushToTalkChord = KeyChord(keys: Set([
+        PhysicalKey(keyCode: 59),  // Left Control
         PhysicalKey(keyCode: 63)   // Fn / Globe
     ]))!
 
     /// The bindings the 2026-08-02 migration replaces, and only these.
     ///
-    /// Left Control plus Globe is what his machine actually held. Right Command plus
-    /// Right Option was the previous shipped default. A binding he chose himself that
-    /// is neither of these is left exactly as it is.
+    /// Globe alone is here because this session briefly wrote it into his defaults
+    /// before the collision above was understood, so anyone still carrying it gets moved
+    /// back. Right Command plus Right Option was the older shipped default. A binding he
+    /// chose himself that is neither of these is left exactly as it is.
     nonisolated static let supersededPushToTalkChords: [KeyChord] = [
-        KeyChord(keys: Set([PhysicalKey(keyCode: 59), PhysicalKey(keyCode: 63)]))!,
+        KeyChord(keys: Set([PhysicalKey(keyCode: 63)]))!,
         KeyChord(keys: Set([PhysicalKey(keyCode: 54), PhysicalKey(keyCode: 61)]))!
     ]
 
@@ -676,7 +688,7 @@ class AppState: ObservableObject {
                 hotkeyMonitor.updateBindings(shortcutBindings)
                 debugLogStore.record(
                     category: .hotkey,
-                    message: "Push-to-talk moved from \(stored.displayString) to \(Self.defaultPushToTalkChord.displayString). Ten solitary Globe presses in his log started nothing."
+                    message: "Push-to-talk moved from \(stored.displayString) to \(Self.defaultPushToTalkChord.displayString). Globe alone collides with macOS input-source switching on a Mac with more than one keyboard layout."
                 )
             } catch {
                 debugLogStore.record(

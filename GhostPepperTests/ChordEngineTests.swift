@@ -86,14 +86,22 @@ final class ChordEngineTests: XCTestCase {
     }
 }
 
-/// GLOBE ALONE, restored 2026-08-02.
+/// GLOBE PLUS LEFT CONTROL, and why it is not Globe alone.
 ///
-/// His debug log for 2026-08-01 and 2026-08-02 holds about ten solitary Globe presses
-/// that started nothing, and he confirmed they were dictation attempts. His stored
-/// binding had become Left Control PLUS Globe, so the one key he reaches for did
-/// nothing and the app said nothing about it. The v1 spec asked for Globe as the
-/// primary trigger from the beginning.
-final class GlobeAlonePushToTalkTests: XCTestCase {
+/// I moved him to Globe on its own on 2026-08-02, because the v1 spec says "hold
+/// fn/globe primary" and his log held about ten solitary Globe presses that started
+/// nothing. That reasoning was wrong and he corrected it within the hour.
+///
+/// **He has three keyboard layouts installed: Canadian, Russian and Ukrainian-PC. With
+/// more than one layout, macOS's own default for the Globe key is to cycle between
+/// them.** A bare Globe press therefore starts a dictation AND rotates his keyboard,
+/// and he would only discover it when the next thing he typed came out in Cyrillic.
+/// The chord exists to avoid exactly that collision.
+///
+/// His configuration encoded a constraint the spec was written without, and I trusted
+/// the spec over the machine. Pinned here so the next agent reading that spec line does
+/// not repeat it.
+final class PushToTalkChordTests: XCTestCase {
     private let globe = PhysicalKey(keyCode: 63)
     private let leftControl = PhysicalKey(keyCode: 59)
 
@@ -105,49 +113,55 @@ final class GlobeAlonePushToTalkTests: XCTestCase {
         ])
     }
 
-    func testTheShippedPushToTalkBindingIsGlobeOnItsOwn() {
-        XCTAssertEqual(AppState.defaultPushToTalkChord.keys, Set([globe]))
+    func testTheShippedBindingIsGlobePlusLeftControl() {
+        XCTAssertEqual(AppState.defaultPushToTalkChord.keys, Set([globe, leftControl]))
     }
 
-    /// The one key, on its own, starts a recording. This is the whole point.
-    func testPressingGlobeAloneStartsARecording() {
+    /// GLOBE ON ITS OWN MUST NOT START A RECORDING. That is the whole point of the
+    /// second key: a bare Globe press belongs to macOS on his machine.
+    func testGlobeAloneDoesNotStartARecording() {
         var chords = engine()
-        XCTAssertEqual(
-            chords.handle(.flagsChanged(globe)),
-            [.startRecording],
-            "Globe on its own did not start a recording."
-        )
-    }
-
-    /// His existing muscle memory still works, because his log shows him pressing Globe
-    /// first and adding Control afterwards in five cases out of six. The extra key must
-    /// not cancel what Globe started.
-    func testAddingControlAfterGlobeDoesNotStopTheRecording() {
-        var chords = engine()
-        XCTAssertEqual(chords.handle(.flagsChanged(globe)), [.startRecording])
         XCTAssertFalse(
-            chords.handle(.flagsChanged(leftControl)).contains(.stopRecording),
-            "Holding his old second key cancelled the recording."
+            chords.handle(.flagsChanged(globe)).contains(.startRecording),
+            "A bare Globe press started a recording, which on his Mac also cycles his keyboard layout."
         )
+    }
+
+    /// Both orders work, because the engine matches on the SET of pressed keys. This is
+    /// the mechanical advantage the chord has over Globe alone, which only ever started
+    /// when Globe was pressed first.
+    func testGlobeThenControlStartsARecording() {
+        var chords = engine()
+        XCTAssertEqual(chords.handle(.flagsChanged(globe)), [])
+        XCTAssertEqual(chords.handle(.flagsChanged(leftControl)), [.startRecording])
         XCTAssertEqual(chords.activeRecordingAction, .pushToTalk)
     }
 
-    /// Releasing it stops the recording, which is what push to talk means.
-    func testReleasingGlobeStopsTheRecording() {
-        var chords = engine()
-        XCTAssertEqual(chords.handle(.flagsChanged(globe)), [.startRecording])
-        XCTAssertEqual(chords.handle(.flagsChanged(globe)), [.stopRecording])
-    }
-
-    /// THE EDGE THIS CREATES, pinned rather than discovered later.
-    ///
-    /// Pressing Control BEFORE Globe no longer starts anything, because the engine
-    /// matches chords exactly and {Control, Globe} is not {Globe}. His log shows him
-    /// doing that once in six. Recorded here so it is a known trade rather than a
-    /// surprise, and so a future change that fixes it has something to flip.
-    func testPressingControlFirstNoLongerStartsARecording() {
+    func testControlThenGlobeAlsoStartsARecording() {
         var chords = engine()
         XCTAssertEqual(chords.handle(.flagsChanged(leftControl)), [])
-        XCTAssertFalse(chords.handle(.flagsChanged(globe)).contains(.startRecording))
+        XCTAssertEqual(
+            chords.handle(.flagsChanged(globe)),
+            [.startRecording],
+            "Control first must work too; Globe alone failed this and his log shows him doing it."
+        )
+    }
+
+    /// Releasing either key stops it, which is what push to talk means.
+    func testReleasingEitherKeyStopsTheRecording() {
+        var chords = engine()
+        _ = chords.handle(.flagsChanged(globe))
+        XCTAssertEqual(chords.handle(.flagsChanged(leftControl)), [.startRecording])
+        XCTAssertEqual(chords.handle(.flagsChanged(leftControl)), [.stopRecording])
+    }
+
+    /// And the migration must move anyone still carrying Globe alone back off it, since
+    /// this session briefly wrote that into his defaults.
+    func testGlobeAloneIsOneOfTheBindingsTheMigrationReplaces() {
+        XCTAssertTrue(AppState.supersededPushToTalkChords.contains(KeyChord(keys: Set([globe]))!))
+        XCTAssertFalse(
+            AppState.supersededPushToTalkChords.contains(AppState.defaultPushToTalkChord),
+            "The migration must never list its own target, or it would loop."
+        )
     }
 }
