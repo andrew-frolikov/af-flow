@@ -409,6 +409,14 @@ else
   echo "ok    product docs describe removed capabilities"
 fi
 
+# STATE.md must stay small, current and honest, and nobody should have to remember
+# to check it. This sweep already runs at every boundary, so the check rides it.
+# Added 2026-08-02 with STATE.md itself; see scripts/state-check.py for the why.
+echo ""
+if ! python3 "$(dirname "$0")/state-check.py"; then
+  fail=1
+fi
+
 echo ""
 if [ "$fail" -eq 0 ]; then
   if [ -e "$SCANNER_FAILED_SENTINEL" ]; then

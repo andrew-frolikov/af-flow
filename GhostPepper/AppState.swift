@@ -1227,7 +1227,19 @@ class AppState: ObservableObject {
             // through and the text still vanished without explanation, which is
             // the exact failure the case was added to end. A switch makes the
             // next result impossible to add silently.
-            switch textPaster.paste(text: finalText) {
+            // LOGGED, because until 2026-08-02 this path said nothing at all.
+            //
+            // He reported "it pasted the text two times" and the paste path could not
+            // be ruled in or out from the log: it recorded no result, no preflight
+            // outcome and no clipboard decision. It took a query against the
+            // transcription lab to establish the doubling was the cleanup model. One
+            // line here makes the next report a one-minute diagnosis.
+            let pasteResult = textPaster.paste(text: finalText)
+            debugLogStore.record(
+                category: .hotkey,
+                message: "Paste \(pasteResult.logDescription) for \(finalText.count) characters."
+            )
+            switch pasteResult {
             case .pasted:
                 break
             case .copiedToClipboard:

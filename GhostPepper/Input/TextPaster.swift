@@ -14,6 +14,20 @@ enum PasteResult: Equatable {
     /// Secure Input is active, so no keystroke this app posts can reach the
     /// focused field. The text is on the clipboard and he can paste it himself.
     case blockedBySecureInput
+
+    /// What the log says. Each case names the consequence rather than the state,
+    /// because the reader of that line is trying to explain something he just saw
+    /// happen on screen.
+    var logDescription: String {
+        switch self {
+        case .pasted:
+            return "landed in the focused field"
+        case .copiedToClipboard:
+            return "could not confirm a target, so the text is on the clipboard and Cmd-V will paste it again"
+        case .blockedBySecureInput:
+            return "was blocked by Secure Input, so the text is on the clipboard only"
+        }
+    }
 }
 
 /// Pastes transcribed text into the focused text field by simulating Cmd+V.

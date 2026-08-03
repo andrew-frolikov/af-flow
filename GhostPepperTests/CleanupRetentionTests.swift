@@ -98,6 +98,70 @@ final class CleanupRetentionTests: XCTestCase {
         XCTAssertEqual(TextCleaner.withoutRepeatedCopy(shortRepeat), shortRepeat)
     }
 
+    // MARK: - The commas it takes out of his long sentences
+
+    /// HIS OWN WORDS, 2026-08-02 17:41, taken from the transcription lab.
+    ///
+    /// Whisper punctuated this correctly and the 2B cleanup model stripped three commas
+    /// out of one sentence, the three that were carrying the grammar. He noticed and
+    /// said so: "look at the punctuation here".
+    func testTheThreeCommasItTookOutOfHisInstructionAreRestored() {
+        let spoken = "So help me think through that and help me understand what I want. "
+            + "However, if you already understood it, implement it, but ask me questions before you do that."
+        let returned = "So help me think through that and help me understand what I want. "
+            + "However, if you already understood it implement it but ask me questions before you do that."
+
+        XCTAssertEqual(
+            TextCleaner.restoringCommasRemovedFromSpeech(returned, spokenInput: spoken),
+            spoken,
+            "The commas he actually said were not put back."
+        )
+    }
+
+    /// The second real case from the same afternoon.
+    func testACommaBeforeAConditionalIsRestored() {
+        let spoken = "for you to evaluate where to look, if you have to get information somewhere"
+        let returned = "for you to evaluate where to look if you have to get information somewhere"
+        XCTAssertEqual(TextCleaner.restoringCommasRemovedFromSpeech(returned, spokenInput: spoken), spoken)
+    }
+
+    /// IT MUST NOT INVENT PUNCTUATION. It only ever puts back a comma he actually said.
+    func testACommaHeNeverSaidIsNeverAdded() {
+        let spoken = "this is a sentence with no commas in it at all"
+        let returned = "this is a sentence with no commas in it at all"
+        XCTAssertEqual(TextCleaner.restoringCommasRemovedFromSpeech(returned, spokenInput: spoken), returned)
+    }
+
+    /// And it must not fight a legitimate rewrite. If the cleanup restructured that part
+    /// of the sentence, the two words are no longer next to each other and nothing is
+    /// put back. This is what stops it undoing correct work.
+    func testNothingIsRestoredWhereTheCleanupRestructuredTheSentence() {
+        let spoken = "so basically, umm, the thing is broken"
+        let returned = "The thing is broken."
+        XCTAssertEqual(
+            TextCleaner.restoringCommasRemovedFromSpeech(returned, spokenInput: spoken),
+            returned,
+            "It overrode a rewrite instead of leaving it alone."
+        )
+    }
+
+    /// A cleanup that ADDED commas is left completely alone, which is the common case:
+    /// across his 46 dictations the net change was plus four commas.
+    func testAnOutputWithMoreCommasThanHeSaidIsUntouched() {
+        let spoken = "so I went to the store and then I came back"
+        let returned = "So I went to the store, and then I came back."
+        XCTAssertEqual(TextCleaner.restoringCommasRemovedFromSpeech(returned, spokenInput: spoken), returned)
+    }
+
+    /// Full stops are deliberately NOT restored: he adds them far more often than he
+    /// loses them, net plus seven across the population, so a moved sentence boundary is
+    /// a change worth keeping.
+    func testFullStopsAreNotRestored() {
+        let spoken = "first thing. second thing."
+        let returned = "First thing, second thing."
+        XCTAssertEqual(TextCleaner.restoringCommasRemovedFromSpeech(returned, spokenInput: spoken), returned)
+    }
+
     // MARK: - The original guard: the model deleting what he said
 
     /// The real case, in his own words.
