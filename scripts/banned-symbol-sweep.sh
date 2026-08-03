@@ -426,6 +426,17 @@ if ! python3 "$(dirname "$0")/test-registration-check.py"; then
   fail=1
 fi
 
+# One key declared twice with DIFFERENT defaults is an unambiguous bug: which one
+# applies depends on which view initialises first while the key is absent. This
+# project shipped one already (meetingSummaryPrompt, fixed 2026-07-29). Only the
+# CONFLICT check can fail here; a stored value differing from the code default is
+# usually Andrew's own choice and is printed, never enforced. Needs no machine
+# state, so it works on a checkout without the app installed.
+echo ""
+if ! python3 "$(dirname "$0")/defaults-diff.py"; then
+  fail=1
+fi
+
 echo ""
 if [ "$fail" -eq 0 ]; then
   if [ -e "$SCANNER_FAILED_SENTINEL" ]; then
