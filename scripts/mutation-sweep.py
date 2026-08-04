@@ -99,6 +99,23 @@ def tree_is_clean():
     return run(["git", "status", "--porcelain"]).stdout.strip() == ""
 
 
+# Tests that fail unpredictably regardless of any mutation.
+#
+# `WindowFoldabilityTests.testMainStyleWindowCanMiniaturize` fails only in a FULL
+# run and passes in isolation; PROGRESS.md has recorded that since 2026-07-29. In
+# the 2026-08-03 sweep it turned up as a "killer" of four unrelated mutations,
+# because it happened not to fail in the baseline run and so looked like a new
+# failure.
+#
+# That inflates kill counts, and worse, a mutation killed ONLY by a flake is a
+# FALSE KILLED: a real test gap reported as covered. That is the dangerous
+# direction for this tool, so they are excluded from the evidence entirely rather
+# than merely noted.
+KNOWN_UNSTABLE = {
+    "GhostPepperTests.WindowFoldabilityTests.testMainStyleWindowCanMiniaturize",
+}
+
+
 def suite_failures():
     """Returns (ran, failures, names). ran=False if the build broke.
 
@@ -173,7 +190,8 @@ def main():
             finally:
                 run(["git", "checkout", "--", path])
 
-            new_names = [n for n in names if n not in baseline_names]
+            new_names = [n for n in names
+                         if n not in baseline_names and n not in KNOWN_UNSTABLE]
 
             if not ran:
                 print("[%d/%d] %-28s DID NOT COMPILE" % (index, len(selected), name), flush=True)
