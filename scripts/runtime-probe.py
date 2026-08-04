@@ -284,6 +284,43 @@ def probe_bundles():
     except Exception as error:
         print("  could not check: %s" % error)
 
+    # A second bundle ON DISK is not the only way to end up with two AF Flows.
+    # On 2026-08-03 a test-host process was left RUNNING from `xcodebuild test`,
+    # out of `build/run-derived`, alongside the app he actually launches. Two
+    # processes competing for the microphone is exactly what run-tests.sh
+    # refuses to create, and nothing noticed it afterwards because the test host
+    # carries a different bundle id and so never appeared in the check above.
+    # It was found by looking at the Dock in a screenshot, which is not a
+    # control.
+    try:
+        # `pgrep -f` matches COMMAND LINES, so any shell that happens to mention
+        # this path matches too, including the one running this probe. That is a
+        # false alarm generator, and a check that cries wolf gets ignored, so
+        # each pid is resolved to its actual executable with `ps -o comm=` and
+        # only real GhostPepper binaries are counted.
+        found = subprocess.run(
+            ["pgrep", "-f", "GhostPepper.app/Contents/MacOS/GhostPepper"],
+            capture_output=True, text=True, timeout=20).stdout.split()
+        lines = []
+        for pid in found:
+            executable = subprocess.run(
+                ["ps", "-p", pid, "-o", "comm="],
+                capture_output=True, text=True, timeout=10).stdout.strip()
+            if executable.endswith("GhostPepper.app/Contents/MacOS/GhostPepper"):
+                lines.append("%s  %s" % (pid, executable))
+        if len(lines) > 1:
+            print("  %d GhostPepper PROCESSES are running  <== they compete for the microphone"
+                  % len(lines))
+            for line in lines:
+                print("    %s" % line.strip()[:160])
+            print("    kill any running out of build/run-derived; that is a leftover test host.")
+        elif lines:
+            print("  1 process running.  ok")
+        else:
+            print("  not running.")
+    except Exception as error:
+        print("  could not check running processes: %s" % error)
+
 
 def main():
     parser = argparse.ArgumentParser()
