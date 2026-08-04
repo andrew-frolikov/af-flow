@@ -181,6 +181,7 @@
 		C1949C00F2F721B802EC237E /* PepperChatWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB753C40197FA7255E1DEA29 /* PepperChatWindow.swift */; };
 		C1A07FBD7318A26BA879232A /* ModelInventoryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B68F46BA90BDD633868A8CE /* ModelInventoryViews.swift */; };
 		C4E8739F267E3096E97FBE71 /* DebugLogStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FE9E126BC8CAD84D453AD72 /* DebugLogStoreTests.swift */; };
+		B611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift */; };
 		B134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift */; };
 		B90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */; };
 		B0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */; };
@@ -291,6 +292,7 @@
 		1AFEA05207B7965A3D44D000 /* MeetingQAAgentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingQAAgentTests.swift; sourceTree = "<group>"; };
 		1DC632CC6DD4F55F2FA05480 /* FrontmostWindowOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmostWindowOCRService.swift; sourceTree = "<group>"; };
 		1FE9E126BC8CAD84D453AD72 /* DebugLogStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogStoreTests.swift; sourceTree = "<group>"; };
+		F611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageReplayTests.swift; sourceTree = "<group>"; };
 		F134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionCensusTests.swift; sourceTree = "<group>"; };
 		F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelShapeCensusTests.swift; sourceTree = "<group>"; };
 		F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLabStoreCorruptionTests.swift; sourceTree = "<group>"; };
@@ -914,6 +916,7 @@
 				AA783B889855B0811E210751 /* CleanupPromptEvalTests.swift */,
 				350AC3A5A34A78F96226831C /* CorrectionStoreTests.swift */,
 				1FE9E126BC8CAD84D453AD72 /* DebugLogStoreTests.swift */,
+				F611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift */,
 				F134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift */,
 				F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */,
 				F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */,
@@ -1274,6 +1277,7 @@
 				E62BA209042B0FA8B53E2C76 /* CleanupPromptEvalTests.swift in Sources */,
 				3512549BBD28CC74C0137FA3 /* CorrectionStoreTests.swift in Sources */,
 				C4E8739F267E3096E97FBE71 /* DebugLogStoreTests.swift in Sources */,
+				B611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift in Sources */,
 				B134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift in Sources */,
 				B90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift in Sources */,
 				B0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift in Sources */,
