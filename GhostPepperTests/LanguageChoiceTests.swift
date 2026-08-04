@@ -153,4 +153,44 @@ final class LanguageChoiceTests: XCTestCase {
             "only en and ru are selectable"
         )
     }
+
+    /// THE GAP THE MUTATION SWEEP FOUND, 2026-08-03.
+    ///
+    /// Every other test here passes a `reportedLanguage` equal to the one key in
+    /// the map, so the one-scored branch and the fall-through branch return the
+    /// same answer and neither is independently covered. Making the one-scored
+    /// branch unreachable therefore changed nothing any test could see.
+    ///
+    /// This is the case where they disagree, and it is not hypothetical: the
+    /// live log of 2026-08-02 holds `(raw: ur, 1 probabilities)`. When Whisper
+    /// scores one of his languages but NAMES a third, the score is the evidence
+    /// and the name is not. Without this, his Russian silently becomes English.
+    func testAScoredLanguageBeatsAnUnsupportedReportedLanguage() {
+        XCTAssertEqual(
+            ModelManager.restrictedLanguage(probabilities: ["ru": -0.02031345], reportedLanguage: "ur"),
+            "ru",
+            "Whisper scored Russian and named Urdu. The score is the evidence."
+        )
+        XCTAssertEqual(
+            ModelManager.restrictedLanguage(probabilities: ["en": -0.5], reportedLanguage: "de"),
+            "en"
+        )
+    }
+
+    /// Also from the sweep: nothing pinned which language wins a tie.
+    ///
+    /// Two vanishing log probabilities both normalise to zero, so the weighted
+    /// comparison is `0 >= 0`. That is a real state, not a contrived one, and
+    /// with no evidence either way his measured 887-to-332 prior decides it.
+    /// English wins. Changing `>=` to `>` silently reverses that.
+    func testATieBetweenTwoVanishingScoresGoesToEnglishOnHisPrior() {
+        XCTAssertEqual(
+            ModelManager.restrictedLanguage(
+                probabilities: ["en": -1000, "ru": -1000],
+                reportedLanguage: nil
+            ),
+            "en",
+            "With no evidence either way, the 887-to-332 prior decides and English wins."
+        )
+    }
 }

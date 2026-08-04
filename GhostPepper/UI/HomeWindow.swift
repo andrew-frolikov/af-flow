@@ -42,7 +42,21 @@ struct AFFlowHomeView: View {
             Spacer(minLength: 28)
 
             StatusPill(status: appState.status)
-                .padding(.bottom, 26)
+                .padding(.bottom, appState.permissionWarning == nil ? 26 : 10)
+
+            // Ledger item 23: a missing grant used to produce a log line and
+            // nothing else, while the pill above still said Ready. The pill is
+            // deliberately left alone, because the app may genuinely still work;
+            // this says what is missing instead of overruling it.
+            if let permissionWarning = appState.permissionWarning {
+                Text(permissionWarning)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 18)
+            }
 
             instruction
 

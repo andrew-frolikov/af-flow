@@ -160,6 +160,14 @@ class AppState: ObservableObject {
     @Published var status: AppStatus = .loading
     @Published var isRecording: Bool = false
     @Published var errorMessage: String?
+
+    /// A missing permission worth telling him about, or nil when all is well.
+    ///
+    /// Separate from `errorMessage` because this is not an error: the app may
+    /// still work. Ledger item 23 is that a missing grant only ever produced a
+    /// log line nobody reads, so this exists to be shown. Set on every hotkey
+    /// setup by `PermissionCensus`.
+    @Published var permissionWarning: String?
     @Published var shortcutErrorMessage: String?
     @Published var cleanupBackend: CleanupBackendOption {
         didSet {
@@ -858,7 +866,37 @@ class AppState: ObservableObject {
             return
         }
 
-        if !inputMonitoringChecker() {
+        // Record what the app can ACTUALLY do, every time the hotkey monitor is
+        // set up. Ledger item 23: the line below is the only trace that he may
+        // be unable to hear his own hotkey, and `status = .ready` is set a few
+        // lines further down regardless.
+        //
+        // This census does NOT gate `.ready`, deliberately: the comment below
+        // is right that Accessibility alone may carry the event tap, and a check
+        // that turned out to be too strict would stop his dictation entirely.
+        // Being honest and being fussier are separable, and only the first is
+        // safe to do unattended. What it buys is that "was he deaf on
+        // Wednesday?" becomes answerable, which it was not on 2026-08-02 when
+        // about ten of his presses did nothing.
+        let hasInputMonitoring = inputMonitoringChecker()
+        let hasAccessibility = PermissionChecker.checkAccessibility()
+        let hasMicrophone = PermissionChecker.microphoneStatus() == .authorized
+        debugLogStore.record(
+            category: .hotkey,
+            message: PermissionCensus.line(
+                inputMonitoring: hasInputMonitoring,
+                accessibility: hasAccessibility,
+                microphone: hasMicrophone,
+                reason: "hotkey-setup"
+            )
+        )
+        permissionWarning = PermissionCensus.warning(
+            inputMonitoring: hasInputMonitoring,
+            accessibility: hasAccessibility,
+            microphone: hasMicrophone
+        )
+
+        if !hasInputMonitoring {
             // Try to prompt, but don't block — Accessibility alone may be sufficient
             inputMonitoringPrompter()
             debugLogStore.record(category: .hotkey, message: "Input Monitoring not granted, attempting to start with Accessibility only.")
