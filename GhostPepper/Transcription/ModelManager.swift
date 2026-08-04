@@ -389,6 +389,46 @@ final class ModelManager: ObservableObject {
     /// is the behaviour worth having, since a map naming only Bulgarian is exactly
     /// as useless to him as an empty one, and it is still restricted to en and ru:
     /// this must not become a third door into the 99.
+    /// A census line describing WhisperKit's RAW return, before this app reads it.
+    ///
+    /// Observability item 2. Every other log line here records the app's
+    /// INTERPRETATION ("whisper said en at 99.9%"), and an interpretation cannot
+    /// disagree with the assumption that produced it. The language prior survived
+    /// its whole life that way: the gate tested `english > 0`, WhisperKit emits
+    /// LOG probabilities so every value is negative, `chooseLanguage` returned nil
+    /// on every dictation Andrew ever made, and six tests agreed because they fed
+    /// linear probabilities production has never produced. Nothing in the log said
+    /// otherwise, because the log only ever said what the code believed.
+    ///
+    /// So this records shape, not meaning: every key, every value unmodified, the
+    /// count, and how many values are positive. A script can then check the code's
+    /// assumptions against what the runtime actually emits, which is a census
+    /// rather than a test. Two facts that would have ended that bug in a day are
+    /// both visible in one line of it: `n=1` and `positive=0`.
+    ///
+    /// Deterministic key order so successive lines diff cleanly. No transcript
+    /// text goes in here, only language codes and scores, so it is not sensitive.
+    nonisolated static func rawDetectionCensus(
+        probabilities: [String: Float],
+        reportedLanguage: String?
+    ) -> String {
+        let keys = probabilities.keys.sorted()
+        let pairs = keys.map { key in
+            "\"\(key)\":\(probabilities[key].map { String($0) } ?? "null")"
+        }
+        let positive = probabilities.values.filter { $0 > 0 }.count
+        let reported = reportedLanguage.map { "\"\($0)\"" } ?? "null"
+        // The reported winner not being present in the map is exactly the case
+        // that made the prior unusable, so it is called out rather than inferred.
+        let reportedIsScored = reportedLanguage.map { probabilities[$0] != nil } ?? false
+        return "RAW detectLanguage {"
+            + "\"language\":\(reported),"
+            + "\"n\":\(probabilities.count),"
+            + "\"positive\":\(positive),"
+            + "\"reportedIsScored\":\(reportedIsScored),"
+            + "\"probs\":{\(pairs.joined(separator: ","))}}"
+    }
+
     static func restrictedLanguage(probabilities: [String: Float], reportedLanguage: String?) -> String {
         let english = probabilities["en"].map(normalisedProbability)
         let russian = probabilities["ru"].map(normalisedProbability)
@@ -448,6 +488,16 @@ final class ModelManager: ObservableObject {
         guard let whisperKit else { return priorDefault }
         do {
             let detection = try await whisperKit.detectLangauge(audioArray: audioBuffer)
+            // Logged BEFORE anything reads it, so the census records what the
+            // runtime emitted and not what this app made of it. See
+            // `rawDetectionCensus`.
+            debugLogger?(
+                .model,
+                Self.rawDetectionCensus(
+                    probabilities: detection.langProbs,
+                    reportedLanguage: detection.language
+                )
+            )
             let chosen = Self.restrictedLanguage(
                 probabilities: detection.langProbs,
                 reportedLanguage: detection.language
