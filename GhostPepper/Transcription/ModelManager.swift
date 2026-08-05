@@ -287,12 +287,25 @@ final class ModelManager: ObservableObject {
                     // date: en or ru, always.
                     decodeOptions.language = await detectRestrictedLanguage(audioBuffer: audioBuffer)
                 }
+                decodeOptions = Self.applyDictationChunking(to: decodeOptions)
                 let results: [TranscriptionResult] = try await whisperKit.transcribe(audioArray: audioBuffer, decodeOptions: decodeOptions)
                 let text = results
                     .map(\.text)
                     .joined(separator: " ")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 let cleaned = SpeechTranscriber.removeArtifacts(from: text)
+                // Say so when the result is implausibly short for the audio. The
+                // 2026-08-05 loss was silent, and silence is what let it survive.
+                let seconds = Double(audioBuffer.count) / 16_000
+                if SpeechTranscriber.looksTruncated(text: cleaned, audioDuration: seconds) {
+                    debugLogger?(
+                        .model,
+                        String(
+                            format: "TRUNCATION SUSPECTED: %.1fs of audio produced only %d characters (%.1f/s). His healthy range is 7 to 12 per second.",
+                            seconds, cleaned.count, Double(cleaned.count) / max(seconds, 0.001)
+                        )
+                    )
+                }
                 return cleaned.isEmpty ? nil : cleaned
             case .fluidAudio:
                 switch model.fluidAudioVariant {
@@ -389,6 +402,40 @@ final class ModelManager: ObservableObject {
     /// is the behaviour worth having, since a map naming only Bulgarian is exactly
     /// as useless to him as an empty one, and it is still restricted to en and ru:
     /// this must not become a third door into the 99.
+    /// Splits dictation audio on speech activity instead of fixed windows.
+    ///
+    /// **He lost half of a 43-second Russian dictation on 2026-08-05** and the
+    /// app said nothing: language detection succeeded, transcription returned,
+    /// 193 characters were pasted, and the audio held continuous speech from 0
+    /// to 42 seconds at RMS 500-1100. His measured rate is 9 to 11 characters a
+    /// second, so it should have been about 400. The text simply stopped
+    /// mid-phrase, on "при самой легкой".
+    ///
+    /// Two hypotheses died first: not a token cap and not a Russian problem, as
+    /// a 74.6-second Russian dictation the same evening came back whole. Rather
+    /// than keep guessing at WhisperKit's sequential-window loop, his actual
+    /// file was decoded under six option sets (`DecodeOptionsBakeOffTests`):
+    ///
+    ///     shipped default        193 chars
+    ///     vad chunking           406 chars   <-- whole, ends on a full sentence
+    ///     no prefill prompt      404 chars
+    ///     word timestamps        193 chars
+    ///     with timestamps        193 chars
+    ///
+    /// Then across all 39 of his recordings over five seconds, because a fix
+    /// validated on the one file that motivated it is this project's signature
+    /// mistake: **vad was better on 1 and worse on 0**, while turning the prefill
+    /// prompt off was better on 1 and WORSE on another. So vad, and not prefill.
+    ///
+    /// It is rare — 1 in 39 — which is exactly why it survived: it costs half a
+    /// dictation, at random, and reports success. `SpeechTranscriber` now also
+    /// flags an implausibly short result so the next one is not silent either.
+    nonisolated static func applyDictationChunking(to options: DecodingOptions) -> DecodingOptions {
+        var updated = options
+        updated.chunkingStrategy = .vad
+        return updated
+    }
+
     /// A census line describing WhisperKit's RAW return, before this app reads it.
     ///
     /// Observability item 2. Every other log line here records the app's

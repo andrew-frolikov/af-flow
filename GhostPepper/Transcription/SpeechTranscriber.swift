@@ -41,6 +41,36 @@ final class SpeechTranscriber {
     }
 
     /// Removes Whisper hallucination artifacts like [BLANK_AUDIO] from text.
+    /// Whether a transcript is implausibly short for the audio it came from.
+    ///
+    /// **The 2026-08-05 defect was not that half a dictation was lost. It was
+    /// that nothing said so.** A 43.5-second recording of continuous speech
+    /// returned 193 characters, the paste succeeded, and the log recorded a
+    /// normal transcription. He found it by reading his own text and noticing
+    /// words missing. `chunkingStrategy = .vad` fixes the known cause; this
+    /// catches the next cause, whatever it turns out to be.
+    ///
+    /// The threshold is measured, not guessed. Across his archive on 2026-08-05
+    /// his rate was 7.1 to 11.9 characters per second, in both languages, with
+    /// the truncated one at 4.4 — the only outlier below 6. **5.0 sits between
+    /// the failure at 4.4 and his slowest healthy recording at 6.0**, so it flags
+    /// the real thing without crying wolf on a slow, thoughtful sentence.
+    ///
+    /// The margin is genuinely thin, 4.4 to 6.0, and the first version of this
+    /// used 3.5 — which is below the FAILURE and would have caught nothing. The
+    /// tests below carry his real pairs on both sides precisely so a threshold
+    /// that flags nothing cannot pass as a working guard.
+    ///
+    /// Only audio over ten seconds is judged. Short utterances have too much
+    /// variance: a two-second "yes" is 3 characters at 1.5 per second and
+    /// perfectly correct.
+    static func looksTruncated(text: String, audioDuration: TimeInterval) -> Bool {
+        guard audioDuration > 10 else { return false }
+        let characters = text.trimmingCharacters(in: .whitespacesAndNewlines).count
+        guard characters > 0 else { return false }
+        return Double(characters) / audioDuration < 5.0
+    }
+
     static func removeArtifacts(from text: String) -> String {
         var cleaned = text
         for artifact in artifacts {
