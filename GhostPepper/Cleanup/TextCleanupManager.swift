@@ -228,7 +228,7 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
     }
 
     private static let timeoutSeconds: TimeInterval = 15.0
-    private static let selectedCleanupModelDefaultsKey = "selectedCleanupModelKind"
+    static let selectedCleanupModelDefaultsKey = "selectedCleanupModelKind"
     private static let systemPromptSentinel = "<|ghost-pepper-system-prefill-split|>"
     private static let userInputSentinel = "<|ghost-pepper-user-prefill-split|>"
     private static let repositoryDownloadMarkerFileName = ".ghostpepper-model-cache-complete"
@@ -268,13 +268,48 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         self.backendShutdownOverride = backendShutdownOverride
         self.llmLease = llmLease
 
+        Self.migrateAwayFromTheTwoBillionDefault(defaults: defaults)
+
         let storedKind = LocalCleanupModelKind(
             rawValue: defaults.string(forKey: Self.selectedCleanupModelDefaultsKey) ?? ""
         ) ?? .qwen35_0_8b_q4_k_m
-        let initialKind = selectedCleanupModelKind ?? storedKind
-        self.selectedCleanupModelKind = initialKind
-        defaults.set(initialKind.rawValue, forKey: Self.selectedCleanupModelDefaultsKey)
+        self.selectedCleanupModelKind = selectedCleanupModelKind ?? storedKind
+
+        // NOTHING IS WRITTEN HERE ANY MORE, and that is the point.
+        //
+        // This used to `defaults.set(initialKind.rawValue, ...)` on every
+        // construction, including the very first launch when he had chosen
+        // nothing. So the code default was consumed exactly once, ever, and then
+        // frozen into his plist permanently: every later improvement to it was
+        // invisible to him and invisible to the tests, which start from an empty
+        // domain. Found on 2026-08-03 by `scripts/defaults-diff.py`, in the code
+        // that cleans up everything he writes.
+        //
+        // The key is now written only when he actually picks a model, so an
+        // absent key means "follow the code default" and keeps meaning that.
     }
+
+    /// Removes his frozen 2B selection so the code default reaches him again.
+    ///
+    /// He asked for the 0.8B back on 2026-08-05. Setting the key to 0.8B would
+    /// re-freeze it at the value that happens to be current today; REMOVING it
+    /// means he follows `LocalCleanupModelKind`'s default now and after the next
+    /// change too.
+    ///
+    /// One-shot, and guarded by its own marker rather than by the value alone.
+    /// Without the marker this would fight him: pick 2B again tomorrow and the
+    /// next launch would silently undo it. It fires once, for the exact value
+    /// that was frozen, and never again.
+    static func migrateAwayFromTheTwoBillionDefault(defaults: UserDefaults) {
+        guard !defaults.bool(forKey: twoBillionMigrationDefaultsKey) else { return }
+        defaults.set(true, forKey: twoBillionMigrationDefaultsKey)
+
+        guard defaults.string(forKey: selectedCleanupModelDefaultsKey)
+            == LocalCleanupModelKind.qwen35_2b_q4_k_m.rawValue else { return }
+        defaults.removeObject(forKey: selectedCleanupModelDefaultsKey)
+    }
+
+    static let twoBillionMigrationDefaultsKey = "cleanupModelUnfrozeFrom2B"
 
     func selectedModelKind(wordCount: Int, isQuestion: Bool) -> LocalCleanupModelKind? {
         isModelAvailable(selectedCleanupModelKind) ? selectedCleanupModelKind : nil
