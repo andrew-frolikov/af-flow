@@ -21,6 +21,13 @@ import XCTest
 ///
 /// A read failure means "I could not read this", never "this should be
 /// destroyed". The file is moved aside instead, so a human can still recover it.
+///
+/// Updated 2026-08-04 when the index became append-only JSONL. The properties
+/// are unchanged and every one still has to hold; only the filename moved. The
+/// format change makes the archive STRONGER here, because one bad line now costs
+/// one entry instead of everything — `TranscriptionLabRetentionTests` pins that
+/// separately. A wholly unreadable index is still possible (a truncated write, a
+/// permissions fault) and is still what these tests cover.
 final class TranscriptionLabStoreCorruptionTests: XCTestCase {
     private func makeFixture() -> URL {
         let directoryURL = FileManager.default.temporaryDirectory
@@ -65,7 +72,7 @@ final class TranscriptionLabStoreCorruptionTests: XCTestCase {
         try store.insert(makeEntry(audioFileName: "second.wav"), audioData: Data([0x02]), stageTimings: timings())
 
         try Data("{ this is not json".utf8)
-            .write(to: directory.appendingPathComponent("transcription-lab-index.json"))
+            .write(to: directory.appendingPathComponent("transcription-lab-index.jsonl"))
 
         _ = try? store.loadEntries()
 
@@ -79,15 +86,43 @@ final class TranscriptionLabStoreCorruptionTests: XCTestCase {
         )
     }
 
-    /// Moved aside, not deleted, and with its bytes intact so the entries can be
-    /// recovered by hand.
-    func testACorruptIndexIsMovedAsideWithItsContentsIntact() throws {
+    /// A wholly unreadable append-only index costs no audio and no bytes.
+    ///
+    /// The JSONL format does not quarantine, and does not need to: unparseable
+    /// lines are skipped where they lie, the file is never moved or truncated,
+    /// and the next insert appends after them. Recovery is "open the file",
+    /// which is strictly better than "find the renamed copy".
+    func testAnUnreadableAppendOnlyIndexKeepsItsBytesAndHisAudio() throws {
         let directory = makeFixture()
         let store = TranscriptionLabStore(directoryURL: directory)
         try store.insert(makeEntry(audioFileName: "first.wav"), audioData: Data([0x01]), stageTimings: timings())
 
+        let garbage = "{ this is not json\n"
+        let indexURL = directory.appendingPathComponent("transcription-lab-index.jsonl")
+        try Data(garbage.utf8).write(to: indexURL)
+
+        XCTAssertEqual(try store.loadEntries().count, 0)
+        XCTAssertEqual(try String(contentsOf: indexURL, encoding: .utf8), garbage,
+                       "the unreadable bytes must be left exactly where they are")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL(in: directory, named: "first.wav").path),
+                      "an unreadable index destroyed his audio")
+    }
+
+    /// The LEGACY single-array archive is the one that still gets quarantined,
+    /// and it is the one that needs it: one bad byte there costs every entry, so
+    /// skipping it quietly would drop his whole history out of the UI while the
+    /// file sat on disk looking fine.
+    func testACorruptLegacyArchiveIsMovedAsideWithItsContentsIntact() throws {
+        let directory = makeFixture()
+        let store = TranscriptionLabStore(directoryURL: directory)
+
         let garbage = "{ this is not json"
         try Data(garbage.utf8).write(to: directory.appendingPathComponent("transcription-lab-index.json"))
+        try FileManager.default.createDirectory(
+            at: directory.appendingPathComponent("audio", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try Data([0x01]).write(to: audioURL(in: directory, named: "first.wav"))
 
         _ = try? store.loadEntries()
 
@@ -138,7 +173,7 @@ final class TranscriptionLabStoreCorruptionTests: XCTestCase {
         try store.insert(makeEntry(audioFileName: "old.wav"), audioData: Data([0x01]), stageTimings: timings())
 
         try Data("{ broken".utf8)
-            .write(to: directory.appendingPathComponent("transcription-lab-index.json"))
+            .write(to: directory.appendingPathComponent("transcription-lab-index.jsonl"))
 
         try store.insert(makeEntry(audioFileName: "new.wav"), audioData: Data([0x02]), stageTimings: timings())
 
@@ -154,14 +189,14 @@ final class TranscriptionLabStoreCorruptionTests: XCTestCase {
     func testASecondCorruptionKeepsTheFirstQuarantine() throws {
         let directory = makeFixture()
         let store = TranscriptionLabStore(directoryURL: directory)
-        let indexURL = directory.appendingPathComponent("transcription-lab-index.json")
+        let legacyURL = directory.appendingPathComponent("transcription-lab-index.json")
+        let indexURL = directory.appendingPathComponent("transcription-lab-index.jsonl")
 
-        try store.insert(makeEntry(audioFileName: "a.wav"), audioData: Data([0x01]), stageTimings: timings())
-        try Data("first breakage".utf8).write(to: indexURL)
+        try Data("first breakage".utf8).write(to: legacyURL)
         _ = try? store.loadEntries()
 
-        try store.insert(makeEntry(audioFileName: "b.wav"), audioData: Data([0x02]), stageTimings: timings())
-        try Data("second breakage".utf8).write(to: indexURL)
+        try? FileManager.default.removeItem(at: indexURL)
+        try Data("second breakage".utf8).write(to: legacyURL)
         _ = try? store.loadEntries()
 
         let quarantined = (try? FileManager.default.contentsOfDirectory(atPath: directory.path))?

@@ -2,6 +2,13 @@ import XCTest
 @testable import GhostPepper
 
 final class TranscriptionLabStoreTests: XCTestCase {
+    // Anchored clock. These fixtures use 1970 dates, and from 2026-08-04 the
+    // store keeps transcripts for a year and audio for a week, so a real `now`
+    // would expire every one of them before the assertion ran. Pinning `now` at
+    // epoch 10_000 keeps each test asserting exactly what it always asserted:
+    // ordering, the capacity backstop, zero-second pruning, timings, recovery.
+    // The retention policy itself is covered by TranscriptionLabRetentionTests.
+
     func testEntryRoundTripsThroughJSON() throws {
         let entry = TranscriptionLabEntry(
             id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
@@ -30,7 +37,8 @@ final class TranscriptionLabStoreTests: XCTestCase {
         let fixture = makeFixture()
         let store = TranscriptionLabStore(
             directoryURL: fixture.directoryURL,
-            maxEntries: 50
+            maxEntries: 50,
+            now: { Date(timeIntervalSince1970: 10_000) }
         )
 
         let olderEntry = makeEntry(
@@ -56,7 +64,8 @@ final class TranscriptionLabStoreTests: XCTestCase {
         let fixture = makeFixture()
         let store = TranscriptionLabStore(
             directoryURL: fixture.directoryURL,
-            maxEntries: 2
+            maxEntries: 2,
+            now: { Date(timeIntervalSince1970: 10_000) }
         )
 
         let firstEntry = makeEntry(
@@ -89,7 +98,8 @@ final class TranscriptionLabStoreTests: XCTestCase {
         let fixture = makeFixture()
         let store = TranscriptionLabStore(
             directoryURL: fixture.directoryURL,
-            maxEntries: 50
+            maxEntries: 50,
+            now: { Date(timeIntervalSince1970: 10_000) }
         )
 
         let entries = try store.loadEntries()
@@ -101,7 +111,8 @@ final class TranscriptionLabStoreTests: XCTestCase {
         let fixture = makeFixture()
         let store = TranscriptionLabStore(
             directoryURL: fixture.directoryURL,
-            maxEntries: 50
+            maxEntries: 50,
+            now: { Date(timeIntervalSince1970: 10_000) }
         )
         let shortEntry = makeEntry(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000051")!,
@@ -139,17 +150,24 @@ final class TranscriptionLabStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.audioURL(named: visibleEntry.audioFileName).path))
         XCTAssertNil(try store.loadStageTimings()[shortEntry.id])
         XCTAssertEqual(try store.loadStageTimings()[visibleEntry.id], visibleTiming)
-        XCTAssertEqual(
-            try JSONDecoder().decode([TranscriptionLabEntry].self, from: Data(contentsOf: indexURL)).map(\.id),
-            [visibleEntry.id]
-        )
+        // The pruned entry must be gone from the PERSISTED index, not merely from
+        // the returned list. Same property as before the 2026-08-04 format
+        // change; the index is now one JSON object per line, so it is read as
+        // lines rather than as a single array.
+        let persistedURL = fixture.directoryURL
+            .appendingPathComponent("transcription-lab-index.jsonl")
+        let persisted = try String(contentsOf: persistedURL, encoding: .utf8)
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .compactMap { try? JSONDecoder().decode(TranscriptionLabEntry.self, from: Data($0.utf8)) }
+        XCTAssertEqual(persisted.map(\.id), [visibleEntry.id])
     }
 
     func testStorePersistsStageTimingsForNewEntries() throws {
         let fixture = makeFixture()
         let store = TranscriptionLabStore(
             directoryURL: fixture.directoryURL,
-            maxEntries: 50
+            maxEntries: 50,
+            now: { Date(timeIntervalSince1970: 10_000) }
         )
         let entry = makeEntry(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000021")!,
@@ -173,7 +191,8 @@ final class TranscriptionLabStoreTests: XCTestCase {
         let fixture = makeFixture()
         let store = TranscriptionLabStore(
             directoryURL: fixture.directoryURL,
-            maxEntries: 50
+            maxEntries: 50,
+            now: { Date(timeIntervalSince1970: 10_000) }
         )
         let legacyIndexURL = fixture.directoryURL.appendingPathComponent("transcription-lab-index.json")
 
@@ -201,7 +220,8 @@ final class TranscriptionLabStoreTests: XCTestCase {
         let fixture = makeFixture()
         let store = TranscriptionLabStore(
             directoryURL: fixture.directoryURL,
-            maxEntries: 50
+            maxEntries: 50,
+            now: { Date(timeIntervalSince1970: 10_000) }
         )
         let indexURL = fixture.directoryURL.appendingPathComponent("transcription-lab-index.json")
         let timingsURL = fixture.directoryURL.appendingPathComponent("transcription-lab-timings.json")
@@ -241,7 +261,8 @@ final class TranscriptionLabStoreTests: XCTestCase {
         let fixture = makeFixture()
         let store = TranscriptionLabStore(
             directoryURL: fixture.directoryURL,
-            maxEntries: 50
+            maxEntries: 50,
+            now: { Date(timeIntervalSince1970: 10_000) }
         )
         let entry = makeEntry(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000032")!,
