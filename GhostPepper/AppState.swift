@@ -888,19 +888,25 @@ class AppState: ObservableObject {
         let hasInputMonitoring = inputMonitoringChecker()
         let hasAccessibility = PermissionChecker.checkAccessibility()
         let hasMicrophone = PermissionChecker.microphoneStatus() == .authorized
+        // The FLAG above and the CAPABILITY below. Ledger item 23 was that this
+        // census reported `accessibility:true` throughout the 2026-08-05 outage,
+        // because it read a flag that cannot fail the way the permission fails.
+        let accessibilityFunction = AccessibilityFunctionCheck.run()
         debugLogStore.record(
             category: .hotkey,
             message: PermissionCensus.line(
                 inputMonitoring: hasInputMonitoring,
                 accessibility: hasAccessibility,
                 microphone: hasMicrophone,
-                reason: "hotkey-setup"
+                reason: "hotkey-setup",
+                accessibilityFunction: accessibilityFunction
             )
         )
         permissionWarning = PermissionCensus.warning(
             inputMonitoring: hasInputMonitoring,
             accessibility: hasAccessibility,
-            microphone: hasMicrophone
+            microphone: hasMicrophone,
+            accessibilityFunction: accessibilityFunction
         )
 
         if !hasInputMonitoring {
@@ -1103,6 +1109,25 @@ class AppState: ObservableObject {
             audioRecorder.targetDeviceID = selectedInputDeviceIDProvider()
             try audioRecorder.startRecording()
             debugLogStore.record(category: .hotkey, message: "Recording started.")
+            // TAKE THE PREVIOUS DICTATION OFF THE CLIPBOARD NOW.
+            //
+            // Since 2026-08-05 the clipboard IS the delivery mechanism: he
+            // presses Cmd-V himself. Measured across 237 of his real dictations,
+            // it takes a median of 1.59 seconds from releasing the key to the
+            // new transcript arriving, and 11.8 at the worst. For that window the
+            // clipboard still holds LAST time's words, which is exactly the
+            // "Cmd-V pastes the previous dictation" he reported. Clearing here
+            // makes an early Cmd-V paste nothing, which he will notice, instead
+            // of the wrong paragraph, which he will not.
+            //
+            // It clears only when the clipboard still holds what this app put
+            // there. Anything he copied himself is his and is left alone.
+            if textPaster.clearStaleDictationFromClipboard() {
+                debugLogStore.record(
+                    category: .hotkey,
+                    message: "Cleared the previous dictation off the clipboard so an early Cmd-V cannot paste it."
+                )
+            }
             soundEffects.playStart()
             overlay.show(message: .recording)
             isRecording = true
@@ -1200,6 +1225,29 @@ class AppState: ObservableObject {
         shouldPaste: Bool,
         shouldRecordDebugSnapshot: Bool
     ) async -> Bool {
+        // PAY BACK THE BET MADE AT RECORDING START.
+        //
+        // Recording start clears the previous dictation off the clipboard, on
+        // the assumption that a new transcript is about to replace it. When that
+        // assumption loses, on silence, a failed transcription, or a recording
+        // that produced no text, this puts the old words back. Without it,
+        // starting a dictation and getting "No sound detected" would silently
+        // destroy the dictation he had not pasted yet, and transcript archiving
+        // is off by default so there would be no other copy. Codex found this on
+        // 2026-08-05 and it was the sharpest of the three data-loss findings.
+        //
+        // A successful delivery clears the recovery slot itself, so this is a
+        // no-op on the happy path.
+        var deliveredNewText = false
+        defer {
+            if !deliveredNewText, textPaster.restoreClearedDictation() {
+                debugLogStore.record(
+                    category: .hotkey,
+                    message: "This recording produced no text, so the previous dictation was put back on the clipboard."
+                )
+            }
+        }
+
         let transcriptionResult = await transcribedTextForRecording(
             audioBuffer,
             recordingSessionCoordinator: recordingSessionCoordinator,
@@ -1296,7 +1344,18 @@ class AppState: ObservableObject {
             case .pasted:
                 break
             case .copiedToClipboard:
+                // The normal, successful outcome since 2026-08-05. The overlay
+                // is his READY SIGNAL, not a fallback notice: it is how he knows
+                // the clipboard now holds the words he just said rather than the
+                // ones before them.
+                deliveredNewText = true
                 showClipboardFallbackMessage()
+            case .deliveryFailed:
+                overlay.show(message: .cannotStart("The clipboard refused the text. Nothing was pasted."))
+                debugLogStore.record(
+                    category: .hotkey,
+                    message: "RAW clipboard write FAILED. His dictation did not reach the clipboard."
+                )
             case .blockedBySecureInput:
                 showSecureInputBlockedMessage()
             }

@@ -35,14 +35,22 @@ enum PermissionCensus {
         inputMonitoring: Bool,
         accessibility: Bool,
         microphone: Bool,
-        reason: String
+        reason: String,
+        accessibilityFunction: AccessibilityFunctionCheck.Verdict = .inconclusive
     ) -> String {
         // `canHearHotkey` is the pair that decides whether push-to-talk can work
         // at all. It is computed here rather than left to whoever reads the log,
         // because a reader deriving it is a reader who can derive it wrongly.
         let canHearHotkey = inputMonitoring || accessibility
+        // `accessibility` is the FLAG and `accessibilityFunction` is the
+        // CAPABILITY, and 2026-08-05 proved they are two different facts: the
+        // flag read true through a three-day total outage. Both are recorded,
+        // with the disagreement itself computed here so the probe does not have
+        // to know how to spot it.
         return prefix + "{"
             + "\"accessibility\":\(accessibility),"
+            + "\"accessibilityFunction\":\"\(AccessibilityFunctionCheck.description(of: accessibilityFunction))\","
+            + "\"accessibilityStale\":\(AccessibilityFunctionCheck.isStaleGrant(accessibilityFunction)),"
             + "\"canHearHotkey\":\(canHearHotkey),"
             + "\"inputMonitoring\":\(inputMonitoring),"
             + "\"microphone\":\(microphone),"
@@ -55,13 +63,22 @@ enum PermissionCensus {
     static func warning(
         inputMonitoring: Bool,
         accessibility: Bool,
-        microphone: Bool
+        microphone: Bool,
+        accessibilityFunction: AccessibilityFunctionCheck.Verdict = .inconclusive
     ) -> String? {
         if !microphone {
             return "AF Flow cannot use the microphone. Dictation will record silence until you grant it in System Settings, Privacy and Security, Microphone."
         }
         if !inputMonitoring && !accessibility {
             return "AF Flow cannot see your hotkey. Grant Input Monitoring in System Settings, Privacy and Security."
+        }
+        // AFTER the two that stop dictation working, and only when Accessibility
+        // is the grant actually carrying the hotkey. Codex, 2026-08-05: putting
+        // this first outranked the microphone warning, which is fatal, with one
+        // that may not matter at all. A single failed AX query does not prove a
+        // stale grant either, so this is worded as a suspicion, not a verdict.
+        if AccessibilityFunctionCheck.isStaleGrant(accessibilityFunction), !inputMonitoring {
+            return AccessibilityFunctionCheck.staleGrantWarning
         }
         if !inputMonitoring {
             // Not fatal, and deliberately not phrased as though it is: the event

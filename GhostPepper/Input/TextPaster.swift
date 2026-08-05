@@ -11,6 +11,10 @@ struct ClipboardState {
 enum PasteResult: Equatable {
     case pasted
     case copiedToClipboard
+    /// The clipboard write itself failed, so his words did not arrive anywhere.
+    /// Its own case because reporting it as success is the one outcome worse
+    /// than failing: the clipboard is now the only copy there is.
+    case deliveryFailed
     /// Secure Input is active, so no keystroke this app posts can reach the
     /// focused field. The text is on the clipboard and he can paste it himself.
     case blockedBySecureInput
@@ -23,7 +27,9 @@ enum PasteResult: Equatable {
         case .pasted:
             return "landed in the focused field"
         case .copiedToClipboard:
-            return "could not confirm a target, so the text is on the clipboard and Cmd-V will paste it again"
+            return "is on the clipboard, ready for Cmd-V"
+        case .deliveryFailed:
+            return "COULD NOT BE PUT ON THE CLIPBOARD. The words are lost"
         case .blockedBySecureInput:
             return "was blocked by Secure Input, so the text is on the clipboard only"
         }
@@ -104,9 +110,14 @@ final class TextPaster {
     /// - Parameter canPasteIntoFocusedElement: Overrides the Accessibility preflight with a
     ///   definite answer. `nil` uses the real preflight, which can also report that it could not
     ///   tell.
+    /// - Parameter pastePreflightOverride: Overrides the preflight with any of its three answers,
+    ///   including `.focusUnknown`. `canPasteIntoFocusedElement` cannot express that third state,
+    ///   and `.focusUnknown` is the one the 2026-08-05 outage lived in, so it needs a seam of its
+    ///   own. Takes precedence over `canPasteIntoFocusedElement` when both are given.
     init(
         pasteboard: NSPasteboard = .general,
         canPasteIntoFocusedElement: (() -> Bool)? = nil,
+        pastePreflightOverride: (() -> PastePreflight)? = nil,
         prepareCommandV: @escaping () -> (() -> Void)? = { TextPaster.defaultCommandVPasteAction() },
         pasteSessionProvider: @escaping PasteSessionProvider = { text, date in
             FocusedElementLocator().capturePasteSession(for: text, at: date)
@@ -117,7 +128,9 @@ final class TextPaster {
         isSecureInputEnabled: @escaping () -> Bool = { IsSecureEventInputEnabled() }
     ) {
         self.pasteboard = pasteboard
-        if let canPasteIntoFocusedElement {
+        if let pastePreflightOverride {
+            self.pastePreflight = pastePreflightOverride
+        } else if let canPasteIntoFocusedElement {
             self.pastePreflight = { canPasteIntoFocusedElement() ? .focusedInputAvailable : .noFocusedInput }
         } else {
             self.pastePreflight = { FocusedElementLocator().pastePreflight() }
@@ -202,83 +215,148 @@ final class TextPaster {
         pasteboard.writeObjects(pasteboardItems)
     }
 
-    // MARK: - Paste Flow
+    // MARK: - Delivery
 
-    /// Pastes the given text into the currently focused text field.
+    /// Puts the transcript on the clipboard. **It does not press Cmd-V.**
     ///
-    /// Flow:
-    /// 1. Save current clipboard
-    /// 2. Write text to clipboard
-    /// 3. After a short delay, simulate Cmd+V
-    /// 4. After another delay, restore the original clipboard, but only if the preflight found a
-    ///    real focused input to paste into
+    /// ANDREW CHANGED THE PRODUCT HERE ON 2026-08-05, and the reason is worth
+    /// keeping because it is not a workaround. Auto-insertion was in the spec
+    /// from 2026-07-18 ("cleaned text lands at the cursor of the frontmost app")
+    /// because AF Flow was framed as a replacement for Wispr Flow, which does
+    /// that. Asked directly, after three days of the paste refusing, he said he
+    /// WANTS to press Cmd-V himself, because he wants to choose the field the
+    /// text goes into rather than have it go wherever the cursor happened to be
+    /// when he released the key.
     ///
-    /// - Parameter text: The text to paste.
+    /// So the whole Accessibility insertion path is no longer the product. What
+    /// remains is one job: get his words onto the clipboard, quickly, and never
+    /// let the clipboard hold the WRONG dictation when he presses Cmd-V.
+    ///
+    /// That last clause is now the load-bearing one, and it is why the clipboard
+    /// is no longer saved and restored around this call. Restoring it existed to
+    /// undo an insertion that no longer happens, and it would now overwrite the
+    /// one copy of what he just said.
+    ///
+    /// The preflight, the Cmd-V event, and the Secure Input branch are all
+    /// deliberately still here and are deliberately no longer consulted for the
+    /// insertion decision. Deleting them is the next commit, after he has used
+    /// this for a day and confirmed he wants it. Reversing a behaviour is cheap;
+    /// reversing a deletion of the code that implemented it is not.
+    ///
+    /// - Parameter text: The transcript to make available.
     func paste(text: String) -> PasteResult {
         onPasteStart?()
 
-        // Secure Input is checked BEFORE preserving the clipboard, because the
-        // preservation exists only to survive a paste that is about to be
-        // refused. Doing it first spent the very latency this path was tuned to
-        // remove, on work guaranteed to be thrown away.
-        if isSecureInputEnabled() {
-            pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
-            print("TextPaster: Secure Input is active, so no synthetic keystroke can land. Text left on the clipboard.")
+        pasteboard.clearContents()
+        // THE RETURN VALUE IS CHECKED. Codex found this on 2026-08-05: ignoring
+        // it meant a failed write cleared his old clipboard, delivered nothing,
+        // and still reported success. With the clipboard now the ONLY copy of
+        // what he said, a delivery that silently did not happen is the worst
+        // failure this class can have.
+        guard pasteboard.setString(text, forType: .string) else {
             onPasteEnd?()
-            return .blockedBySecureInput
+            return .deliveryFailed
         }
 
-        let savedState = saveClipboard()
+        deliveredText = text
+        deliveredChangeCount = pasteboard.changeCount
+        // A new transcript has arrived, so the one held for recovery is no
+        // longer the most recent thing he said and must not come back later.
+        recoverableText = nil
+
+        // Still captured, because post-paste learning reads what he edits after
+        // the text arrives and that is unaffected by who pressed the keys.
+        if let pasteSession = pasteSessionProvider(text, Date()) {
+            onPaste?(pasteSession)
+        }
+
+        onPasteEnd?()
+        return .copiedToClipboard
+    }
+
+    /// The last transcript this class put on the clipboard.
+    private var deliveredText: String?
+
+    /// `NSPasteboard.changeCount` immediately after that write. **This, not
+    /// string equality, is what proves the clipboard is still ours.**
+    ///
+    /// Codex, 2026-08-05: comparing strings deletes HIS content whenever it
+    /// happens to match, and it matches more often than it sounds. He copies
+    /// the same sentence from somewhere else; a clipboard manager rewrites the
+    /// identical string; rich text carries the same plain representation. Every
+    /// one of those would have been read as "this is mine to throw away". The
+    /// change count cannot be spoofed by content: any write by anyone bumps it.
+    private var deliveredChangeCount: Int?
+
+    /// What `clearStaleDictationFromClipboard` took away, kept so it can be put
+    /// back. See that method and `restoreClearedDictation` for why.
+    private var recoverableText: String?
+
+    /// Removes the PREVIOUS dictation from the clipboard, called when a new
+    /// recording starts.
+    ///
+    /// The bug this exists for, measured across 237 of his real dictations on
+    /// 2026-08-05: it takes a median of 1.59 seconds from him releasing the key
+    /// to the transcript reaching the clipboard, 4.0 at the 90th percentile and
+    /// 11.8 at the worst. For that whole window the clipboard still holds the
+    /// last dictation, so a Cmd-V pressed a moment early pastes the wrong words
+    /// and looks exactly like the right ones arriving. He reported precisely
+    /// this. 93 of the 237 gave him over two seconds to lose that race.
+    ///
+    /// Clearing turns a silent wrong answer into an obvious empty one. Pasting
+    /// nothing is a mistake he can see; pasting last time's paragraph into a
+    /// message is one he cannot.
+    ///
+    /// It is deliberately conservative: it clears ONLY when the clipboard still
+    /// holds the exact text this class last wrote. If he has copied anything at
+    /// all since, his clipboard is his and is left alone.
+    @discardableResult
+    func clearStaleDictationFromClipboard() -> Bool {
+        guard let deliveredText,
+              let deliveredChangeCount,
+              pasteboard.changeCount == deliveredChangeCount else {
+            return false
+        }
+
+        // KEPT, NOT DESTROYED. Codex's third finding, and it was the sharpest:
+        // if the new recording produces nothing, an unconditional clear leaves
+        // him with an empty clipboard and the previous dictation gone for good.
+        // Transcript archiving is off by default, so there is no other copy.
+        // `restoreClearedDictation` puts it back in exactly that case.
+        recoverableText = deliveredText
+        pasteboard.clearContents()
+        self.deliveredText = nil
+        self.deliveredChangeCount = nil
+        return true
+    }
+
+    /// Puts the previous dictation back after a recording that produced nothing.
+    ///
+    /// Clearing at recording start is a bet that a new transcript is coming. When
+    /// that bet loses, on silence, a failed transcription, or a cancelled
+    /// recording, this pays it back. Without it, starting a dictation and
+    /// getting no sound would silently destroy the words he had not pasted yet.
+    ///
+    /// It refuses if anything has touched the clipboard since, because by then
+    /// whatever is there is newer than what we removed and is not ours to
+    /// overwrite.
+    @discardableResult
+    func restoreClearedDictation() -> Bool {
+        guard let recoverableText,
+              pasteboard.string(forType: .string) == nil else {
+            self.recoverableText = nil
+            return false
+        }
 
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-
-        let preflight = pastePreflight()
-
-        guard Self.shouldAttemptPaste(for: preflight) else {
-            // WHICH of the two refusals happened, because they need opposite
-            // fixes. On 2026-08-05 this path fired on 95% of his dictations, up
-            // from 20% three days earlier, and the log said only "could not
-            // confirm a target" — the same sentence for a missing text field and
-            // for a dead Accessibility grant.
-            onPasteRefused?("no focused input: preflight=\(preflight)")
-            onPasteEnd?()
-            return .copiedToClipboard
-        }
-        guard let postCommandV = prepareCommandV() else {
-            // The event tap could not be built. That is an Accessibility
-            // failure, not a missing text field, and rebuilding this app changes
-            // its code signature, which is exactly what resets that grant.
-            onPasteRefused?("could not build the Cmd-V event; Accessibility is the suspect")
-            onPasteEnd?()
-            return .copiedToClipboard
+        guard pasteboard.setString(recoverableText, forType: .string) else {
+            return false
         }
 
-        // Restoring the clipboard destroys the transcript, so it is only safe when the preflight
-        // found the input the keystroke lands in. After a duck-typed paste the text stays on the
-        // clipboard: a stale clipboard is an annoyance, losing dictated words is not.
-        let pasteTargetIsConfirmed = preflight == .focusedInputAvailable
-
-        schedule(Self.preKeystrokeDelay) { [weak self] in
-            postCommandV()
-
-            self?.schedule(Self.postKeystrokeDelay) { [weak self] in
-                guard let self else { return }
-
-                if let pasteSession = self.pasteSessionProvider(text, Date()) {
-                    self.onPaste?(pasteSession)
-                }
-
-                if pasteTargetIsConfirmed, let savedState = savedState {
-                    self.restoreClipboard(savedState)
-                }
-
-                self.onPasteEnd?()
-            }
-        }
-
-        return .pasted
+        deliveredText = recoverableText
+        deliveredChangeCount = pasteboard.changeCount
+        self.recoverableText = nil
+        return true
     }
 
     // MARK: - Accessibility Preflight
@@ -286,7 +364,27 @@ final class TextPaster {
     /// The Accessibility preflight is authoritative. The menu-bar duck-type answers "can this app
     /// paste at all", a per-app fact, so it may only break the tie when Accessibility saw no
     /// focused element; it must never overturn an answer of "there is no focused input right now".
-    private static func shouldAttemptPaste(for preflight: PastePreflight) -> Bool {
+    ///
+    /// **The blind branch, added 2026-08-05 on Andrew's decision.** When the
+    /// Accessibility grant has gone stale, `AXIsProcessTrusted()` keeps saying
+    /// yes while every real query returns nothing. The preflight then reports
+    /// `.focusUnknown` and the menu-bar duck-type, which is itself an AX query,
+    /// also returns false. Both tie-breakers are blind at once and the paste is
+    /// refused. That is what happened to 235 consecutive dictations between
+    /// 08-02 and 08-05.
+    ///
+    /// So a proven-dead Accessibility connection is treated as "I cannot look",
+    /// not as "there is nothing there", and Cmd-V is posted anyway. The cost if
+    /// the keystroke lands nowhere is a stale clipboard, which is what he had
+    /// anyway; the cost of refusing is his words. Codex's 2026-07-27 objection
+    /// to widening this still stands for the case it was about, an app with no
+    /// Paste command, and is not what this branch does: it fires only on
+    /// `.broken`, never on `.notTrusted` or `.inconclusive`, so an honestly
+    /// missing grant and an unanswerable question both still refuse.
+    private static func shouldAttemptPaste(
+        for preflight: PastePreflight,
+        accessibility: AccessibilityFunctionCheck.Verdict
+    ) -> Bool {
         switch preflight {
         case .focusedInputAvailable:
             return true
@@ -294,6 +392,7 @@ final class TextPaster {
             return false
         case .focusUnknown:
             return frontmostAppHasPasteMenuItem()
+                || AccessibilityFunctionCheck.isStaleGrant(accessibility)
         }
     }
 

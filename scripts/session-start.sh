@@ -39,6 +39,10 @@ echo "### Do the tests in the repo actually run"
 python3 scripts/test-registration-check.py 2>&1 | sed -n '3,$p'
 
 echo
+echo "### Does every spec line say who decided it"
+python3 scripts/spec-provenance-check.py 2>&1
+
+echo
 echo "======================================================================"
 echo " Now read STATE.md. Do NOT read PROGRESS.md whole."
 echo ""
