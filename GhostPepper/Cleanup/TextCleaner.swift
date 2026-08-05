@@ -411,10 +411,17 @@ final class TextCleaner {
                 )
             }
 
-            if Self.droppedTooMuch(input: text, output: deduplicatedText) {
+            // Two guards, because they catch different shapes. `droppedTooMuch`
+            // is a global ratio and cannot see a local deletion; `deletedSpokenRuns`
+            // is a local alignment and cannot see a uniform thinning.
+            let deletedRuns = Self.deletedSpokenRuns(input: text, output: deduplicatedText)
+            if Self.droppedTooMuch(input: text, output: deduplicatedText) || !deletedRuns.isEmpty {
+                let reason = deletedRuns.isEmpty
+                    ? "dropped too much of the transcription"
+                    : "deleted words he said: \(deletedRuns.map { "\"\($0)\"" }.joined(separator: ", "))"
                 debugLogger?(
                     .cleanup,
-                    "Cleanup dropped too much of the transcription, returning raw text instead."
+                    "Cleanup \(reason). Returning raw text instead, because losing his words is worse than losing the polish."
                 )
                 logCleanupTranscript(
                     prompt: activePrompt,
@@ -610,6 +617,82 @@ final class TextCleaner {
     ///
     /// Counts words rather than characters so that punctuation the model is
     /// explicitly allowed to add or remove cannot move the number.
+    /// Words he said that the cleanup removed outright.
+    ///
+    /// **`droppedTooMuch` structurally cannot catch this.** It compares total
+    /// word counts, so deleting "проанализируя их" from a 31-word sentence
+    /// leaves a 0.94 ratio and sails past a 0.75 floor. A global ratio cannot
+    /// see a local deletion.
+    ///
+    /// He reported one on 2026-08-05. Measuring his archive rather than fixing
+    /// only what he noticed found it was **9 of 50 dictations**, including
+    /// "and talent acquisition specialists" and "какие то сервисы которым" —
+    /// four content words each, gone, with the cleanup reporting success.
+    ///
+    /// Single-word drops are left alone deliberately. Four of the nine are one
+    /// word ("что", "и", "because", "максимально"), and removing a stutter or a
+    /// filler is the cleanup doing its job. Runs of two or more content words
+    /// are not that.
+    ///
+    /// Filler words do not count toward a run, so "um yes" to "yes" stays a
+    /// correct cleanup.
+    static func deletedSpokenRuns(input: String, output: String) -> [String] {
+        let spoken = contentTokens(input)
+        let cleaned = contentTokens(output)
+        guard spoken.count >= retentionCheckMinimumWords else { return [] }
+
+        // Longest common subsequence over normalised words; anything on the
+        // input side that no output word aligns to was deleted.
+        var lengths = Array(
+            repeating: Array(repeating: 0, count: cleaned.count + 1),
+            count: spoken.count + 1
+        )
+        for i in stride(from: spoken.count - 1, through: 0, by: -1) {
+            for j in stride(from: cleaned.count - 1, through: 0, by: -1) {
+                lengths[i][j] = spoken[i].normalised == cleaned[j].normalised
+                    ? lengths[i + 1][j + 1] + 1
+                    : max(lengths[i + 1][j], lengths[i][j + 1])
+            }
+        }
+
+        var runs: [String] = []
+        var current: [String] = []
+        var i = 0, j = 0
+        func closeRun() {
+            let content = current.filter { !Self.fillerWords.contains($0.lowercased()) }
+            if content.count >= 2 { runs.append(current.joined(separator: " ")) }
+            current = []
+        }
+        while i < spoken.count {
+            if j < cleaned.count, spoken[i].normalised == cleaned[j].normalised {
+                closeRun()
+                i += 1; j += 1
+            } else if j < cleaned.count, lengths[i + 1][j] >= lengths[i][j + 1] {
+                current.append(spoken[i].original)
+                i += 1
+            } else if j < cleaned.count {
+                j += 1
+            } else {
+                current.append(spoken[i].original)
+                i += 1
+            }
+        }
+        closeRun()
+        return runs
+    }
+
+    /// Words that carry no meaning, so removing them is the cleanup working.
+    static let fillerWords: Set<String> = [
+        "um", "uh", "er", "ah", "hmm", "mm", "like", "so", "well", "okay", "ok",
+        "yeah", "right", "just",
+        "ну", "вот", "это", "эээ", "ааа", "бы", "там", "типа", "значит", "короче"
+    ]
+
+    private static func contentTokens(_ text: String) -> [(original: String, normalised: String)] {
+        text.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map { (String($0), String($0).lowercased()) }
+    }
+
     static func droppedTooMuch(input: String, output: String) -> Bool {
         let inputWords = wordCount(input)
         guard inputWords >= retentionCheckMinimumWords else { return false }
