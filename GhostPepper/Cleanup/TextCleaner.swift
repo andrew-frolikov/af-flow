@@ -396,7 +396,7 @@ final class TextCleaner {
             // doubled output would sail through it: repeating his words keeps 200 per
             // cent of them, and a guard that only looks downward cannot see that.
             let trimmedOfRepeats = Self.withoutRepeatedCopy(sanitizedText, spokenInput: text)
-            let deduplicatedText = Self.restoringCommasRemovedFromSpeech(trimmedOfRepeats, spokenInput: text)
+            var deduplicatedText = Self.restoringCommasRemovedFromSpeech(trimmedOfRepeats, spokenInput: text)
             if trimmedOfRepeats != sanitizedText {
                 debugLogger?(
                     .cleanup,
@@ -415,10 +415,28 @@ final class TextCleaner {
             // is a global ratio and cannot see a local deletion; `deletedSpokenRuns`
             // is a local alignment and cannot see a uniform thinning.
             let deletedRuns = Self.deletedSpokenRuns(input: text, output: deduplicatedText)
-            if Self.droppedTooMuch(input: text, output: deduplicatedText) || !deletedRuns.isEmpty {
-                let reason = deletedRuns.isEmpty
+
+            // Put the words back before considering the raw fallback. Handing him
+            // an unpunctuated transcript because the model dropped two words costs
+            // him the thing the cleanup exists for, on 10% of his dictations, and
+            // he said that is not acceptable. Restoration only happens where the
+            // flanking words are still adjacent, so the position is unambiguous;
+            // where it is not, this returns nil and the raw text wins.
+            if !deletedRuns.isEmpty,
+               let restored = Self.restoringWordsDeletedFromSpeech(deduplicatedText, spokenInput: text),
+               Self.deletedSpokenRuns(input: text, output: restored).isEmpty {
+                debugLogger?(
+                    .cleanup,
+                    "Cleanup deleted \(deletedRuns.map { "\"\($0)\"" }.joined(separator: ", ")) and they were put back between the words he said around them. Punctuation kept."
+                )
+                deduplicatedText = restored
+            }
+
+            let remainingRuns = Self.deletedSpokenRuns(input: text, output: deduplicatedText)
+            if Self.droppedTooMuch(input: text, output: deduplicatedText) || !remainingRuns.isEmpty {
+                let reason = remainingRuns.isEmpty
                     ? "dropped too much of the transcription"
-                    : "deleted words he said: \(deletedRuns.map { "\"\($0)\"" }.joined(separator: ", "))"
+                    : "deleted words he said and they could not be placed back unambiguously: \(remainingRuns.map { "\"\($0)\"" }.joined(separator: ", "))"
                 debugLogger?(
                     .cleanup,
                     "Cleanup \(reason). Returning raw text instead, because losing his words is worse than losing the polish."
@@ -679,6 +697,98 @@ final class TextCleaner {
         }
         closeRun()
         return runs
+    }
+
+    /// Puts back a run of words the cleanup deleted, where it is safe to do so.
+    ///
+    /// Returning the raw ASR text whenever a deletion is found — which is what
+    /// this replaces — costs him the punctuation and casing the cleanup exists
+    /// for, on 10% of his dictations. He said that is not acceptable, and he is
+    /// right: the answer to "the model deleted two words" should not be "here is
+    /// your unpunctuated transcript".
+    ///
+    /// **This is the same rule as `restoringCommasRemovedFromSpeech`, which is
+    /// the point.** A deleted run is put back only where the words that flanked
+    /// it are STILL NEXT TO EACH OTHER in the output. If the cleanup restructured
+    /// that part of the sentence, the flanks are no longer adjacent, there is no
+    /// unambiguous place to put the words, and nothing is inserted — the caller
+    /// falls back to raw text for that dictation. So it cannot fight a
+    /// legitimate rewrite, and it cannot invent a position.
+    ///
+    /// Returns nil when a run could not be placed, so the caller can tell
+    /// "restored everything" from "give him the raw text".
+    static func restoringWordsDeletedFromSpeech(_ cleaned: String, spokenInput: String) -> String? {
+        let runs = deletedSpokenRuns(input: spokenInput, output: cleaned)
+        guard !runs.isEmpty else { return cleaned }
+
+        let spokenWords = contentTokens(spokenInput)
+        var output = cleaned
+
+        for run in runs {
+            let runWords = run.split(separator: " ").map(String.init)
+            guard let start = indexOfRun(runWords, in: spokenWords) else { return nil }
+
+            let before = start > 0 ? spokenWords[start - 1].original : nil
+            let after = start + runWords.count < spokenWords.count
+                ? spokenWords[start + runWords.count].original
+                : nil
+
+            guard let placed = inserting(run, between: before, and: after, into: output) else {
+                return nil
+            }
+            output = placed
+        }
+        return output
+    }
+
+    /// Finds where a deleted run sits in what he said.
+    private static func indexOfRun(
+        _ run: [String],
+        in words: [(original: String, normalised: String)]
+    ) -> Int? {
+        guard !run.isEmpty, run.count <= words.count else { return nil }
+        let needle = run.map { $0.lowercased() }
+        for start in 0...(words.count - run.count) {
+            if (0..<run.count).allSatisfy({ words[start + $0].normalised == needle[$0] }) {
+                return start
+            }
+        }
+        return nil
+    }
+
+    /// Inserts the run between two anchor words, but ONLY where those anchors are
+    /// still adjacent in the output.
+    ///
+    /// Adjacency is what makes the position unambiguous. Without it this would be
+    /// guessing where his words belong, and a wrong guess is worse than the
+    /// deletion because it reads as something he said.
+    private static func inserting(
+        _ run: String,
+        between before: String?,
+        and after: String?,
+        into output: String
+    ) -> String? {
+        // BOTH anchors, always. A run at the very start or end of what he said
+        // has only one neighbour, and placing it against a single anchor is a
+        // guess: the first version of this prepended an entire deleted clause to
+        // a restructured sentence, producing text he never said in that position.
+        // One anchor is not a position, so those cases fall back to raw text.
+        guard let before, let after,
+              let beforeRange = wordRange(of: before, in: output) else { return nil }
+
+        let tail = output[beforeRange.upperBound...]
+        let between = tail.prefix { !$0.isLetter && !$0.isNumber }
+        let rest = tail.dropFirst(between.count)
+        // The anchors must be neighbours: only separators may sit between them.
+        guard rest.lowercased().hasPrefix(after.lowercased()) else { return nil }
+
+        return output.replacingCharacters(
+            in: beforeRange, with: "\(output[beforeRange]) \(run)"
+        )
+    }
+
+    private static func wordRange(of word: String, in text: String) -> Range<String.Index>? {
+        text.range(of: word, options: [.caseInsensitive])
     }
 
     /// Words that carry no meaning, so removing them is the cleanup working.

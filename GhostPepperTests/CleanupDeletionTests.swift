@@ -158,7 +158,7 @@ final class CleanupDeletionTests: XCTestCase {
         try XCTSkipUnless(FileManager.default.fileExists(atPath: staged.path), "nothing staged")
 
         let entries = try JSONDecoder().decode([Entry].self, from: Data(contentsOf: staged))
-        var considered = 0, fired = 0
+        var considered = 0, fired = 0, rescued = 0
         for entry in entries {
             guard let raw = entry.rawTranscription, let cleaned = entry.correctedTranscription,
                   !raw.isEmpty, !cleaned.isEmpty else { continue }
@@ -166,14 +166,91 @@ final class CleanupDeletionTests: XCTestCase {
             let runs = TextCleaner.deletedSpokenRuns(input: raw, output: cleaned)
             if !runs.isEmpty {
                 fired += 1
-                print("DELETION \(runs.map { "\"\($0)\"" }.joined(separator: ", "))")
+                let restored = TextCleaner.restoringWordsDeletedFromSpeech(cleaned, spokenInput: raw)
+                let placed = restored.map {
+                    TextCleaner.deletedSpokenRuns(input: raw, output: $0).isEmpty
+                } ?? false
+                if placed { rescued += 1 }
+                print("DELETION \(placed ? "RESTORED" : "raw text  ") \(runs.map { "\"\($0)\"" }.joined(separator: ", "))")
             }
         }
         let rate = considered > 0 ? Double(fired) / Double(considered) : 0
         print("DELETION RATE \(fired) of \(considered) dictations, \(Int(rate * 100))%")
+        print("DELETION RESTORED \(rescued) of \(fired); raw text only for \(fired - rescued)")
 
         // If this ever fires on most of his dictations the guard has become the
         // problem. Not a tuning knob: a tripwire on the design.
         XCTAssertLessThan(rate, 0.5, "the guard fires on half his dictations; it is too aggressive")
+    }
+
+    // MARK: - Putting the words back
+
+    /// The one he noticed, restored WITH the punctuation kept.
+    func testTheDeletionHeNoticedIsPutBack() {
+        let spoken = "ниже мои заметки про боли моего брата в компании проанализируя их "
+            + "задай вопросы если что то непонятно"
+        let cleaned = "Ниже мои заметки про боли моего брата в компании, "
+            + "задай вопросы, если что-то непонятно."
+
+        let restored = TextCleaner.restoringWordsDeletedFromSpeech(cleaned, spokenInput: spoken)
+
+        XCTAssertNotNil(restored)
+        XCTAssertTrue(restored!.contains("проанализируя их"), restored ?? "nil")
+        XCTAssertTrue(restored!.contains("Ниже"), "the cleanup's capitalisation must survive")
+        XCTAssertTrue(restored!.contains("что-то непонятно."), "its punctuation must survive")
+        XCTAssertEqual(TextCleaner.deletedSpokenRuns(input: spoken, output: restored!), [])
+    }
+
+    func testTheEnglishRunIsPutBack() {
+        let spoken = "we need to hire more recruiters and talent acquisition specialists "
+            + "before the end of the quarter"
+        let cleaned = "We need to hire more recruiters before the end of the quarter."
+
+        let restored = TextCleaner.restoringWordsDeletedFromSpeech(cleaned, spokenInput: spoken)
+
+        XCTAssertNotNil(restored)
+        XCTAssertTrue(restored!.contains("and talent acquisition specialists"), restored ?? "nil")
+        XCTAssertEqual(TextCleaner.deletedSpokenRuns(input: spoken, output: restored!), [])
+    }
+
+    /// **The safety rule.** If the cleanup restructured the sentence, the words
+    /// that flanked the deletion are no longer neighbours, there is no
+    /// unambiguous place to put the run, and nothing is guessed. nil tells the
+    /// caller to fall back to raw text.
+    func testARestructuredSentenceIsNotGuessedAt() {
+        let spoken = "we need to hire more recruiters and talent acquisition specialists "
+            + "before the end of the quarter"
+        let cleaned = "Before the quarter ends, more recruiters are needed."
+
+        XCTAssertNil(
+            TextCleaner.restoringWordsDeletedFromSpeech(cleaned, spokenInput: spoken),
+            "a heavy rewrite has no unambiguous slot; guessing one produces text he never said"
+        )
+    }
+
+    /// A cleanup that deleted nothing is returned untouched, so restoration
+    /// never becomes a rewrite of its own.
+    func testACleanCleanupPassesThroughUnchanged() {
+        let spoken = "send the report to the team before the meeting starts this afternoon"
+        let cleaned = "Send the report to the team before the meeting starts this afternoon."
+
+        XCTAssertEqual(
+            TextCleaner.restoringWordsDeletedFromSpeech(cleaned, spokenInput: spoken),
+            cleaned
+        )
+    }
+
+    /// Both runs come back when the model made two separate cuts.
+    func testTwoSeparateDeletionsAreBothPutBack() {
+        let spoken = "first we remove the old system and then we install the new one "
+            + "and after that we tell the whole team about it"
+        let cleaned = "First we and then we install the new one, "
+            + "and after that we tell about it."
+
+        let restored = TextCleaner.restoringWordsDeletedFromSpeech(cleaned, spokenInput: spoken)
+
+        XCTAssertNotNil(restored)
+        XCTAssertEqual(TextCleaner.deletedSpokenRuns(input: spoken, output: restored!), [],
+                       "got \(restored ?? "nil")")
     }
 }
