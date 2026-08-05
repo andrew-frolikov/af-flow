@@ -38,7 +38,32 @@ LOG = os.path.join(CONTAINER, "debug-log.jsonl")
 # since. The store migrates the array into the line file on first launch, so
 # this fallback stops the probe going blind in the window between the two.
 LEGACY_LOG = os.path.join(CONTAINER, "debug-log.json")
-LAB = os.path.join(CONTAINER, "transcription-lab", "transcription-lab-index.json")
+LAB = os.path.join(CONTAINER, "transcription-lab", "transcription-lab-index.jsonl")
+# The pre-2026-08-04 single-array archive. Read only if the new one is absent.
+LAB_LEGACY = os.path.join(CONTAINER, "transcription-lab", "transcription-lab-index.json")
+
+
+def load_lab():
+    """The lab index, in whichever format is on disk.
+
+    It became append-only JSONL on 2026-08-04 and this probe kept reading the
+    old array, so the lab section silently went blank: the instrument losing
+    sight of the thing it exists to watch, which is the same failure it is here
+    to catch.
+    """
+    if os.path.exists(LAB):
+        rows = []
+        with open(LAB, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    continue
+        return rows
+    return load(LAB_LEGACY)
 
 # CFAbsoluteTime is seconds since 2001-01-01 UTC.
 EPOCH = datetime.datetime(2001, 1, 1, tzinfo=datetime.timezone.utc)
@@ -270,6 +295,56 @@ def probe_settings():
         print("  could not read the app's bindings: %s" % error)
 
 
+def probe_paste(entries):
+    """Did his words actually reach the field he was typing into?
+
+    Added 2026-08-05. Every instrument here pointed at TRANSCRIPTION, because
+    that is where the previous defects were, so a 95% failure on the LAST step
+    of the pipeline sat in plain text in this log for two days and nobody
+    counted it. He reported it as "it didn't catch the last part": each
+    dictation overwrites the clipboard, so a run of chunks that never paste
+    leaves only the last one behind.
+    """
+    section("Did the text actually land, from debug-log.jsonl")
+    landed = refused = secure = 0
+    reasons = {}
+    for entry in entries:
+        message = entry.get("message", "")
+        if "landed in the focused field" in message:
+            landed += 1
+        elif "could not confirm a target" in message:
+            refused += 1
+        elif "blocked by Secure Input" in message:
+            secure += 1
+        elif message.startswith("Paste refused: "):
+            reason = message[len("Paste refused: "):][:60]
+            reasons[reason] = reasons.get(reason, 0) + 1
+
+    total = landed + refused + secure
+    if total == 0:
+        print("  no paste outcomes recorded yet.")
+        return
+
+    rate = 100.0 * refused / total
+    print("  %d paste(s): %d landed, %d refused, %d blocked by Secure Input"
+          % (total, landed, refused, secure))
+    if rate >= 25:
+        print("  %.0f%% NEVER REACHED A FIELD  <== his words only went to the clipboard."
+              % rate)
+        print("     Each dictation overwrites it, so a run of them leaves only the last.")
+    elif refused:
+        print("  %.0f%% refused." % rate)
+    else:
+        print("  every paste landed.  ok")
+
+    if reasons:
+        print("  why they were refused:")
+        for reason, count in sorted(reasons.items(), key=lambda r: -r[1]):
+            print("    %4d  %s" % (count, reason))
+    elif refused:
+        print("  (no reason recorded; that logging landed 2026-08-05, so these predate it)")
+
+
 def probe_bundles():
     section("Bundle identity")
     try:
@@ -335,8 +410,10 @@ def main():
     if since:
         print("since %s" % since.strftime("%a %Y-%m-%d %H:%M"))
 
-    probe_log(load_log(), since)
-    probe_lab(load(LAB), since)
+    log_entries = load_log()
+    probe_log(log_entries, since)
+    probe_lab(load_lab(), since)
+    probe_paste(log_entries)
     probe_settings()
     probe_bundles()
     print("\nThis reads what the app did. The test suite reads what it was told to do.")

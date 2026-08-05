@@ -37,6 +37,9 @@ final class TextPaster {
     typealias PasteSessionProvider = @Sendable (String, Date) -> PasteSession?
     typealias PasteScheduler = (TimeInterval, @escaping () -> Void) -> Void
 
+    /// Why a paste was refused. Two refusals share one log sentence otherwise.
+    var onPasteRefused: ((String) -> Void)?
+
     struct AccessibilitySnapshot {
         let role: String?
         let isEnabled: Bool?
@@ -233,7 +236,21 @@ final class TextPaster {
 
         let preflight = pastePreflight()
 
-        guard Self.shouldAttemptPaste(for: preflight), let postCommandV = prepareCommandV() else {
+        guard Self.shouldAttemptPaste(for: preflight) else {
+            // WHICH of the two refusals happened, because they need opposite
+            // fixes. On 2026-08-05 this path fired on 95% of his dictations, up
+            // from 20% three days earlier, and the log said only "could not
+            // confirm a target" — the same sentence for a missing text field and
+            // for a dead Accessibility grant.
+            onPasteRefused?("no focused input: preflight=\(preflight)")
+            onPasteEnd?()
+            return .copiedToClipboard
+        }
+        guard let postCommandV = prepareCommandV() else {
+            // The event tap could not be built. That is an Accessibility
+            // failure, not a missing text field, and rebuilding this app changes
+            // its code signature, which is exactly what resets that grant.
+            onPasteRefused?("could not build the Cmd-V event; Accessibility is the suspect")
             onPasteEnd?()
             return .copiedToClipboard
         }

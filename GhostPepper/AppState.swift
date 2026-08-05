@@ -618,6 +618,13 @@ class AppState: ObservableObject {
         )
         persistShortcutBindingsIfNeeded()
         hotkeyMonitor.updateBindings(shortcutBindings)
+        // Why a paste was refused, not just that it was. Added 2026-08-05, when a
+        // 95% refusal rate had been sitting in the log for two days under a
+        // sentence that could not tell a missing text field from a dead
+        // Accessibility grant.
+        self.textPaster.onPasteRefused = { [weak self] reason in
+            self?.debugLogStore.record(category: .hotkey, message: "Paste refused: \(reason)")
+        }
         self.textPaster.onPaste = { [postPasteLearningCoordinator = self.postPasteLearningCoordinator] session in
             postPasteLearningCoordinator.handlePaste(session)
         }
