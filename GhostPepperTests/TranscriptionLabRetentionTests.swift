@@ -258,4 +258,58 @@ final class TranscriptionLabRetentionTests: XCTestCase {
 
         XCTAssertEqual(try subject.loadEntries().count, 1)
     }
+
+    /// Migrates his REAL archive, not a synthetic one.
+    ///
+    /// The synthetic migration test above uses entries this file built. His
+    /// actual 50 recordings carry OCR window context, diarization summaries and
+    /// optional fields that a hand-made fixture does not, and a migration that
+    /// only works on tidy data is exactly the shape this project keeps shipping.
+    /// So this points the real store at a COPY of his real archive and counts.
+    ///
+    /// Reads a copy and writes only inside a temp directory; his archive is
+    /// never touched. Needs `scripts/stage-language-replay.sh` first.
+    /// SKIPPED unless `TEST_RUNNER_AF_FLOW_VERIFY_REAL_ARCHIVE=1`.
+    func testHisRealArchiveMigratesWithoutLosingAnEntry() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["AF_FLOW_VERIFY_REAL_ARCHIVE"] == "1",
+            "set TEST_RUNNER_AF_FLOW_VERIFY_REAL_ARCHIVE=1 and stage first"
+        )
+
+        let staged = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("GhostPepper/replay", isDirectory: true)
+        let legacy = staged.appendingPathComponent("transcription-lab-index.json")
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: legacy.path),
+                          "nothing staged at \(staged.path)")
+
+        let expected = try JSONDecoder()
+            .decode([TranscriptionLabEntry].self, from: Data(contentsOf: legacy))
+        XCTAssertGreaterThan(expected.count, 0)
+
+        let work = makeFixture()
+        try FileManager.default.copyItem(
+            at: legacy, to: work.appendingPathComponent("transcription-lab-index.json")
+        )
+
+        // His real entries span months, so the clock is pinned just after the
+        // newest one. A real `now` would expire the older ones and the count
+        // would not match for a reason that is policy rather than migration.
+        let newest = expected.map(\.createdAt).max() ?? Date()
+        let subject = TranscriptionLabStore(
+            directoryURL: work, now: { newest.addingTimeInterval(60) }
+        )
+
+        let migrated = try subject.loadEntries()
+        XCTAssertEqual(migrated.count, expected.count,
+                       "his real archive lost entries in migration")
+        XCTAssertEqual(Set(migrated.map(\.id)), Set(expected.map(\.id)),
+                       "the migrated ids are not the same set")
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: work.appendingPathComponent("transcription-lab-index.jsonl").path
+            )
+        )
+        print("REAL ARCHIVE migrated \(migrated.count) of \(expected.count) entries")
+    }
 }
