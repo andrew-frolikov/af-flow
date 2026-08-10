@@ -1,3 +1,5 @@
+import AVFoundation
+import AppKit
 import AudioToolbox
 import XCTest
 @testable import GhostPepper
@@ -315,5 +317,383 @@ final class MonoRingBufferTests: XCTestCase {
             3,
             "The three frames that did not fit must be reported. Counting them as zero is a metric that says the run was clean while audio was lost."
         )
+    }
+}
+
+/// THE 2026-08-09 OUTAGE.
+///
+/// `AudioRecorder` keeps one `AVAudioEngine` alive across every dictation and
+/// rebuilds it only when Andrew changes the microphone in Settings. On
+/// 2026-08-09 the Mac woke from sleep at 22:03:25, the AirPods connected and
+/// became the system input, and the running engine's input path was invalidated
+/// underneath it. Every dictation after that installed a fresh tap on a dead
+/// path: `engine.start()` returned success, `Recording started.` was logged, and
+/// the tap delivered no frames. Six in a row, over 103 seconds on the first.
+///
+/// The protection used to exist. Commit `9c4e2a4` (2026-04-17) deleted it for
+/// startup latency, along with the comment that predicted exactly this:
+/// "AVAudioEngine does not reliably recover when the default input device or its
+/// sample rate changes between sessions (Bluetooth mics flipping between
+/// HFP/A2DP profiles is the common trigger)."
+///
+/// These tests hold the line that the engine is rebuilt whenever anything could
+/// have invalidated its input path, and that the observers which detect that
+/// survive the rebuild.
+final class AudioRecorderEngineInvalidationTests: XCTestCase {
+    func testAFreshRecorderHasNothingToRebuild() {
+        let recorder = AudioRecorder()
+
+        XCTAssertNil(recorder.pendingEngineInvalidationReason)
+    }
+
+    func testInvalidatingRecordsWhyTheEngineCannotBeTrusted() {
+        let recorder = AudioRecorder()
+
+        recorder.invalidateEngine(reason: "the machine woke")
+
+        XCTAssertEqual(recorder.pendingEngineInvalidationReason, "the machine woke")
+    }
+
+    /// A wake and a device change arrive as two separate notifications for one
+    /// physical event. The log has to name both, or the next person debugging
+    /// this sees only whichever fired last.
+    func testSeveralCausesBeforeTheNextRecordingAreAllReported() {
+        let recorder = AudioRecorder()
+
+        recorder.invalidateEngine(reason: "the machine woke")
+        recorder.invalidateEngine(reason: "the default input device changed")
+
+        XCTAssertEqual(
+            recorder.pendingEngineInvalidationReason,
+            "the machine woke, the default input device changed"
+        )
+    }
+
+    func testTheSameCauseTwiceIsNotReportedTwice() {
+        let recorder = AudioRecorder()
+
+        recorder.invalidateEngine(reason: "the machine woke")
+        recorder.invalidateEngine(reason: "the machine woke")
+
+        XCTAssertEqual(recorder.pendingEngineInvalidationReason, "the machine woke")
+    }
+
+    func testRebuildingClearsTheReasonSoTheNextRecordingDoesNotRebuildAgain() {
+        let recorder = AudioRecorder()
+        recorder.invalidateEngine(reason: "the machine woke")
+
+        recorder.rebuildEngineIfInvalidated()
+
+        XCTAssertNil(recorder.pendingEngineInvalidationReason)
+    }
+
+    func testRebuildingIsSkippedEntirelyWhenNothingInvalidatedTheEngine() {
+        let recorder = AudioRecorder()
+        let generationBefore = recorder.engineGeneration
+
+        recorder.rebuildEngineIfInvalidated()
+
+        XCTAssertEqual(
+            recorder.engineGeneration,
+            generationBefore,
+            "Rebuilding a healthy engine would throw away the prewarm and slow every hotkey press."
+        )
+    }
+
+    func testRebuildingReplacesTheEngine() {
+        let recorder = AudioRecorder()
+        let generationBefore = recorder.engineGeneration
+        recorder.invalidateEngine(reason: "the machine woke")
+
+        recorder.rebuildEngineIfInvalidated()
+
+        XCTAssertEqual(recorder.engineGeneration, generationBefore + 1)
+    }
+
+    /// THE BUG THIS TEST EXISTS FOR: registering the configuration-change
+    /// observer once, in `init`, against the engine that existed then. After the
+    /// first rebuild the observer would be watching a discarded engine and the
+    /// app would be blind again — the exact state it was in on 2026-08-09, just
+    /// reached one rebuild later. Verified by deliberately registering only in
+    /// `init` and watching this fail.
+    func testTheConfigurationChangeObserverFollowsTheEngineAcrossRebuilds() {
+        let recorder = AudioRecorder()
+
+        recorder.invalidateEngine(reason: "the machine woke")
+        recorder.rebuildEngineIfInvalidated()
+
+        XCTAssertEqual(
+            recorder.configurationChangeObservedGeneration,
+            recorder.engineGeneration,
+            "The observer must be re-registered against the engine that now exists, not the one that was discarded."
+        )
+    }
+
+    func testAConfigurationChangeOnTheLiveEngineInvalidatesIt() {
+        let recorder = AudioRecorder()
+
+        NotificationCenter.default.post(
+            name: .AVAudioEngineConfigurationChange,
+            object: recorder.test_currentEngine
+        )
+
+        XCTAssertNotNil(
+            recorder.pendingEngineInvalidationReason,
+            "AVFAudio telling us the graph was reconfigured is the one signal that arrives for a Bluetooth mic coming back on a different route."
+        )
+    }
+
+    func testWakingFromSleepInvalidatesTheEngine() {
+        let recorder = AudioRecorder()
+
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+
+        XCTAssertNotNil(recorder.pendingEngineInvalidationReason)
+    }
+
+    // MARK: - Route signature
+    //
+    // CODEX ROUND 1, P1, 2026-08-09. The notification observers above do not
+    // close the hole on their own. `AVAudioEngineConfigurationChange` is posted
+    // by AVFAudio while the graph is RENDERING, and between dictations this
+    // engine is stopped. So a Bluetooth mic that flips HFP/A2DP profile, or an
+    // aggregate device that changes rate, while the engine sits idle fires
+    // nothing: no configuration change (not rendering), no default-device change
+    // (the ID is the same, and the app is pinned to a UID anyway), and no wake.
+    // The next recording then reuses the stale graph and captures zero frames,
+    // which is the exact failure the patch exists to prevent.
+    //
+    // The answer is not another notification. It is to stop trusting the engine
+    // and check the route's shape against the shape it was built for.
+
+    func testAnUnchangedRouteDoesNotForceARebuild() {
+        let route = InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1)
+
+        XCTAssertFalse(
+            AudioRecorder.inputRouteChanged(from: route, to: route),
+            "Rebuilding a healthy engine throws away the prewarm and slows every hotkey press."
+        )
+    }
+
+    func testASampleRateFlipForcesARebuild() {
+        XCTAssertTrue(
+            AudioRecorder.inputRouteChanged(
+                from: InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1),
+                to: InputRouteSignature(deviceID: 73, sampleRate: 24000, channelCount: 1)
+            ),
+            "48 kHz to 24 kHz is the AirPods HFP flip, named in the comment commit 9c4e2a4 deleted."
+        )
+    }
+
+    func testAChannelCountChangeForcesARebuild() {
+        XCTAssertTrue(
+            AudioRecorder.inputRouteChanged(
+                from: InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1),
+                to: InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 2)
+            )
+        )
+    }
+
+    func testTheSameDeviceComingBackWithADifferentIDForcesARebuild() {
+        XCTAssertTrue(
+            AudioRecorder.inputRouteChanged(
+                from: InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1),
+                to: InputRouteSignature(deviceID: 91, sampleRate: 48000, channelCount: 1)
+            )
+        )
+    }
+
+    func testTheFirstRecordingHasNothingToCompareAgainstAndDoesNotRebuild() {
+        XCTAssertFalse(
+            AudioRecorder.inputRouteChanged(
+                from: nil,
+                to: InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1)
+            ),
+            "A fresh engine is already correct for whatever route exists now."
+        )
+    }
+
+    func testAnUnreadableRouteIsNotTreatedAsAChange() {
+        XCTAssertFalse(
+            AudioRecorder.inputRouteChanged(
+                from: InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1),
+                to: nil
+            ),
+            "Failing to read the device tells us nothing, and guessing 'changed' would rebuild on every hotkey press whenever the read is flaky."
+        )
+    }
+
+    // CODEX ROUND 2, P1, 2026-08-09. The comparison above is only as good as the
+    // baseline it compares against, and the baseline was being thrown away in
+    // two places: `rebuildEngine()` cleared it, and `prewarm()` never set one.
+    // Either way the NEXT recording had nothing to compare against, so a profile
+    // flip in that window went undetected and the stale graph was reused — the
+    // original failure, one recording later. These tests drive the baseline
+    // through the injected route provider so they do not depend on whatever
+    // microphone the test host happens to have.
+
+    private func recorder(onRoute route: InputRouteSignature?) -> AudioRecorder {
+        let recorder = AudioRecorder()
+        recorder.routeSignatureProvider = { _ in route }
+        return recorder
+    }
+
+    func testPrewarmingRecordsTheRouteTheEngineWasBoundTo() {
+        let route = InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1)
+        let recorder = recorder(onRoute: route)
+
+        recorder.prewarm()
+
+        XCTAssertEqual(
+            recorder.engineBuiltForRoute,
+            route,
+            "Without a baseline at prewarm, a flip between launch and the first dictation is invisible."
+        )
+    }
+
+    func testTheBaselineSurvivesARebuildSoTheVeryNextRecordingCanStillDetectAFlip() {
+        let route = InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1)
+        let recorder = recorder(onRoute: route)
+        recorder.prewarm()
+
+        recorder.invalidateEngine(reason: "the machine woke from sleep")
+        recorder.rebuildEngineIfInvalidated()
+
+        XCTAssertEqual(
+            recorder.engineBuiltForRoute,
+            route,
+            "A rebuild binds a new engine to the current route. Clearing the baseline blinds the next recording."
+        )
+    }
+
+    func testAFlipImmediatelyAfterARebuildIsStillCaught() {
+        let recorder = AudioRecorder()
+        var route = InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1)
+        recorder.routeSignatureProvider = { _ in route }
+        recorder.prewarm()
+        recorder.invalidateEngine(reason: "the machine woke from sleep")
+        recorder.rebuildEngineIfInvalidated()
+
+        route = InputRouteSignature(deviceID: 73, sampleRate: 24000, channelCount: 1)
+        recorder.invalidateIfRouteChanged()
+
+        XCTAssertEqual(
+            recorder.pendingEngineInvalidationReason,
+            "the input route changed shape (48000Hz/1ch → 24000Hz/1ch)"
+        )
+    }
+
+    func testAStableRouteAfterARebuildDoesNotRebuildAgain() {
+        let route = InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1)
+        let recorder = recorder(onRoute: route)
+        recorder.prewarm()
+        recorder.invalidateEngine(reason: "the machine woke from sleep")
+        recorder.rebuildEngineIfInvalidated()
+        let generationAfterRebuild = recorder.engineGeneration
+
+        recorder.invalidateIfRouteChanged()
+        recorder.rebuildEngineIfInvalidated()
+
+        XCTAssertEqual(
+            recorder.engineGeneration,
+            generationAfterRebuild,
+            "Rebuilding twice for one event would cost the prewarm on the hotkey press right after a wake."
+        )
+    }
+
+    // MARK: - Capture telemetry
+    //
+    // On 2026-08-09 the single most diagnostic number — how many samples the tap
+    // actually delivered — went to `print`, and a GUI app launched from Finder
+    // has stdout on /dev/null. The unified log had no GhostPepper output at all.
+    // So the six failed dictations left behind a durable log that recorded the
+    // hotkey, the recording, and the empty result, and nothing that said the
+    // microphone had delivered zero frames. These tests pin the line that gets
+    // written instead.
+
+    func testCaptureSummaryNamesADeadMicrophoneWhenNoCallbacksArrived() {
+        let report = CaptureReport(
+            inputFormatDescription: "48000Hz/1ch",
+            holdDuration: 103.0,
+            tapCallbacks: 0,
+            convertedChunks: 0,
+            sampleCount: 0,
+            maxAmplitude: 0
+        )
+
+        XCTAssertTrue(
+            report.summary.contains("delivered no audio"),
+            "A 103-second hold with zero tap callbacks must say the microphone delivered nothing. Got: \(report.summary)"
+        )
+    }
+
+    func testCaptureSummaryDistinguishesSilenceFromADeadMicrophone() {
+        let report = CaptureReport(
+            inputFormatDescription: "48000Hz/1ch",
+            holdDuration: 9.19,
+            tapCallbacks: 460,
+            convertedChunks: 460,
+            sampleCount: 147_040,
+            maxAmplitude: 0
+        )
+
+        XCTAssertTrue(
+            report.summary.contains("digital silence"),
+            "Frames that arrive but are all zeroes are a different defect from frames that never arrive, and the log has to tell them apart. Got: \(report.summary)"
+        )
+        XCTAssertFalse(report.summary.contains("delivered no audio"))
+    }
+
+    func testCaptureSummaryCarriesTheNumbersNeededToDebugItWithoutTheApp() {
+        let report = CaptureReport(
+            inputFormatDescription: "24000Hz/1ch",
+            holdDuration: 4.5,
+            tapCallbacks: 225,
+            convertedChunks: 225,
+            sampleCount: 72_000,
+            maxAmplitude: 0.31
+        )
+
+        let summary = report.summary
+        XCTAssertTrue(summary.contains("24000Hz/1ch"), summary)
+        XCTAssertTrue(summary.contains("callbacks=225"), summary)
+        XCTAssertTrue(summary.contains("samples=72000"), summary)
+        XCTAssertTrue(summary.contains("hold=4.50s"), summary)
+    }
+
+    func testConvertedChunksAreCountedForTheCaptureReport() {
+        let recorder = AudioRecorder()
+
+        recorder.test_convert(samples: [0.1, 0.2])
+        recorder.test_convert(samples: [0.3, 0.4])
+
+        XCTAssertEqual(recorder.convertedChunkCount, 2)
+    }
+
+    func testCaptureCountersResetSoOneRecordingCannotInheritTheLastOnesNumbers() {
+        let recorder = AudioRecorder()
+        recorder.test_convert(samples: [0.1, 0.2])
+
+        recorder.resetCaptureCounters()
+
+        XCTAssertEqual(recorder.convertedChunkCount, 0)
+        XCTAssertEqual(recorder.tapCallbackCount, 0)
+    }
+
+    /// The observers are the whole fix, so a recorder that has been deallocated
+    /// must not leave them behind posting into freed memory.
+    func testObserversAreTornDownWithTheRecorder() {
+        weak var weakRecorder: AudioRecorder?
+
+        autoreleasepool {
+            let recorder = AudioRecorder()
+            weakRecorder = recorder
+            XCTAssertNotNil(weakRecorder)
+        }
+
+        XCTAssertNil(weakRecorder, "A retained observer closure would keep the recorder alive forever.")
     }
 }

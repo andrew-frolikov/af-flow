@@ -324,8 +324,36 @@ class AppState: ObservableObject {
         status == .ready
     }
 
-    static func emptyTranscriptionDisposition(forAudioSampleCount sampleCount: Int) -> EmptyTranscriptionDisposition {
+    /// A recording that produced no usable audio is either a mis-press, which
+    /// should vanish silently, or a capture failure, which he has to be told
+    /// about. Sample count alone cannot tell those apart, and on 2026-08-09 the
+    /// difference cost him an evening: a sleep/wake invalidated the audio
+    /// engine's input path, six dictations in a row captured nothing, and every
+    /// one of them took the silent branch because a buffer of zero samples looks
+    /// exactly like a fumbled key press. He held the key for 103 seconds on the
+    /// first one.
+    ///
+    /// `holdDuration` is how long he actually held push-to-talk. A long hold
+    /// that captured nothing is never a mis-press.
+    /// How long push-to-talk was actually held, key-down to key-up. Unknown if
+    /// either end of the hold is missing, in which case callers must not guess.
+    static func pushToTalkHoldDuration(from trace: PerformanceTrace?) -> TimeInterval? {
+        guard let downAt = trace?.hotkeyDetectedAt, let upAt = trace?.hotkeyLiftedAt else {
+            return nil
+        }
+
+        return upAt.timeIntervalSince(downAt)
+    }
+
+    static func emptyTranscriptionDisposition(
+        forAudioSampleCount sampleCount: Int,
+        holdDuration: TimeInterval? = nil
+    ) -> EmptyTranscriptionDisposition {
         if sampleCount < emptyTranscriptionCancelThresholdSampleCount {
+            if let holdDuration, holdDuration > misPressHoldDurationSeconds {
+                return .showNoSoundDetected
+            }
+
             return .cancel
         }
 
@@ -371,6 +399,10 @@ class AppState: ObservableObject {
     // History shows one decimal place, so shorter recordings render as 0.0s noise.
     private static let minimumArchivedRecordingSampleCount = 800
     private static let emptyTranscriptionCancelThresholdSampleCount = 8_000 // ~0.5 seconds — show "no sound" hint for almost all failed recordings
+    // Longer than this and holding the key was deliberate, so an empty buffer is
+    // a failure to report rather than a mis-press to swallow. See
+    // `emptyTranscriptionDisposition(forAudioSampleCount:holdDuration:)`.
+    private static let misPressHoldDurationSeconds: TimeInterval = 2.0
     private static let speechModelErrorPrefix = "Failed to load speech model: "
     static let liveRecordingNoInputErrorMessage = "Failed to start recording: No audio input device available."
 
@@ -636,6 +668,14 @@ class AppState: ObservableObject {
         self.audioRecorder.onRecordingStopped = { [weak self] in
             Task { @MainActor in
                 self?.activePerformanceTrace?.micColdAt = Date()
+            }
+        }
+        self.audioRecorder.onEngineRebuilt = { [weak self] reason in
+            Task { @MainActor in
+                self?.debugLogStore.record(
+                    category: .model,
+                    message: "Audio engine rebuilt before this recording: \(reason)."
+                )
             }
         }
         self.textPaster.onPasteStart = { [weak self] in
@@ -1150,6 +1190,16 @@ class AppState: ObservableObject {
 
         debugLogStore.record(category: .hotkey, message: "Recording stopped. Starting transcription.")
         let buffer = await audioRecorder.stopRecording()
+        // EVERY recording, not just the failures. A log that only records
+        // failures cannot show that a run was healthy, and on 2026-08-09 the
+        // absence of these numbers is what made six dead dictations look like
+        // six mis-presses.
+        debugLogStore.record(
+            category: .model,
+            message: audioRecorder.captureReport(
+                holdDuration: Self.pushToTalkHoldDuration(from: activePerformanceTrace)
+            ).summary
+        )
         let recordingSessionCoordinator = activeRecordingSessionCoordinator
         let recordingTranscriptionSession = activeRecordingTranscriptionSession
         clearRecordingSessionCoordinator()
@@ -1183,7 +1233,11 @@ class AppState: ObservableObject {
             overlay.dismiss(ifShowing: .transcribing)
             overlay.dismiss(ifShowing: .cleaningUp)
         } else {
-            switch Self.emptyTranscriptionDisposition(forAudioSampleCount: buffer.count) {
+            let holdDuration = Self.pushToTalkHoldDuration(from: activePerformanceTrace)
+            switch Self.emptyTranscriptionDisposition(
+                forAudioSampleCount: buffer.count,
+                holdDuration: holdDuration
+            ) {
             case .cancel:
                 overlay.dismiss()
                 debugLogStore.record(category: .model, message: "Empty transcription cancelled after a short recording.")

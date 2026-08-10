@@ -1,21 +1,347 @@
 import AVFoundation
+import AppKit
 import CoreAudio
+
+/// What the microphone actually delivered during one recording.
+///
+/// This exists because on 2026-08-09 it did not. Six dictations captured nothing
+/// and the durable log recorded only that they had produced no text, so the
+/// question "did the frames never arrive, or did they arrive empty?" — the
+/// question that separates a dead audio engine from a muted microphone — could
+/// not be answered from the log at all. `AudioRecorder` printed the sample count
+/// to stdout, which for an app launched from Finder is /dev/null.
+struct CaptureReport: Equatable {
+    var inputFormatDescription: String
+    var holdDuration: TimeInterval?
+    var tapCallbacks: Int
+    var convertedChunks: Int
+    var sampleCount: Int
+    var maxAmplitude: Float
+
+    /// One line, written to the durable log after every recording.
+    var summary: String {
+        var parts = [
+            "capture format=\(inputFormatDescription)",
+            holdDuration.map { String(format: "hold=%.2fs", $0) } ?? "hold=unknown",
+            "callbacks=\(tapCallbacks)",
+            "chunks=\(convertedChunks)",
+            "samples=\(sampleCount)",
+            String(format: "peak=%.4f", maxAmplitude)
+        ]
+
+        if let verdict {
+            parts.append(verdict)
+        }
+
+        return parts.joined(separator: " ")
+    }
+
+    /// Named so the two failure shapes can never be confused again. Frames that
+    /// never arrive mean the engine's input path is dead; frames that arrive as
+    /// zeroes mean the route is alive and the microphone is not.
+    private var verdict: String? {
+        if tapCallbacks == 0 {
+            return "VERDICT=the microphone delivered no audio at all"
+        }
+
+        if sampleCount > 0, maxAmplitude == 0 {
+            return "VERDICT=the microphone delivered digital silence"
+        }
+
+        return nil
+    }
+}
+
+/// The shape of the hardware input route, read from Core Audio rather than from
+/// the engine's own idea of it.
+///
+/// Codex round 1 of 2026-08-09, P1: the notification observers cannot see a
+/// Bluetooth mic changing profile while the engine is idle.
+/// `AVAudioEngineConfigurationChange` is posted while the graph is RENDERING,
+/// and between dictations this graph is stopped; the default-device ID does not
+/// move when the same device flips HFP to A2DP; and there is no wake. So the
+/// engine has to be checked against the route rather than trusted to notice.
+struct InputRouteSignature: Equatable {
+    var deviceID: AudioDeviceID
+    var sampleRate: Double
+    var channelCount: UInt32
+}
 
 final class AudioRecorder {
     var onRecordingStarted: (() -> Void)?
     var onRecordingStopped: (() -> Void)?
     var onConvertedAudioChunk: (([Float]) -> Void)?
+    /// Called with the human-readable reason whenever the engine had to be
+    /// rebuilt before a recording. Wired to the debug log: on 2026-08-09 the
+    /// absence of exactly this line is what made the outage invisible.
+    var onEngineRebuilt: ((String) -> Void)?
 
     /// The device ID to record from. If nil, uses the system default.
     var targetDeviceID: AudioDeviceID?
 
     /// Kept alive across recordings so AVFAudio does not have to re-run device
-    /// discovery on every hotkey press. We only rebuild when the user explicitly
-    /// changes the target input device or asks for an audio reset.
+    /// discovery on every hotkey press. We rebuild when the user changes the
+    /// target input device, and when anything could have invalidated the input
+    /// path underneath us.
+    ///
+    /// THE SECOND CLAUSE IS NOT OPTIONAL AND WAS ONCE MISSING. Commit `9c4e2a4`
+    /// made this engine persistent for startup latency and deleted the comment
+    /// warning that "AVAudioEngine does not reliably recover when the default
+    /// input device or its sample rate changes between sessions (Bluetooth mics
+    /// flipping between HFP/A2DP profiles is the common trigger)". On 2026-08-09
+    /// Andrew's Mac woke, his AirPods connected, and this engine's input path
+    /// died with nothing watching. Six dictations captured zero frames while the
+    /// app reported itself recording, including one he held for 103 seconds.
+    ///
+    /// Latency is preserved: a healthy engine is never rebuilt. See
+    /// `rebuildEngineIfInvalidated()`.
     private var engine = AVAudioEngine()
     private var configuredTargetDeviceID: AudioDeviceID?
     private let bufferLock = NSLock()
     private let tapStateLock = NSLock()
+
+    /// Bumped on every rebuild. Exposed so tests can prove the observers moved
+    /// with the engine instead of watching a discarded one.
+    private(set) var engineGeneration = 1
+    /// The generation the configuration-change observer is registered against.
+    /// If this ever falls behind `engineGeneration` the app is blind again.
+    private(set) var configurationChangeObservedGeneration = 0
+
+    /// Counters behind `CaptureReport`. Written from the audio thread under
+    /// `tapStateLock`, read after stop.
+    private(set) var tapCallbackCount = 0
+    private(set) var convertedChunkCount = 0
+    private var lastInputFormatDescription = "unknown"
+    private var lastCaptureSampleCount = 0
+    private var lastCaptureMaxAmplitude: Float = 0
+
+    private let invalidationLock = NSLock()
+    private var pendingInvalidationReasons: [String] = []
+    /// The route shape the live engine was built against. Compared on every
+    /// start; see `invalidateIfRouteChanged()`.
+    private(set) var engineBuiltForRoute: InputRouteSignature?
+    /// Injectable so the baseline logic can be driven deterministically instead
+    /// of depending on whichever microphone the test host happens to have.
+    var routeSignatureProvider: (AudioDeviceID?) -> InputRouteSignature? = {
+        AudioRecorder.currentInputRouteSignature(targetDeviceID: $0)
+    }
+    private var configurationChangeObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
+    private var defaultInputListener: AudioObjectPropertyListenerBlock?
+    private let defaultInputListenerQueue = DispatchQueue(label: "com.frolikov.afflow.default-input-listener")
+
+    init() {
+        observeConfigurationChange()
+        observeWake()
+        observeDefaultInputDevice()
+    }
+
+    deinit {
+        if let configurationChangeObserver {
+            NotificationCenter.default.removeObserver(configurationChangeObserver)
+        }
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+        }
+        if let defaultInputListener {
+            var address = Self.defaultInputDeviceAddress
+            // Same queue as registration: Core Audio matches on queue AND block,
+            // so a mismatch silently leaves the listener installed and firing.
+            AudioObjectRemovePropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                defaultInputListenerQueue,
+                defaultInputListener
+            )
+        }
+    }
+
+    // MARK: - Engine invalidation
+
+    /// The reasons the engine cannot be trusted, or nil if it can. Several
+    /// causes accumulate because one physical event (a wake with a Bluetooth mic
+    /// attached) arrives as more than one notification, and the log has to name
+    /// all of them.
+    var pendingEngineInvalidationReason: String? {
+        invalidationLock.lock()
+        defer { invalidationLock.unlock() }
+        return pendingInvalidationReasons.isEmpty
+            ? nil
+            : pendingInvalidationReasons.joined(separator: ", ")
+    }
+
+    /// Marks the engine as untrustworthy. Safe to call from any thread: Core
+    /// Audio listeners fire on their own queue. Never rebuilds inline — a
+    /// rebuild mid-recording would throw away audio he is in the middle of
+    /// speaking.
+    func invalidateEngine(reason: String) {
+        invalidationLock.lock()
+        if !pendingInvalidationReasons.contains(reason) {
+            pendingInvalidationReasons.append(reason)
+        }
+        invalidationLock.unlock()
+    }
+
+    /// Rebuilds the engine if anything invalidated it, and does nothing at all
+    /// otherwise so the prewarm and the hotkey latency survive.
+    func rebuildEngineIfInvalidated() {
+        invalidationLock.lock()
+        let reasons = pendingInvalidationReasons
+        pendingInvalidationReasons = []
+        invalidationLock.unlock()
+
+        guard !reasons.isEmpty else { return }
+
+        rebuildEngine()
+        onEngineRebuilt?(reasons.joined(separator: ", "))
+    }
+
+    /// Whether the route moved out from under an engine built for `previous`.
+    ///
+    /// Deliberately conservative in both directions. No previous signature means
+    /// the engine is fresh and already correct. An unreadable current signature
+    /// is no information at all, and treating it as a change would rebuild on
+    /// every hotkey press whenever the Core Audio read is flaky, throwing away
+    /// the prewarm this persistent engine exists to keep.
+    static func inputRouteChanged(from previous: InputRouteSignature?, to current: InputRouteSignature?) -> Bool {
+        guard let previous, let current else { return false }
+        return previous != current
+    }
+
+    /// Reads the current shape of whichever device this recorder will record
+    /// from — the pinned device if there is one, otherwise the system default.
+    static func currentInputRouteSignature(targetDeviceID: AudioDeviceID?) -> InputRouteSignature? {
+        guard let deviceID = targetDeviceID ?? AudioDeviceManager.defaultInputDeviceID(),
+              deviceID != AudioDeviceID(kAudioObjectUnknown) else {
+            return nil
+        }
+
+        var rateAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var sampleRate = Float64(0)
+        var rateSize = UInt32(MemoryLayout<Float64>.size)
+        guard AudioObjectGetPropertyData(deviceID, &rateAddress, 0, nil, &rateSize, &sampleRate) == noErr,
+              sampleRate > 0 else {
+            return nil
+        }
+
+        var configAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var configSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &configAddress, 0, nil, &configSize) == noErr,
+              configSize > 0 else {
+            return nil
+        }
+
+        let bufferListPointer = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(configSize),
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { bufferListPointer.deallocate() }
+
+        guard AudioObjectGetPropertyData(deviceID, &configAddress, 0, nil, &configSize, bufferListPointer) == noErr else {
+            return nil
+        }
+
+        let bufferList = UnsafeMutableAudioBufferListPointer(
+            bufferListPointer.assumingMemoryBound(to: AudioBufferList.self)
+        )
+        let channelCount = bufferList.reduce(UInt32(0)) { $0 + $1.mNumberChannels }
+        guard channelCount > 0 else { return nil }
+
+        return InputRouteSignature(deviceID: deviceID, sampleRate: sampleRate, channelCount: channelCount)
+    }
+
+    /// Invalidates the engine if the route changed shape since it was built.
+    /// This is the check that catches what no notification can.
+    ///
+    /// It compares only. Recording the baseline is `noteEngineBoundToRoute()`'s
+    /// job, and the split matters: Codex round 2 caught this function setting
+    /// the baseline in a `defer`, which `rebuildEngine()` then cleared, leaving
+    /// the recording immediately after every rebuild with nothing to compare
+    /// against — the original failure, one recording later.
+    func invalidateIfRouteChanged() {
+        let current = routeSignatureProvider(targetDeviceID)
+
+        guard Self.inputRouteChanged(from: engineBuiltForRoute, to: current) else { return }
+
+        let was = engineBuiltForRoute.map { "\(Int($0.sampleRate))Hz/\($0.channelCount)ch" } ?? "unknown"
+        let now = current.map { "\(Int($0.sampleRate))Hz/\($0.channelCount)ch" } ?? "unknown"
+        invalidateEngine(reason: "the input route changed shape (\(was) → \(now))")
+    }
+
+    /// Records the route the live engine is now bound to. Called from every
+    /// place an engine becomes bound to hardware — prewarm, rebuild, and the
+    /// start of a recording — because a baseline that is missing at any of them
+    /// is a window in which a profile flip goes unnoticed.
+    private func noteEngineBoundToRoute() {
+        if let current = routeSignatureProvider(targetDeviceID) {
+            engineBuiltForRoute = current
+        }
+    }
+
+    private static var defaultInputDeviceAddress: AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+    }
+
+    /// Re-registered on every rebuild. Registering once in `init` would leave
+    /// the observer watching a discarded engine after the first rebuild, which
+    /// is the 2026-08-09 blindness reached one rebuild later.
+    private func observeConfigurationChange() {
+        if let configurationChangeObserver {
+            NotificationCenter.default.removeObserver(configurationChangeObserver)
+        }
+
+        configurationChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { [weak self] _ in
+            self?.invalidateEngine(reason: "the audio graph was reconfigured")
+        }
+        configurationChangeObservedGeneration = engineGeneration
+    }
+
+    private func observeWake() {
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.invalidateEngine(reason: "the machine woke from sleep")
+        }
+    }
+
+    private func observeDefaultInputDevice() {
+        var address = Self.defaultInputDeviceAddress
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            self?.invalidateEngine(reason: "the default input device changed")
+        }
+
+        let status = AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            defaultInputListenerQueue,
+            listener
+        )
+        if status == noErr {
+            defaultInputListener = listener
+        }
+    }
+
+    #if DEBUG
+    var test_currentEngine: AVAudioEngine { engine }
+    #endif
 
     /// The accumulated audio samples captured during recording.
     /// Accessible for reading within the module (internal) so tests can inspect it.
@@ -36,6 +362,9 @@ final class AudioRecorder {
         applyTargetDeviceIfNeeded()
         _ = engine.inputNode // Force node initialization
         engine.prepare()
+        // Without this, a route flip between launch and the first dictation of
+        // the day has nothing to be compared against and goes unnoticed.
+        noteEngineBoundToRoute()
     }
 
     /// Reset the audio engine to pick up a newly selected input route.
@@ -125,6 +454,16 @@ final class AudioRecorder {
     func startRecording() throws {
         resetBuffer()
 
+        // BEFORE anything touches the input node. A wake or a route change since
+        // the last recording means this engine's input path may be dead, and a
+        // dead path accepts a tap, starts without error, and delivers nothing.
+        //
+        // The route check runs first because it catches what the notifications
+        // cannot: a device changing shape while the engine sat idle posts no
+        // notification at all.
+        invalidateIfRouteChanged()
+        rebuildEngineIfInvalidated()
+
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         applyTargetDeviceIfNeeded()
@@ -134,7 +473,10 @@ final class AudioRecorder {
         // `outputFormat(forBus:)` is the downstream format and is the one that
         // can go stale. Always trust inputFormat for input nodes.
         let hwFormat = inputNode.inputFormat(forBus: 0)
-        print("AudioRecorder: input HW format = \(hwFormat), sampleRate=\(hwFormat.sampleRate), channels=\(hwFormat.channelCount)")
+        lastInputFormatDescription = "\(Int(hwFormat.sampleRate))Hz/\(hwFormat.channelCount)ch"
+        resetCaptureCounters()
+        lastCaptureSampleCount = 0
+        lastCaptureMaxAmplitude = 0
 
         guard hwFormat.sampleRate > 0, hwFormat.channelCount > 0 else {
             throw AudioRecorderError.noInputAvailable
@@ -164,6 +506,9 @@ final class AudioRecorder {
         }
 
         try engine.start()
+        // This engine is now bound to this route. Covers the case where no
+        // prewarm ever ran.
+        noteEngineBoundToRoute()
         onRecordingStarted?()
     }
 
@@ -173,7 +518,14 @@ final class AudioRecorder {
     private func rebuildEngine() {
         engine.stop()
         engine = AVAudioEngine()
+        engineGeneration += 1
         configuredTargetDeviceID = nil
+        // The new engine is bound to whatever route exists NOW, and that is the
+        // baseline the next recording must compare against. Clearing it here
+        // instead was Codex round 2's P1.
+        noteEngineBoundToRoute()
+        // The observer watches a specific engine object, so it has to follow.
+        observeConfigurationChange()
     }
 
     private func applyTargetDeviceIfNeeded() {
@@ -239,22 +591,26 @@ final class AudioRecorder {
         onRecordingStopped?()
 
         let result = snapshotBuffer()
-        print("AudioRecorder: stopped, buffer has \(result.count) samples (\(Double(result.count) / 16000.0)s of audio)")
-        // The amplitude log used to be `result.map { abs($0) }.max()`, which
+        // The amplitude scan used to be `result.map { abs($0) }.max()`, which
         // ALLOCATES a second array the size of the recording and walks it, on the
         // release-to-text path, to print one number. A 60-second brain-dump is
         // 960,000 samples, so this was a megabyte of allocation and a full pass
         // between him letting go of the key and seeing his text.
         //
         // Same number, no allocation, single pass.
-        if !result.isEmpty {
-            var maxAmplitude: Float = 0
-            for sample in result {
-                let magnitude = abs(sample)
-                if magnitude > maxAmplitude { maxAmplitude = magnitude }
-            }
-            print("AudioRecorder: max amplitude = \(maxAmplitude)")
+        var maxAmplitude: Float = 0
+        for sample in result {
+            let magnitude = abs(sample)
+            if magnitude > maxAmplitude { maxAmplitude = magnitude }
         }
+
+        // These two feed `captureReport(holdDuration:)`. They used to go to
+        // `print`, which for an app launched from Finder is /dev/null, so on
+        // 2026-08-09 the numbers that would have identified the fault in seconds
+        // were written nowhere at all.
+        lastCaptureSampleCount = result.count
+        lastCaptureMaxAmplitude = maxAmplitude
+
         return result
     }
 
@@ -379,9 +735,39 @@ final class AudioRecorder {
         stopWaitContinuation = nil
     }
 
+    /// Zeroes the capture counters so one recording can never report the
+    /// previous recording's numbers. A stale count here would say the
+    /// microphone was fine on the run where it was not.
+    func resetCaptureCounters() {
+        tapStateLock.lock()
+        tapCallbackCount = 0
+        convertedChunkCount = 0
+        tapStateLock.unlock()
+    }
+
+    /// What the microphone delivered for the recording that just ended.
+    /// `holdDuration` comes from the caller because only it knows when the key
+    /// went down.
+    func captureReport(holdDuration: TimeInterval?) -> CaptureReport {
+        tapStateLock.lock()
+        let callbacks = tapCallbackCount
+        let chunks = convertedChunkCount
+        tapStateLock.unlock()
+
+        return CaptureReport(
+            inputFormatDescription: lastInputFormatDescription,
+            holdDuration: holdDuration,
+            tapCallbacks: callbacks,
+            convertedChunks: chunks,
+            sampleCount: lastCaptureSampleCount,
+            maxAmplitude: lastCaptureMaxAmplitude
+        )
+    }
+
     private func beginTapCallback() {
         tapStateLock.lock()
         inFlightTapCallbacks += 1
+        tapCallbackCount += 1
         tapStateLock.unlock()
     }
 
@@ -400,6 +786,7 @@ final class AudioRecorder {
     private func recordConvertedChunkArrival() {
         tapStateLock.lock()
         lastConvertedChunkAtNanoseconds = DispatchTime.now().uptimeNanoseconds
+        convertedChunkCount += 1
         tapStateLock.unlock()
     }
 

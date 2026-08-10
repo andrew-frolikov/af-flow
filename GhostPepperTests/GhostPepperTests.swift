@@ -1402,6 +1402,52 @@ final class GhostPepperTests: XCTestCase {
         )
     }
 
+    // THE 2026-08-09 OUTAGE, AS A TEST.
+    //
+    // He held the key for 103 seconds, the tap delivered nothing because the
+    // audio engine's input path had been invalidated by a sleep/wake, and the
+    // app dismissed the overlay and said nothing at all. Six times in a row.
+    // A sub-threshold buffer is only innocent when the hold was short enough to
+    // be a mis-press; a long hold that produced no audio is a capture failure
+    // and he has to be told.
+    func testEmptyTranscriptionDispositionReportsFailureWhenALongHoldCapturedNothing() {
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 0, holdDuration: 103.0),
+            .showNoSoundDetected
+        )
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 7_999, holdDuration: 2.01),
+            .showNoSoundDetected
+        )
+    }
+
+    func testPushToTalkHoldDurationIsTheKeyDownToKeyUpInterval() {
+        var trace = PerformanceTrace(sessionID: "hold", startedAt: Date(timeIntervalSince1970: 0))
+        trace.hotkeyDetectedAt = Date(timeIntervalSince1970: 100)
+        trace.hotkeyLiftedAt = Date(timeIntervalSince1970: 203)
+
+        XCTAssertEqual(AppState.pushToTalkHoldDuration(from: trace) ?? -1, 103, accuracy: 0.001)
+    }
+
+    func testPushToTalkHoldDurationIsUnknownWithoutBothEndsOfTheHold() {
+        var trace = PerformanceTrace(sessionID: "hold", startedAt: Date(timeIntervalSince1970: 0))
+        trace.hotkeyDetectedAt = Date(timeIntervalSince1970: 100)
+
+        XCTAssertNil(AppState.pushToTalkHoldDuration(from: trace))
+        XCTAssertNil(AppState.pushToTalkHoldDuration(from: nil))
+    }
+
+    func testEmptyTranscriptionDispositionStillCancelsShortMisPresses() {
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 0, holdDuration: 0.4),
+            .cancel
+        )
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 7_999, holdDuration: 1.99),
+            .cancel
+        )
+    }
+
     func testEmptyTranscriptionDispositionShowsNoSoundDetectedAtThresholdAndAbove() {
         XCTAssertEqual(
             AppState.emptyTranscriptionDisposition(forAudioSampleCount: 8_000),
