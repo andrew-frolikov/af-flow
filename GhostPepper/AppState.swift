@@ -670,6 +670,18 @@ class AppState: ObservableObject {
                 self?.activePerformanceTrace?.micColdAt = Date()
             }
         }
+        self.audioRecorder.onCaptureUnhealthy = { [weak self] verdict in
+            Task { @MainActor in
+                guard let self, self.isRecording else { return }
+                self.debugLogStore.record(
+                    category: .model,
+                    message: verdict == .digitalSilence
+                        ? "Mid-recording: frames are arriving as digital silence."
+                        : "Mid-recording: no frames are reaching the tap."
+                )
+                self.overlay.show(message: .captureFailing(verdict))
+            }
+        }
         self.audioRecorder.onEngineRebuilt = { [weak self] reason in
             Task { @MainActor in
                 self?.debugLogStore.record(

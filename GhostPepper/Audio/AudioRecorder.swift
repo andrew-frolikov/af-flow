@@ -52,6 +52,83 @@ struct CaptureReport: Equatable {
     }
 }
 
+/// Whether the microphone is actually delivering, judged WHILE he is still
+/// speaking rather than after he lets go.
+///
+/// The capture report is a post-mortem. On 2026-08-09 he spoke for 103 seconds
+/// into a dead microphone and a post-mortem could not give those words back. The
+/// meeting path has warned live since 2026-07-29; dictation, which is the
+/// product, never has.
+enum CaptureHealth {
+    enum Verdict: Equatable {
+        case healthy
+        /// The engine's input path is dead: the tap itself is not firing.
+        case noFramesArriving
+        /// The tap is firing and nothing survives conversion. A distinct fault
+        /// with a distinct remedy — Codex round 4 caught this being reported as
+        /// `noFramesArriving`, which would have sent him to Settings to re-pick
+        /// a microphone that was working.
+        case conversionFailing
+        /// The route is alive and the microphone is not: frames arrive as exact
+        /// zeroes. STATE.md Phase 1 items 5 and 6.
+        case digitalSilence
+    }
+
+    /// Measured `hotkey_to_mic_live` reached 914 ms on the bad night, so the tap
+    /// gets a full second before anything is called wrong.
+    static let framesExpectedWithinSeconds: TimeInterval = 1.0
+    /// He pauses mid-thought constantly. Under three seconds of exact zeroes is
+    /// him thinking.
+    static let silenceToleratedSeconds: TimeInterval = 3.0
+
+    /// Ordered most-specific-first. Each layer of the capture path is checked
+    /// before the one downstream of it, so the verdict names the earliest thing
+    /// that is broken rather than its consequence.
+    static func verdict(
+        elapsedSinceStart: TimeInterval,
+        elapsedSinceLastTapCallback: TimeInterval?,
+        elapsedSinceLastChunk: TimeInterval?,
+        continuousSilence: TimeInterval
+    ) -> Verdict {
+        // 1. Is the tap firing at all? If not, the engine's input path is dead.
+        if (elapsedSinceLastTapCallback ?? elapsedSinceStart) > framesExpectedWithinSeconds {
+            return .noFramesArriving
+        }
+
+        // 2. The tap is firing. Is anything surviving conversion?
+        if (elapsedSinceLastChunk ?? elapsedSinceStart) > framesExpectedWithinSeconds {
+            return .conversionFailing
+        }
+
+        // 3. Audio is flowing. Does it carry anything?
+        if continuousSilence >= silenceToleratedSeconds {
+            return .digitalSilence
+        }
+
+        return .healthy
+    }
+}
+
+/// Fires each distinct verdict once per recording. A warning that repeats twice
+/// a second is noise he learns to ignore.
+struct CaptureHealthTracker {
+    private var reported: Set<String> = []
+
+    mutating func evaluate(_ verdict: CaptureHealth.Verdict) -> [CaptureHealth.Verdict] {
+        guard verdict != .healthy else { return [] }
+
+        let key = String(describing: verdict)
+        guard !reported.contains(key) else { return [] }
+
+        reported.insert(key)
+        return [verdict]
+    }
+
+    mutating func reset() {
+        reported = []
+    }
+}
+
 /// The shape of the hardware input route, read from Core Audio rather than from
 /// the engine's own idea of it.
 ///
@@ -75,6 +152,10 @@ final class AudioRecorder {
     /// rebuilt before a recording. Wired to the debug log: on 2026-08-09 the
     /// absence of exactly this line is what made the outage invisible.
     var onEngineRebuilt: ((String) -> Void)?
+    /// Fired at most once per verdict per recording, WHILE he is still holding
+    /// the key. Wired to the overlay so a dead microphone costs him a sentence
+    /// instead of a monologue.
+    var onCaptureUnhealthy: ((CaptureHealth.Verdict) -> Void)?
 
     /// The device ID to record from. If nil, uses the system default.
     var targetDeviceID: AudioDeviceID?
@@ -114,6 +195,19 @@ final class AudioRecorder {
     private var lastInputFormatDescription = "unknown"
     private var lastCaptureSampleCount = 0
     private var lastCaptureMaxAmplitude: Float = 0
+
+    /// Watchdog state. Timestamps under `tapStateLock` because the audio thread
+    /// writes them and the poll queue reads them.
+    private var recordingStartedAtNanoseconds: UInt64?
+    private var lastTapCallbackAtNanoseconds: UInt64?
+    private var lastNonZeroChunkAtNanoseconds: UInt64?
+    private var healthTracker = CaptureHealthTracker()
+    private var healthPollTimer: DispatchSourceTimer?
+    private let healthPollQueue = DispatchQueue(label: "com.frolikov.afflow.capture-watchdog")
+    private static let healthPollIntervalSeconds = 0.25
+    /// Injectable clock. The watchdog is a timing mechanism, and a timing
+    /// mechanism verified with sleeps is verified by hope.
+    var nowNanoseconds: () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
 
     private let invalidationLock = NSLock()
     private var pendingInvalidationReasons: [String] = []
@@ -509,6 +603,7 @@ final class AudioRecorder {
         // This engine is now bound to this route. Covers the case where no
         // prewarm ever ran.
         noteEngineBoundToRoute()
+        startCaptureWatchdog()
         onRecordingStarted?()
     }
 
@@ -580,6 +675,10 @@ final class AudioRecorder {
     /// Waits only for the remainder of the active tap interval plus any
     /// in-flight conversion work so stop latency tracks the tap size.
     func stopRecording() async -> [Float] {
+        // Before the flush wait, so a recording that ends inside the watchdog's
+        // window cannot warn about a capture that is already over.
+        stopCaptureWatchdog()
+
         let flushDelay = stopFlushDelayNanoseconds()
         if flushDelay > 0 {
             try? await Task.sleep(nanoseconds: flushDelay)
@@ -722,7 +821,12 @@ final class AudioRecorder {
         audioBuffer.append(contentsOf: frames)
         bufferLock.unlock()
 
-        recordConvertedChunkArrival()
+        // Single pass, no allocation, on the audio thread: this runs for every
+        // 20 ms chunk. `contains` short-circuits on the first non-zero sample,
+        // so speech costs almost nothing and only true silence walks the chunk.
+        let carriesSignal = frames.contains { $0 != 0 }
+
+        recordConvertedChunkArrival(carriesSignal: carriesSignal)
         onConvertedAudioChunk?(frames)
     }
 
@@ -768,6 +872,9 @@ final class AudioRecorder {
         tapStateLock.lock()
         inFlightTapCallbacks += 1
         tapCallbackCount += 1
+        // Recorded separately from the converted-chunk time so the watchdog can
+        // tell "the tap is dead" from "the tap is alive and conversion is not".
+        lastTapCallbackAtNanoseconds = nowNanoseconds()
         tapStateLock.unlock()
     }
 
@@ -783,11 +890,86 @@ final class AudioRecorder {
         continuation?.resume()
     }
 
-    private func recordConvertedChunkArrival() {
+    private func recordConvertedChunkArrival(carriesSignal: Bool = true) {
         tapStateLock.lock()
-        lastConvertedChunkAtNanoseconds = DispatchTime.now().uptimeNanoseconds
+        let now = nowNanoseconds()
+        lastConvertedChunkAtNanoseconds = now
+        if carriesSignal {
+            lastNonZeroChunkAtNanoseconds = now
+        }
         convertedChunkCount += 1
         tapStateLock.unlock()
+    }
+
+    // MARK: - Mid-recording watchdog
+
+    /// Arms the watchdog state without starting the timer. Separate so the
+    /// lifecycle can be driven deterministically in tests.
+    func armCaptureWatchdog() {
+        tapStateLock.lock()
+        recordingStartedAtNanoseconds = nowNanoseconds()
+        lastTapCallbackAtNanoseconds = nil
+        lastNonZeroChunkAtNanoseconds = nil
+        healthTracker.reset()
+        tapStateLock.unlock()
+    }
+
+    private func startCaptureWatchdog() {
+        stopCaptureWatchdog()
+        armCaptureWatchdog()
+
+        let timer = DispatchSource.makeTimerSource(queue: healthPollQueue)
+        timer.schedule(
+            deadline: .now() + Self.healthPollIntervalSeconds,
+            repeating: Self.healthPollIntervalSeconds
+        )
+        timer.setEventHandler { [weak self] in
+            self?.pollCaptureHealth()
+        }
+        timer.resume()
+        healthPollTimer = timer
+    }
+
+    /// `DispatchSourceTimer.cancel()` does not wait for a handler that is
+    /// already queued or running, and AppState keeps `isRecording` true while it
+    /// awaits `stopRecording()`. Clearing the start timestamp under the lock is
+    /// what actually disarms a poll in flight: `pollCaptureHealth()` reads it
+    /// under the same lock and returns without reporting. Codex round 4, P2.
+    func stopCaptureWatchdog() {
+        healthPollTimer?.cancel()
+        healthPollTimer = nil
+
+        tapStateLock.lock()
+        recordingStartedAtNanoseconds = nil
+        tapStateLock.unlock()
+    }
+
+    func pollCaptureHealth() {
+        let now = nowNanoseconds()
+        let seconds = { (from: UInt64) -> TimeInterval in
+            now >= from ? Double(now - from) / 1_000_000_000 : 0
+        }
+
+        tapStateLock.lock()
+        // Read AND decide under the lock, so a stop that lands between the read
+        // and the decision cannot let a stale warning through.
+        guard let startedAt = recordingStartedAtNanoseconds else {
+            tapStateLock.unlock()
+            return
+        }
+
+        let verdict = CaptureHealth.verdict(
+            elapsedSinceStart: seconds(startedAt),
+            elapsedSinceLastTapCallback: lastTapCallbackAtNanoseconds.map(seconds),
+            elapsedSinceLastChunk: lastConvertedChunkAtNanoseconds.map(seconds),
+            continuousSilence: seconds(lastNonZeroChunkAtNanoseconds ?? startedAt)
+        )
+        let reportable = healthTracker.evaluate(verdict)
+        tapStateLock.unlock()
+
+        for verdict in reportable {
+            onCaptureUnhealthy?(verdict)
+        }
     }
 
     private func stopFlushDelayNanoseconds() -> UInt64 {

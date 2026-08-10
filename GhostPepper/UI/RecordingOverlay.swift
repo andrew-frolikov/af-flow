@@ -14,6 +14,11 @@ enum OverlayMessage: Equatable {
     /// Keyboard Entry" is a sticky setting people forget is on.
     case secureInputBlocked
     case noSoundDetected
+    /// The microphone is not delivering WHILE he is still holding the key.
+    /// Separate from `noSoundDetected`, which is the post-mortem: this one
+    /// arrives in time for him to stop talking, and it names which of the two
+    /// failure shapes it is so the remedy is not a guess.
+    case captureFailing(CaptureHealth.Verdict)
     case learnedCorrection(MisheardReplacement)
     /// Shown when a recording cannot start and none of the other messages fit.
     /// Carries its own reason so a new blocked reason cannot be added without
@@ -38,6 +43,12 @@ enum OverlayMessage: Equatable {
             return "Copied to clipboard"
         case .noSoundDetected:
             return "No sound detected"
+        case .captureFailing(.digitalSilence):
+            return "Mic is sending silence"
+        case .captureFailing(.conversionFailing):
+            return "Audio is not converting"
+        case .captureFailing:
+            return "Mic is not sending audio"
         case .learnedCorrection:
             return "Learned correction"
         }
@@ -49,7 +60,8 @@ enum OverlayMessage: Equatable {
         switch self {
         case .recording, .modelLoading, .cleaningUp, .transcribing:
             return true
-        case .clipboardFallback, .secureInputBlocked, .noSoundDetected, .learnedCorrection, .cannotStart:
+        case .clipboardFallback, .secureInputBlocked, .noSoundDetected, .learnedCorrection, .cannotStart,
+             .captureFailing:
             return false
         }
     }
@@ -66,6 +78,15 @@ enum OverlayMessage: Equatable {
             return "Secure Input is on. ⌘V to paste"
         case .noSoundDetected:
             return "Check your mic in Settings → Recording"
+        case .captureFailing(.digitalSilence):
+            return "Check your mic is not muted"
+        case .captureFailing(.conversionFailing):
+            return "Audio is arriving but cannot be read"
+
+        case .captureFailing:
+            // Re-picking the microphone in Settings rebuilds the audio engine,
+            // which is what recovers a route that died underneath it.
+            return "Re-pick your mic in Settings → Recording"
         case .learnedCorrection(let replacement):
             return "\(replacement.wrong) → \(replacement.right)"
         case .cannotStart(let reason):
@@ -161,7 +182,13 @@ class RecordingOverlayController {
 
     private func panelSize(for message: OverlayMessage) -> NSSize {
         switch message {
-        case .clipboardFallback, .secureInputBlocked, .learnedCorrection, .noSoundDetected, .cannotStart:
+        case .clipboardFallback, .secureInputBlocked, .learnedCorrection, .noSoundDetected, .cannotStart,
+             .captureFailing:
+            // The wide pill, because these all carry a second line telling him
+            // what to do about it. Deliberately NOT added to
+            // `scheduleDismissIfNeeded`: this one appears while he is still
+            // holding the key, so it must stay until the recording ends and the
+            // transcribing message replaces it.
             return NSSize(width: 420, height: 84)
         default:
             return NSSize(width: 300, height: 60)
@@ -227,7 +254,7 @@ struct OverlayPillView: View {
             return isBrand ? AFFlowPalette.gold : appTheme.accent
         case .clipboardFallback, .secureInputBlocked:
             return isBrand ? AFFlowPalette.teal : appTheme.accent
-        case .noSoundDetected, .cannotStart:
+        case .noSoundDetected, .cannotStart, .captureFailing:
             return isBrand ? AFFlowPalette.red : appTheme.accent
         case .learnedCorrection:
             return isBrand ? AFFlowPalette.teal : .green

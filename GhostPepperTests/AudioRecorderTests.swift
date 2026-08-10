@@ -604,6 +604,192 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
         )
     }
 
+    // MARK: - Mid-recording watchdog
+    //
+    // The capture report says what happened AFTER he lets go. That is too late
+    // to save the words: on 2026-08-09 he spoke for 103 seconds into a dead
+    // microphone and learned nothing until he stopped. The meeting path has had
+    // a live "your microphone stopped sending audio" warning since 2026-07-29;
+    // dictation, which is the product, has never had one.
+    //
+    // Two failure shapes, kept apart deliberately. Frames that never arrive mean
+    // the engine's input path is dead. Frames that arrive as exact zeroes mean
+    // the route is alive and the microphone is not — STATE.md Phase 1 items 5
+    // and 6, still unexplained, and this is the trap that catches them.
+
+    func testTheWatchdogAllowsTheMicrophoneTimeToComeUp() {
+        XCTAssertEqual(
+            CaptureHealth.verdict(elapsedSinceStart: 0.5, elapsedSinceLastTapCallback: nil, elapsedSinceLastChunk: nil, continuousSilence: 0),
+            .healthy,
+            "Measured hotkey-to-mic-live ran to 914 ms on a bad night. Warning inside that window would cry wolf on every press."
+        )
+    }
+
+    func testTheWatchdogReportsAMicrophoneThatNeverStartedDelivering() {
+        XCTAssertEqual(
+            CaptureHealth.verdict(elapsedSinceStart: 1.5, elapsedSinceLastTapCallback: nil, elapsedSinceLastChunk: nil, continuousSilence: 0),
+            .noFramesArriving
+        )
+    }
+
+    func testAFlowingCaptureIsHealthy() {
+        XCTAssertEqual(
+            CaptureHealth.verdict(elapsedSinceStart: 40, elapsedSinceLastTapCallback: 0.02, elapsedSinceLastChunk: 0.02, continuousSilence: 0),
+            .healthy
+        )
+    }
+
+    func testTheWatchdogReportsACaptureThatStoppedPartWayThrough() {
+        XCTAssertEqual(
+            CaptureHealth.verdict(elapsedSinceStart: 40, elapsedSinceLastTapCallback: 1.5, elapsedSinceLastChunk: 1.5, continuousSilence: 0),
+            .noFramesArriving,
+            "A route that dies mid-sentence loses the rest of the sentence, and he has to know while he is still speaking."
+        )
+    }
+
+    // CODEX ROUND 4, P2. A tap that keeps firing while conversion fails is a
+    // THIRD failure, and calling it "no frames arriving" sends him to Settings
+    // to re-pick a microphone that was never the problem.
+    func testConversionFailingIsNotReportedAsADeadMicrophone() {
+        XCTAssertEqual(
+            CaptureHealth.verdict(
+                elapsedSinceStart: 5,
+                elapsedSinceLastTapCallback: 0.02,
+                elapsedSinceLastChunk: 1.5,
+                continuousSilence: 0
+            ),
+            .conversionFailing,
+            "The tap is alive and the converter is not. Re-picking the mic would not fix it."
+        )
+    }
+
+    func testADeadTapIsReportedAheadOfAConversionFailure() {
+        XCTAssertEqual(
+            CaptureHealth.verdict(
+                elapsedSinceStart: 5,
+                elapsedSinceLastTapCallback: 2.0,
+                elapsedSinceLastChunk: 2.0,
+                continuousSilence: 0
+            ),
+            .noFramesArriving
+        )
+    }
+
+    func testTheWatchdogReportsFramesThatArriveAsDigitalSilence() {
+        XCTAssertEqual(
+            CaptureHealth.verdict(elapsedSinceStart: 5, elapsedSinceLastTapCallback: 0.02, elapsedSinceLastChunk: 0.02, continuousSilence: 3.0),
+            .digitalSilence
+        )
+    }
+
+    func testABriefPauseInSpeechIsNotDigitalSilence() {
+        XCTAssertEqual(
+            CaptureHealth.verdict(elapsedSinceStart: 5, elapsedSinceLastTapCallback: 0.02, elapsedSinceLastChunk: 0.02, continuousSilence: 2.9),
+            .healthy,
+            "He pauses mid-thought constantly. Anything under three seconds of exact zeroes is him thinking, not a dead mic."
+        )
+    }
+
+    func testADeadRouteIsReportedAheadOfSilenceWhenBothLookTrue() {
+        XCTAssertEqual(
+            CaptureHealth.verdict(elapsedSinceStart: 10, elapsedSinceLastTapCallback: 5.0, elapsedSinceLastChunk: 5.0, continuousSilence: 5.0),
+            .noFramesArriving,
+            "Frames that stopped arriving is the more specific diagnosis, and naming it silence would send him to the wrong fix."
+        )
+    }
+
+    func testTheWatchdogWarnsOnceAndThenStaysQuietForTheRestOfTheRecording() {
+        var verdicts: [CaptureHealth.Verdict] = []
+        var tracker = CaptureHealthTracker()
+
+        verdicts.append(contentsOf: tracker.evaluate(.noFramesArriving))
+        verdicts.append(contentsOf: tracker.evaluate(.noFramesArriving))
+        verdicts.append(contentsOf: tracker.evaluate(.noFramesArriving))
+
+        XCTAssertEqual(verdicts, [.noFramesArriving], "A warning that repeats twice a second is noise he will learn to ignore.")
+    }
+
+    func testTheWatchdogWillStillReportADifferentFailureLater() {
+        var verdicts: [CaptureHealth.Verdict] = []
+        var tracker = CaptureHealthTracker()
+
+        verdicts.append(contentsOf: tracker.evaluate(.digitalSilence))
+        verdicts.append(contentsOf: tracker.evaluate(.digitalSilence))
+        verdicts.append(contentsOf: tracker.evaluate(.noFramesArriving))
+
+        XCTAssertEqual(verdicts, [.digitalSilence, .noFramesArriving])
+    }
+
+    func testAHealthyCaptureNeverWarns() {
+        var tracker = CaptureHealthTracker()
+
+        XCTAssertTrue(tracker.evaluate(.healthy).isEmpty)
+        XCTAssertTrue(tracker.evaluate(.healthy).isEmpty)
+    }
+
+    // CODEX ROUND 4, P2. `DispatchSourceTimer.cancel()` does not wait for a
+    // handler that is already queued or running, and AppState keeps
+    // `isRecording` true while it awaits `stopRecording()`. So a poll could land
+    // after he let go and warn him about a capture that was already over. The
+    // clock is injected here so the whole lifecycle is deterministic rather than
+    // a sleep-and-hope test.
+
+    func testTheWatchdogWarnsWhenNoFramesArriveWithinTheGracePeriod() {
+        let recorder = AudioRecorder()
+        var fired: [CaptureHealth.Verdict] = []
+        recorder.onCaptureUnhealthy = { fired.append($0) }
+        var now: UInt64 = 0
+        recorder.nowNanoseconds = { now }
+
+        recorder.armCaptureWatchdog()
+        now = 1_500_000_000
+        recorder.pollCaptureHealth()
+
+        XCTAssertEqual(fired, [.noFramesArriving])
+    }
+
+    func testAPollThatLandsAfterStopDoesNotWarnAboutARecordingThatIsOver() {
+        let recorder = AudioRecorder()
+        var fired: [CaptureHealth.Verdict] = []
+        recorder.onCaptureUnhealthy = { fired.append($0) }
+        var now: UInt64 = 0
+        recorder.nowNanoseconds = { now }
+
+        recorder.armCaptureWatchdog()
+        now = 1_500_000_000
+        recorder.stopCaptureWatchdog()
+        recorder.pollCaptureHealth()
+
+        XCTAssertTrue(
+            fired.isEmpty,
+            "He let go of the key. Warning him now is about a recording that no longer exists."
+        )
+    }
+
+    func testTheNextRecordingStartsWithACleanWatchdog() {
+        let recorder = AudioRecorder()
+        var fired: [CaptureHealth.Verdict] = []
+        recorder.onCaptureUnhealthy = { fired.append($0) }
+        var now: UInt64 = 0
+        recorder.nowNanoseconds = { now }
+
+        recorder.armCaptureWatchdog()
+        now = 1_500_000_000
+        recorder.pollCaptureHealth()
+        recorder.stopCaptureWatchdog()
+
+        now = 2_000_000_000
+        recorder.armCaptureWatchdog()
+        now = 3_500_000_000
+        recorder.pollCaptureHealth()
+
+        XCTAssertEqual(
+            fired,
+            [.noFramesArriving, .noFramesArriving],
+            "Warned once per recording, not once per lifetime: the second dictation into a dead mic must warn too."
+        )
+    }
+
     // MARK: - Capture telemetry
     //
     // On 2026-08-09 the single most diagnostic number — how many samples the tap
