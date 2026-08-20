@@ -73,6 +73,94 @@ final class MeetingAutoStopToleranceTests: XCTestCase {
     func testZeroMissesNeverEndsTheMeeting() {
         XCTAssertFalse(MeetingSession.shouldAutomaticallyStop(afterConsecutiveInactivePolls: 0))
     }
+
+    // 2026-08-19. His 10:03 Zoom was cut off after 2 minutes 13 seconds, and the
+    // trace is exact: started 09:03:13, poll at 09:04:13 failed, poll at 09:05:13
+    // failed, auto-stopped 09:05:26.
+    //
+    // The polls did not fail because the meeting had ended. They failed because
+    // `AccessibilityWindowTitles.all` asks the Accessibility API for Zoom's
+    // window titles and returns `[]` when the call itself fails — and AF Flow's
+    // Accessibility grant has been broken since the 2026-08-10 install
+    // (`AXError -25204` on every query). An empty list from a broken API is
+    // indistinguishable, to the caller, from "Zoom has no meeting window".
+    //
+    // ABSENCE OF EVIDENCE IS NOT EVIDENCE OF ABSENCE. A signal the app cannot
+    // read must not end a recording he is still in. The same shape killed his
+    // 10:03 meeting on 2026-07-29 after 76 seconds, recorded in the comment above
+    // `shouldAutomaticallyStop`.
+    // A window can legitimately have no title. An Accessibility call that FAILS
+    // is a different thing, and conflating them put the 2026-08-19 auto-stop bug
+    // one layer below where it was first fixed.
+    func testAWindowWithNoTitleIsNotAReadFailure() {
+        XCTAssertFalse(AccessibilityWindowTitles.isReadFailure(.success))
+        XCTAssertFalse(AccessibilityWindowTitles.isReadFailure(.attributeUnsupported))
+        XCTAssertFalse(AccessibilityWindowTitles.isReadFailure(.noValue))
+    }
+
+    func testABrokenAccessibilityGrantIsAReadFailure() {
+        XCTAssertTrue(
+            AccessibilityWindowTitles.isReadFailure(.cannotComplete),
+            "AXError -25204, which is what his broken grant returned on every query since 2026-08-10."
+        )
+        XCTAssertTrue(AccessibilityWindowTitles.isReadFailure(.apiDisabled))
+        XCTAssertTrue(AccessibilityWindowTitles.isReadFailure(.invalidUIElement))
+        XCTAssertTrue(AccessibilityWindowTitles.isReadFailure(.notImplemented))
+    }
+
+    func testAVisibleMeetingWindowWinsEvenIfAnotherWindowFailedToRead() {
+        XCTAssertEqual(
+            MeetingSession.classify(titles: ["Zoom Meeting"], failed: true, appName: "Zoom"),
+            .active,
+            "A meeting window we can see means the call is running. One unreadable sibling window changes nothing."
+        )
+    }
+
+    func testAPartialFailureWithNoMeetingWindowIsUnreadableNotInactive() {
+        XCTAssertEqual(
+            MeetingSession.classify(titles: ["Settings"], failed: true, appName: "Zoom"),
+            .unreadable
+        )
+    }
+
+    func testACleanReadWithNoMeetingWindowIsInactive() {
+        XCTAssertEqual(
+            MeetingSession.classify(titles: ["Settings"], failed: false, appName: "Zoom"),
+            .inactive
+        )
+    }
+
+    func testAnUnreadableWindowListDoesNotCountAgainstTheMeeting() {
+        XCTAssertEqual(
+            MeetingSession.nextInactivePollCount(current: 1, reading: .unreadable),
+            1,
+            "A failed Accessibility read tells us nothing about whether he is still in the call."
+        )
+    }
+
+    func testAWindowListReadSuccessfullyWithNoMeetingWindowDoesCount() {
+        XCTAssertEqual(
+            MeetingSession.nextInactivePollCount(current: 1, reading: .inactive),
+            2,
+            "Reading Zoom's windows and finding no meeting is real evidence the call ended."
+        )
+    }
+
+    func testSeeingAnActiveMeetingClearsTheStrikes() {
+        XCTAssertEqual(MeetingSession.nextInactivePollCount(current: 1, reading: .active), 0)
+    }
+
+    func testAnUnreadableListCanNeverAccumulateToAStop() {
+        var polls = 0
+        for _ in 0..<50 {
+            polls = MeetingSession.nextInactivePollCount(current: polls, reading: .unreadable)
+        }
+
+        XCTAssertFalse(
+            MeetingSession.shouldAutomaticallyStop(afterConsecutiveInactivePolls: polls),
+            "Fifty minutes of a broken Accessibility grant must not end a meeting he is still in."
+        )
+    }
 }
 
 /// SPEAKER TAGGING MUST NEVER DELETE WORDS SOMEBODY SAID.

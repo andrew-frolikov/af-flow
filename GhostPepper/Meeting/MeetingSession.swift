@@ -176,6 +176,7 @@ final class MeetingSession: ObservableObject {
     private let ocrService: FrontmostWindowOCRService
     private let captureStartOverride: CaptureStartOverride?
     private var inactiveMeetingPollCount = 0
+    private var consecutiveUnreadableWindowPolls = 0
     private var startWaiters: [CheckedContinuation<Void, Never>] = []
     private var stopWaiters: [CheckedContinuation<Void, Never>] = []
     private var stopRequested = false
@@ -917,6 +918,46 @@ final class MeetingSession: ObservableObject {
             (detectedMeetingBundleIdentifier?.hasPrefix("us.zoom.") ?? false)
     }
 
+    /// What one poll of the meeting app's windows actually told us.
+    enum MeetingActivityReading: Equatable {
+        /// A meeting window is on screen.
+        case active
+        /// The windows were read and none of them is a meeting.
+        case inactive
+        /// The Accessibility call failed, so this poll learned nothing.
+        case unreadable
+    }
+
+    /// The strike count after one poll.
+    ///
+    /// `unreadable` deliberately leaves the count alone. On 2026-08-19 an
+    /// unreadable poll was counted as a strike and his Zoom call was ended after
+    /// 2 minutes 13 seconds while he was still in it, because AF Flow's
+    /// Accessibility grant had been broken by an install and every read failed.
+    /// Turns one poll into a reading. Positive evidence wins.
+    ///
+    /// Codex, 2026-08-19, P1: classifying ANY partial Accessibility failure as
+    /// unreadable threw away a meeting title that had been read perfectly well.
+    /// Worse, it left an earlier inactive strike standing, so one later inactive
+    /// poll could reach two and stop a live recording on misses that were never
+    /// consecutive. If a meeting window is visible, the meeting is running, and
+    /// nothing else about the read matters.
+    nonisolated static func classify(titles: [String], failed: Bool, appName: String) -> MeetingActivityReading {
+        if MeetingWindowHeuristics.indicatesActiveMeeting(in: titles, appName: appName) {
+            return .active
+        }
+
+        return failed ? .unreadable : .inactive
+    }
+
+    nonisolated static func nextInactivePollCount(current: Int, reading: MeetingActivityReading) -> Int {
+        switch reading {
+        case .active: return 0
+        case .inactive: return current + 1
+        case .unreadable: return current
+        }
+    }
+
     private func checkForMeetingEnd() {
         guard isActive,
               let detectedMeetingAppName,
@@ -927,13 +968,33 @@ final class MeetingSession: ObservableObject {
             return
         }
 
-        let titles = AccessibilityWindowTitles.all(for: meetingApp)
-        if MeetingWindowHeuristics.indicatesActiveMeeting(in: titles, appName: detectedMeetingAppName) {
-            inactiveMeetingPollCount = 0
-            return
+        let windows = AccessibilityWindowTitles.reading(for: meetingApp)
+        let reading = Self.classify(
+            titles: windows.titles,
+            failed: windows.failed,
+            appName: detectedMeetingAppName
+        )
+
+        if reading == .unreadable {
+            consecutiveUnreadableWindowPolls += 1
+            // Codex round 2, P3: a single failure can be a 0.5 s timeout or a
+            // window closing mid-read, and saying "check your permission" on one
+            // of those would misdiagnose a healthy grant. Two in a row is a
+            // standing condition worth naming, and it is said once per session
+            // rather than once a minute.
+            if consecutiveUnreadableWindowPolls == 2 {
+                onDiagnostic?(
+                    "Could not read \(detectedMeetingAppName)'s windows on two checks in a row, so this meeting will not auto-stop on window state. If it keeps happening, check AF Flow's Accessibility permission."
+                )
+            }
+        } else {
+            consecutiveUnreadableWindowPolls = 0
         }
 
-        inactiveMeetingPollCount += 1
+        inactiveMeetingPollCount = Self.nextInactivePollCount(
+            current: inactiveMeetingPollCount,
+            reading: reading
+        )
         guard Self.shouldAutomaticallyStop(afterConsecutiveInactivePolls: inactiveMeetingPollCount) else { return }
         requestAutomaticStop(reason: "meeting windows no longer look active")
     }
