@@ -610,6 +610,37 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
         XCTAssertNil(recorder.pendingEngineInvalidationReason)
     }
 
+    // CODEX ROUND 11, P1. The duration gate that stopped mis-presses from
+    // forcing rebuilds also meant a run of SHORT dictations could ride a dead
+    // engine forever: under a second each, so never invalidated, and with the
+    // idle notification suppressed and the route unchanged there is no other
+    // signal. One quick tap stays exempt; two in a row is a pattern.
+    func testASecondShortCaptureWithNoFramesInARowInvalidatesTheEngine() {
+        let recorder = AudioRecorder()
+
+        recorder.noteCaptureFinished(tapCallbacks: 0, captureDuration: 0.4)
+        XCTAssertNil(recorder.pendingEngineInvalidationReason, "One quick tap is a mis-press.")
+
+        recorder.noteCaptureFinished(tapCallbacks: 0, captureDuration: 0.4)
+        XCTAssertEqual(
+            recorder.pendingEngineInvalidationReason,
+            "two recordings in a row captured no audio at all"
+        )
+    }
+
+    func testAGoodRecordingClearsTheZeroCaptureStreak() {
+        let recorder = AudioRecorder()
+
+        recorder.noteCaptureFinished(tapCallbacks: 0, captureDuration: 0.4)
+        recorder.noteCaptureFinished(tapCallbacks: 60, captureDuration: 5.0)
+        recorder.noteCaptureFinished(tapCallbacks: 0, captureDuration: 0.4)
+
+        XCTAssertNil(
+            recorder.pendingEngineInvalidationReason,
+            "Two mis-presses either side of a working dictation are not a dead engine."
+        )
+    }
+
     func testAHealthyRecordingLeavesTheEngineAlone() {
         let recorder = AudioRecorder()
 
@@ -629,6 +660,22 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
         XCTAssertNil(
             recorder.pendingEngineInvalidationReason,
             "No clock reading is not evidence the engine is dead."
+        )
+    }
+
+    // CODEX ROUND 12, P2. A stop with no measured duration means no capture ran
+    // — a failed start whose caller still stops, or a duplicate stop. Letting
+    // those bump the streak would rebuild the engine for nothing.
+    func testStopsWithNoCaptureAtAllDoNotBuildTowardsARebuild() {
+        let recorder = AudioRecorder()
+
+        recorder.noteCaptureFinished(tapCallbacks: 0, captureDuration: nil)
+        recorder.noteCaptureFinished(tapCallbacks: 0, captureDuration: nil)
+        recorder.noteCaptureFinished(tapCallbacks: 0, captureDuration: 0.4)
+
+        XCTAssertNil(
+            recorder.pendingEngineInvalidationReason,
+            "Only real captures count towards the streak."
         )
     }
 

@@ -205,6 +205,8 @@ final class AudioRecorder {
     /// belongs to the previous epoch, and counting it makes a dead engine look
     /// healthy so the next press skips the rebuild it needs.
     private var tapCallbackBaseline = 0
+    /// Consecutive finished recordings that saw no tap callbacks at all.
+    private var consecutiveZeroCallbackCaptures = 0
     private var lastNonZeroChunkAtNanoseconds: UInt64?
     private var healthTracker = CaptureHealthTracker()
     private var healthPollTimer: DispatchSourceTimer?
@@ -718,7 +720,7 @@ final class AudioRecorder {
     func stopRecording() async -> [Float] {
         // Cancels the timer and disarms atomically, so a poll queued at key
         // release cannot warn about a recording that is already over.
-        let (captureDuration, callbacksSinceEpoch) = finishCapture()
+        let captureDuration = finishCapture()
 
         let flushDelay = stopFlushDelayNanoseconds()
         if flushDelay > 0 {
@@ -751,7 +753,7 @@ final class AudioRecorder {
         lastCaptureSampleCount = result.count
         lastCaptureMaxAmplitude = maxAmplitude
 
-        noteCaptureFinished(tapCallbacks: callbacksSinceEpoch, captureDuration: captureDuration)
+        noteCaptureFinished(tapCallbacks: callbacksSinceEpoch(), captureDuration: captureDuration)
 
         return result
     }
@@ -965,22 +967,28 @@ final class AudioRecorder {
     /// release could slip between them and warn him about a recording that had
     /// already ended, which is exactly the stale warning this lifecycle exists to
     /// prevent.
-    private func finishCapture() -> (duration: TimeInterval?, callbacksSinceEpoch: Int) {
+    private func finishCapture() -> TimeInterval? {
         healthPollTimer?.cancel()
         healthPollTimer = nil
 
         tapStateLock.lock()
         defer { tapStateLock.unlock() }
 
-        let callbacks = max(0, tapCallbackCount - tapCallbackBaseline)
-        guard let startedAt = recordingStartedAtNanoseconds else {
-            return (nil, callbacks)
-        }
+        guard let startedAt = recordingStartedAtNanoseconds else { return nil }
 
         recordingStartedAtNanoseconds = nil
         let now = nowNanoseconds()
-        let elapsed = now >= startedAt ? Double(now - startedAt) / 1_000_000_000 : 0
-        return (elapsed, callbacks)
+        return now >= startedAt ? Double(now - startedAt) / 1_000_000_000 : 0
+    }
+
+    /// Read only AFTER the drain. Codex round 11: the tap stays installed
+    /// through the flush delay, so a first callback arriving in that deliberate
+    /// tail window puts audio in the buffer while a count snapshotted at key
+    /// release still reads zero — and a healthy engine gets rebuilt for nothing.
+    private func callbacksSinceEpoch() -> Int {
+        tapStateLock.lock()
+        defer { tapStateLock.unlock() }
+        return max(0, tapCallbackCount - tapCallbackBaseline)
     }
 
     /// Called when a recording ends. Zero tap callbacks is the dead-engine
@@ -995,11 +1003,35 @@ final class AudioRecorder {
     /// enough time has passed that frames should have arrived: a quick tap ends
     /// before the first 20 ms callback and is a mis-press, not a dead engine.
     func noteCaptureFinished(tapCallbacks: Int, captureDuration: TimeInterval?) {
-        guard tapCallbacks == 0,
-              let captureDuration,
-              captureDuration > CaptureHealth.framesExpectedWithinSeconds else { return }
+        // Codex round 12: no measured duration means no capture actually ran —
+        // a failed `startRecording()` whose caller still stops, or a duplicate
+        // stop. That is not evidence in either direction, so the streak must not
+        // move; two of them would otherwise enqueue a rebuild for nothing.
+        guard let captureDuration else { return }
 
-        invalidateEngine(reason: "the previous recording captured no audio at all")
+        guard tapCallbacks == 0 else {
+            consecutiveZeroCallbackCaptures = 0
+            return
+        }
+
+        consecutiveZeroCallbackCaptures += 1
+
+        // Long enough that frames should have arrived: one is already proof.
+        if captureDuration > CaptureHealth.framesExpectedWithinSeconds {
+            consecutiveZeroCallbackCaptures = 0
+            invalidateEngine(reason: "the previous recording captured no audio at all")
+            return
+        }
+
+        // Too short to judge on its own. Codex round 11: without this, a run of
+        // short dictations could ride a dead engine indefinitely, because the
+        // duration gate never fires, the idle notification is suppressed and the
+        // route signature is unchanged. One quick tap is a mis-press; two in a
+        // row is a pattern.
+        if consecutiveZeroCallbackCaptures >= 2 {
+            consecutiveZeroCallbackCaptures = 0
+            invalidateEngine(reason: "two recordings in a row captured no audio at all")
+        }
     }
 
     /// Restarts the health clock once the engine is actually running, without
