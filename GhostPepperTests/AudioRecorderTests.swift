@@ -429,7 +429,18 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
         )
     }
 
-    func testAConfigurationChangeOnTheLiveEngineInvalidatesIt() {
+    // MEASURED REGRESSION, 2026-08-19. Treating every
+    // `AVAudioEngineConfigurationChange` as proof the engine was broken cost him
+    // nine days of degraded dictation: 172 rebuilds across 173 recordings, and
+    // `hotkey_to_mic_live` p90 went 523 ms -> 1362 ms, max 1199 ms -> 2751 ms.
+    // On 2026-08-12 18:36:26 a 2.75 s press spent all 2751 ms rebuilding and
+    // captured zero frames — the fix causing the failure it was written to stop.
+    //
+    // AVFAudio posts this notification while the graph is RENDERING, and the
+    // graph settles after every stop, so between dictations it is noise. During
+    // a capture it is a real route change. The route-shape check on the next
+    // start catches everything else, so nothing is given up.
+    func testAConfigurationChangeBetweenRecordingsIsNotTreatedAsBreakage() {
         let recorder = AudioRecorder()
 
         NotificationCenter.default.post(
@@ -437,9 +448,198 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
             object: recorder.test_currentEngine
         )
 
+        XCTAssertNil(
+            recorder.pendingEngineInvalidationReason,
+            "The engine settling after a stop must not throw away the prewarm on the next hotkey press."
+        )
+    }
+
+    func testAConfigurationChangeDuringACaptureIsRealAndInvalidates() {
+        let recorder = AudioRecorder()
+        recorder.armCaptureWatchdog()
+
+        NotificationCenter.default.post(
+            name: .AVAudioEngineConfigurationChange,
+            object: recorder.test_currentEngine
+        )
+
+        XCTAssertEqual(
+            recorder.pendingEngineInvalidationReason,
+            "the audio graph was reconfigured mid-recording",
+            "The graph moving under a live capture is the case this notification exists for."
+        )
+    }
+
+    // CODEX ROUND 5, P1. The capture flag was armed AFTER `engine.start()`
+    // returned, so a configuration change emitted by AVFAudio as its I/O comes
+    // up fell in a window where it was discarded — and `noteEngineBoundToRoute()`
+    // then baked the new route in as the baseline, so the NEXT start would not
+    // rebuild either. That is a path straight back to persistent zero-frame
+    // captures. Arming now happens before the engine starts, the timer never
+    // clears the flag, and a failed start disarms.
+    func testStartingTheWatchdogTimerNeverDropsTheArmedState() {
+        let recorder = AudioRecorder()
+        var now: UInt64 = 0
+        recorder.nowNanoseconds = { now }
+
+        recorder.armCaptureWatchdog()
+        recorder.startCaptureWatchdogTimer()
+        NotificationCenter.default.post(
+            name: .AVAudioEngineConfigurationChange,
+            object: recorder.test_currentEngine
+        )
+        recorder.stopCaptureWatchdog()
+
+        XCTAssertEqual(
+            recorder.pendingEngineInvalidationReason,
+            "the audio graph was reconfigured mid-recording",
+            "A notification arriving while the timer is being installed must not fall down a gap."
+        )
+    }
+
+    // CODEX ROUND 6, P2. Arming before `engine.start()` fixed the notification
+    // gap but moved the health epoch earlier, so a slow hardware start ate into
+    // the grace period and the silence tolerance. The flag must survive startup;
+    // the clock must not.
+    func testTheHealthClockStartsWhenTheEngineDoesNotWhenTheKeyIsPressed() {
+        let recorder = AudioRecorder()
+        var fired: [CaptureHealth.Verdict] = []
+        recorder.onCaptureUnhealthy = { fired.append($0) }
+        var now: UInt64 = 0
+        recorder.nowNanoseconds = { now }
+
+        recorder.armCaptureWatchdog()
+        now = 800_000_000            // engine.start() blocked for 800 ms
+        recorder.refreshCaptureWatchdogEpoch()
+        now = 1_700_000_000          // 900 ms of actual capture, still inside grace
+        recorder.pollCaptureHealth()
+
+        XCTAssertTrue(
+            fired.isEmpty,
+            "Counting engine startup against the grace period turns a slow start into a false alarm."
+        )
+    }
+
+    func testEveryHealthTimestampResetsWithTheEpoch() {
+        let recorder = AudioRecorder()
+        var fired: [CaptureHealth.Verdict] = []
+        recorder.onCaptureUnhealthy = { fired.append($0) }
+        var now: UInt64 = 0
+        recorder.nowNanoseconds = { now }
+
+        recorder.armCaptureWatchdog()
+        now = 100_000_000
+        recorder.test_convert(samples: [0.5, 0.5])   // a chunk converts during a slow start
+        now = 2_000_000_000                          // start took 1.9 s
+        recorder.refreshCaptureWatchdogEpoch()
+        now = 2_200_000_000                          // first poll, 200 ms into capture
+        recorder.pollCaptureHealth()
+
+        XCTAssertTrue(
+            fired.isEmpty,
+            "A chunk from before the epoch must not read as a one-second-old stall on the first poll."
+        )
+    }
+
+    func testTheClockRefreshDoesNotDisarmTheCaptureFlag() {
+        let recorder = AudioRecorder()
+        var now: UInt64 = 0
+        recorder.nowNanoseconds = { now }
+
+        recorder.armCaptureWatchdog()
+        now = 800_000_000
+        recorder.refreshCaptureWatchdogEpoch()
+        NotificationCenter.default.post(
+            name: .AVAudioEngineConfigurationChange,
+            object: recorder.test_currentEngine
+        )
+        recorder.stopCaptureWatchdog()
+
+        XCTAssertEqual(recorder.pendingEngineInvalidationReason, "the audio graph was reconfigured mid-recording")
+    }
+
+    func testAFailedStartDisarmsSoLaterNoiseIsStillIgnored() {
+        let recorder = AudioRecorder()
+        recorder.armCaptureWatchdog()
+        recorder.stopCaptureWatchdog()
+
+        NotificationCenter.default.post(
+            name: .AVAudioEngineConfigurationChange,
+            object: recorder.test_currentEngine
+        )
+
+        XCTAssertNil(
+            recorder.pendingEngineInvalidationReason,
+            "If the engine never started, the graph settling afterwards is noise like any other."
+        )
+    }
+
+    // CODEX ROUND 8, P1. Suppressing idle configuration changes is right by
+    // measurement (162 of 172 rebuilds were that notification alone, costing
+    // p90 523 ms -> 1362 ms), but Codex is correct that a same-format graph
+    // reset would then have no signal at all: `InputRouteSignature` compares
+    // device, rate and channels, so an invalid engine on an unchanged route is
+    // invisible to it.
+    //
+    // The answer is evidence rather than a better guess about notifications. A
+    // finished recording that saw ZERO tap callbacks is the dead-engine
+    // signature itself, so it invalidates the engine and the next press rebuilds.
+    // Worst case becomes one lost recording instead of an indefinite outage, and
+    // a healthy engine still pays nothing.
+    func testARecordingLongEnoughToExpectFramesButWithNoneInvalidatesTheEngine() {
+        let recorder = AudioRecorder()
+
+        recorder.noteCaptureFinished(tapCallbacks: 0, captureDuration: 2.0)
+
+        XCTAssertEqual(
+            recorder.pendingEngineInvalidationReason,
+            "the previous recording captured no audio at all"
+        )
+    }
+
+    // CODEX ROUND 9, P1. A quick tap legitimately ends before the first 20 ms
+    // callback, and `emptyTranscriptionDisposition` already treats that as a
+    // mis-press. Invalidating on it would make every fumbled key press cost the
+    // next real dictation a rebuild — the same latency regression, re-entered
+    // through a different door.
+    func testAMisPressTooShortToExpectFramesLeavesTheEngineAlone() {
+        let recorder = AudioRecorder()
+
+        recorder.noteCaptureFinished(tapCallbacks: 0, captureDuration: 0.3)
+
+        XCTAssertNil(recorder.pendingEngineInvalidationReason)
+    }
+
+    func testAHealthyRecordingLeavesTheEngineAlone() {
+        let recorder = AudioRecorder()
+
+        recorder.noteCaptureFinished(tapCallbacks: 97, captureDuration: 40)
+
+        XCTAssertNil(
+            recorder.pendingEngineInvalidationReason,
+            "Rebuilding after every good recording is the regression this whole round exists to undo."
+        )
+    }
+
+    func testAnUnknownCaptureDurationIsNotTreatedAsEvidence() {
+        let recorder = AudioRecorder()
+
+        recorder.noteCaptureFinished(tapCallbacks: 0, captureDuration: nil)
+
+        XCTAssertNil(
+            recorder.pendingEngineInvalidationReason,
+            "No clock reading is not evidence the engine is dead."
+        )
+    }
+
+    func testWakingFromSleepInvalidatesTheEngineEvenBetweenRecordings() {
+        let recorder = AudioRecorder()
+
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+
         XCTAssertNotNil(
             recorder.pendingEngineInvalidationReason,
-            "AVFAudio telling us the graph was reconfigured is the one signal that arrives for a Bluetooth mic coming back on a different route."
+            "A wake is rare and is the 2026-08-09 trigger. It stays a hard invalidation."
         )
     }
 

@@ -200,6 +200,11 @@ final class AudioRecorder {
     /// writes them and the poll queue reads them.
     private var recordingStartedAtNanoseconds: UInt64?
     private var lastTapCallbackAtNanoseconds: UInt64?
+    /// Callbacks already counted when the health epoch was last (re)set. Codex
+    /// round 10: a callback landing while `engine.start()` is still blocked
+    /// belongs to the previous epoch, and counting it makes a dead engine look
+    /// healthy so the next press skips the rebuild it needs.
+    private var tapCallbackBaseline = 0
     private var lastNonZeroChunkAtNanoseconds: UInt64?
     private var healthTracker = CaptureHealthTracker()
     private var healthPollTimer: DispatchSourceTimer?
@@ -262,6 +267,15 @@ final class AudioRecorder {
         return pendingInvalidationReasons.isEmpty
             ? nil
             : pendingInvalidationReasons.joined(separator: ", ")
+    }
+
+    /// Whether a recording is in flight. Derived from the watchdog's start
+    /// timestamp so there is one source of truth rather than two flags that can
+    /// disagree.
+    private var isCapturing: Bool {
+        tapStateLock.lock()
+        defer { tapStateLock.unlock() }
+        return recordingStartedAtNanoseconds != nil
     }
 
     /// Marks the engine as untrustworthy. Safe to call from any thread: Core
@@ -401,7 +415,18 @@ final class AudioRecorder {
             object: engine,
             queue: nil
         ) { [weak self] _ in
-            self?.invalidateEngine(reason: "the audio graph was reconfigured")
+            // ONLY while capturing. AVFAudio posts this while the graph is
+            // RENDERING, and the graph settles after every stop, so between
+            // dictations it is routine noise rather than evidence of breakage.
+            //
+            // Treating it as breakage cost him nine days: 172 rebuilds across
+            // 173 recordings, `hotkey_to_mic_live` p90 523 ms -> 1362 ms, and on
+            // 2026-08-12 a 2.75 s press spent all 2751 ms rebuilding and
+            // captured nothing — the fix causing the failure it was written to
+            // prevent. Nothing is given up, because `invalidateIfRouteChanged()`
+            // reads the hardware route on every single start.
+            guard let self, self.isCapturing else { return }
+            self.invalidateEngine(reason: "the audio graph was reconfigured mid-recording")
         }
         configurationChangeObservedGeneration = engineGeneration
     }
@@ -599,11 +624,27 @@ final class AudioRecorder {
             }
         }
 
-        try engine.start()
+        // ARMED BEFORE THE ENGINE STARTS. AVFAudio can post a configuration
+        // change as its I/O comes up, and the observer only honours one while a
+        // capture is in flight. Arming afterwards left that notification in a
+        // gap, and `noteEngineBoundToRoute()` below would then record the moved
+        // route as the baseline, so the next start would not rebuild either.
+        armCaptureWatchdog()
+        do {
+            try engine.start()
+        } catch {
+            stopCaptureWatchdog()
+            throw error
+        }
+
+        // The engine is up, so the health clock starts now rather than at the
+        // key press. The armed flag is untouched.
+        refreshCaptureWatchdogEpoch()
+
         // This engine is now bound to this route. Covers the case where no
         // prewarm ever ran.
         noteEngineBoundToRoute()
-        startCaptureWatchdog()
+        startCaptureWatchdogTimer()
         onRecordingStarted?()
     }
 
@@ -675,9 +716,9 @@ final class AudioRecorder {
     /// Waits only for the remainder of the active tap interval plus any
     /// in-flight conversion work so stop latency tracks the tap size.
     func stopRecording() async -> [Float] {
-        // Before the flush wait, so a recording that ends inside the watchdog's
-        // window cannot warn about a capture that is already over.
-        stopCaptureWatchdog()
+        // Cancels the timer and disarms atomically, so a poll queued at key
+        // release cannot warn about a recording that is already over.
+        let (captureDuration, callbacksSinceEpoch) = finishCapture()
 
         let flushDelay = stopFlushDelayNanoseconds()
         if flushDelay > 0 {
@@ -709,6 +750,8 @@ final class AudioRecorder {
         // were written nowhere at all.
         lastCaptureSampleCount = result.count
         lastCaptureMaxAmplitude = maxAmplitude
+
+        noteCaptureFinished(tapCallbacks: callbacksSinceEpoch, captureDuration: captureDuration)
 
         return result
     }
@@ -908,15 +951,81 @@ final class AudioRecorder {
     func armCaptureWatchdog() {
         tapStateLock.lock()
         recordingStartedAtNanoseconds = nowNanoseconds()
+        tapCallbackBaseline = tapCallbackCount
         lastTapCallbackAtNanoseconds = nil
         lastNonZeroChunkAtNanoseconds = nil
         healthTracker.reset()
         tapStateLock.unlock()
     }
 
-    private func startCaptureWatchdog() {
-        stopCaptureWatchdog()
-        armCaptureWatchdog()
+    /// Cancels the poll timer, disarms, and reports what this capture saw — the
+    /// disarm and the read in ONE lock acquisition.
+    ///
+    /// Codex round 10: as two separate locked sections, a poll queued at key
+    /// release could slip between them and warn him about a recording that had
+    /// already ended, which is exactly the stale warning this lifecycle exists to
+    /// prevent.
+    private func finishCapture() -> (duration: TimeInterval?, callbacksSinceEpoch: Int) {
+        healthPollTimer?.cancel()
+        healthPollTimer = nil
+
+        tapStateLock.lock()
+        defer { tapStateLock.unlock() }
+
+        let callbacks = max(0, tapCallbackCount - tapCallbackBaseline)
+        guard let startedAt = recordingStartedAtNanoseconds else {
+            return (nil, callbacks)
+        }
+
+        recordingStartedAtNanoseconds = nil
+        let now = nowNanoseconds()
+        let elapsed = now >= startedAt ? Double(now - startedAt) / 1_000_000_000 : 0
+        return (elapsed, callbacks)
+    }
+
+    /// Called when a recording ends. Zero tap callbacks is the dead-engine
+    /// signature, so the engine is invalidated and the next press rebuilds.
+    ///
+    /// This is what closes the case no notification covers: a graph reset that
+    /// leaves the device, rate and channel count identical, which
+    /// `InputRouteSignature` cannot see. Evidence rather than a guess, and it
+    /// costs a healthy engine nothing.
+    /// `captureDuration` is how long the engine was actually up, measured from
+    /// the post-start health epoch. Zero callbacks only means something once
+    /// enough time has passed that frames should have arrived: a quick tap ends
+    /// before the first 20 ms callback and is a mis-press, not a dead engine.
+    func noteCaptureFinished(tapCallbacks: Int, captureDuration: TimeInterval?) {
+        guard tapCallbacks == 0,
+              let captureDuration,
+              captureDuration > CaptureHealth.framesExpectedWithinSeconds else { return }
+
+        invalidateEngine(reason: "the previous recording captured no audio at all")
+    }
+
+    /// Restarts the health clock once the engine is actually running, without
+    /// ever clearing the armed flag. Codex round 6: arming before
+    /// `engine.start()` is required so a configuration change during startup is
+    /// not discarded, but counting that startup against the grace period and the
+    /// silence tolerance turns a slow hardware start into a false warning.
+    func refreshCaptureWatchdogEpoch() {
+        tapStateLock.lock()
+        recordingStartedAtNanoseconds = nowNanoseconds()
+        tapCallbackBaseline = tapCallbackCount
+        lastTapCallbackAtNanoseconds = nil
+        // Codex round 7: leaving this one behind let a chunk converted during a
+        // slow start read as over a second old on the first poll, reporting
+        // `.conversionFailing` inside the grace period it was meant to protect.
+        // Every health timestamp resets with the epoch or none of them do.
+        lastConvertedChunkAtNanoseconds = nil
+        lastNonZeroChunkAtNanoseconds = nil
+        tapStateLock.unlock()
+    }
+
+    /// Installs the poll timer. Deliberately does NOT touch the armed flag:
+    /// clearing and re-setting it would open a window in which a configuration
+    /// change is discarded, which is Codex round 5's P1.
+    func startCaptureWatchdogTimer() {
+        healthPollTimer?.cancel()
 
         let timer = DispatchSource.makeTimerSource(queue: healthPollQueue)
         timer.schedule(
