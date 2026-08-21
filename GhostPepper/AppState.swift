@@ -739,14 +739,13 @@ class AppState: ObservableObject {
             MeetingAudioStore.pruneRecordings()
         }
 
-        // One-time correction of the stored summary prompt.
-        //
-        // The `meetingSummaryPrompt` key had two different defaults, so an install that
-        // saved it while the editor was showing the CHUNK prompt is now holding the chunk
-        // prompt where the final prompt belongs. Replaced only when it matches that old
-        // default exactly, so a prompt he wrote himself is never touched.
         // Push-to-talk becomes Globe alone, by his decision of 2026-08-02, but only if
         // what is stored is one of the two bindings this replaces.
+        //
+        // The comment that used to head this block described the summary-prompt
+        // migration below instead, and had done since the two were written. A comment
+        // sitting above the wrong code is a claim that is simply untrue, and this
+        // project has been bitten by that shape more than once.
         if let stored = chordBindingStore.binding(for: .pushToTalk),
            Self.supersededPushToTalkChords.contains(stored) {
             do {
@@ -765,11 +764,35 @@ class AppState: ObservableObject {
             }
         }
 
+        // One-time corrections of the stored summary prompt.
+        //
+        // `meetingSummaryPrompt` is an @AppStorage key, and a default only applies
+        // while the key is ABSENT. Any install that once opened the prompt editor is
+        // holding a frozen copy of whatever the default was that day, and would never
+        // see a source change. Both replacements below fire only on an EXACT match
+        // with a prompt this app shipped, so a prompt he wrote himself is never
+        // touched.
+        //
+        // First: the key had two different defaults, so an install that saved it while
+        // the editor was showing the CHUNK prompt is holding the chunk prompt where
+        // the final prompt belongs.
         if meetingSummaryPrompt == MeetingSummaryGenerator.defaultPrompt {
             meetingSummaryPrompt = MeetingSummaryGenerator.storedSummaryPromptDefault
             debugLogStore.record(
                 category: .model,
                 message: "Corrected the stored meeting summary prompt: it held the per-chunk prompt, which was one of the two defaults that key used to have."
+            )
+        }
+
+        // Second, 2026-08-21: the shipped prompt used to hand the model three example
+        // headings, and the model emitted all three verbatim and invented content to
+        // fill them. Removing them from the source is not enough on its own; a stored
+        // copy would keep producing the same fabrications forever.
+        if meetingSummaryPrompt == MeetingSummaryGenerator.supersededSummaryPromptWithExampleHeadings {
+            meetingSummaryPrompt = MeetingSummaryGenerator.storedSummaryPromptDefault
+            debugLogStore.record(
+                category: .model,
+                message: "Replaced the stored meeting summary prompt: it was the version that named example headings, which the model copied into summaries as invented topics."
             )
         }
 

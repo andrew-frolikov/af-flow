@@ -187,6 +187,9 @@
 		BB3753EE6EEBFCD75F0EC464 /* TranscriptionLabRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB3753EE6EEBFCD75F0EC464 /* TranscriptionLabRetentionTests.swift */; };
 		B7EB511985D15641AC73698F /* DictationTruncationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7EB511985D15641AC73698F /* DictationTruncationTests.swift */; };
 		B12BE3F6729C6D511E58369C /* DecodeOptionsBakeOffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12BE3F6729C6D511E58369C /* DecodeOptionsBakeOffTests.swift */; };
+		B1F1B3D94C3A3D01CA0E1443 /* MeetingSummaryEvalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F1B3D94C3A3D01CA0E1443 /* MeetingSummaryEvalTests.swift */; };
+		B158C36AD15D1013977FB8FB /* SummaryFabricationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F158C36AD15D1013977FB8FB /* SummaryFabricationTests.swift */; };
+		B135BE19B9795510F5749D3B /* SummaryFabrication.swift in Sources */ = {isa = PBXBuildFile; fileRef = F135BE19B9795510F5749D3B /* SummaryFabrication.swift */; };
 		B611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift */; };
 		B134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift */; };
 		F84C21AA931175E37108AC37 /* AccessibilityFunctionCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */; };
@@ -304,6 +307,9 @@
 		FB3753EE6EEBFCD75F0EC464 /* TranscriptionLabRetentionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLabRetentionTests.swift; sourceTree = "<group>"; };
 		F7EB511985D15641AC73698F /* DictationTruncationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationTruncationTests.swift; sourceTree = "<group>"; };
 		F12BE3F6729C6D511E58369C /* DecodeOptionsBakeOffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecodeOptionsBakeOffTests.swift; sourceTree = "<group>"; };
+		F1F1B3D94C3A3D01CA0E1443 /* MeetingSummaryEvalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummaryEvalTests.swift; sourceTree = "<group>"; };
+		F158C36AD15D1013977FB8FB /* SummaryFabricationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryFabricationTests.swift; sourceTree = "<group>"; };
+		F135BE19B9795510F5749D3B /* SummaryFabrication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryFabrication.swift; sourceTree = "<group>"; };
 		F611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageReplayTests.swift; sourceTree = "<group>"; };
 		F134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionCensusTests.swift; sourceTree = "<group>"; };
 		CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityFunctionCheckTests.swift; sourceTree = "<group>"; };
@@ -936,6 +942,9 @@
 				FB3753EE6EEBFCD75F0EC464 /* TranscriptionLabRetentionTests.swift */,
 				F7EB511985D15641AC73698F /* DictationTruncationTests.swift */,
 				F12BE3F6729C6D511E58369C /* DecodeOptionsBakeOffTests.swift */,
+				F1F1B3D94C3A3D01CA0E1443 /* MeetingSummaryEvalTests.swift */,
+				F158C36AD15D1013977FB8FB /* SummaryFabricationTests.swift */,
+				F135BE19B9795510F5749D3B /* SummaryFabrication.swift */,
 				F611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift */,
 				F134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift */,
 				CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */,
@@ -1304,6 +1313,9 @@
 				BB3753EE6EEBFCD75F0EC464 /* TranscriptionLabRetentionTests.swift in Sources */,
 				B7EB511985D15641AC73698F /* DictationTruncationTests.swift in Sources */,
 				B12BE3F6729C6D511E58369C /* DecodeOptionsBakeOffTests.swift in Sources */,
+				B1F1B3D94C3A3D01CA0E1443 /* MeetingSummaryEvalTests.swift in Sources */,
+				B158C36AD15D1013977FB8FB /* SummaryFabricationTests.swift in Sources */,
+				B135BE19B9795510F5749D3B /* SummaryFabrication.swift in Sources */,
 				B611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift in Sources */,
 				B134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift in Sources */,
 				F84C21AA931175E37108AC37 /* AccessibilityFunctionCheckTests.swift in Sources */,
