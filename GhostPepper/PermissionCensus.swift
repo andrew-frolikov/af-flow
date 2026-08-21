@@ -51,6 +51,12 @@ enum PermissionCensus {
             + "\"accessibility\":\(accessibility),"
             + "\"accessibilityFunction\":\"\(AccessibilityFunctionCheck.description(of: accessibilityFunction))\","
             + "\"accessibilityStale\":\(AccessibilityFunctionCheck.isStaleGrant(accessibilityFunction)),"
+            // Says WHY it is broken, durably and without a UI banner. Codex,
+            // 2026-08-21: the sandbox explanation was unreachable through
+            // `warning()`, which only speaks when Input Monitoring is off. And a
+            // permanent limitation is not something to nag him about forever —
+            // it belongs in the log, where the next person debugging this looks.
+            + "\"accessibilityBlockedBySandbox\":\(AccessibilityFunctionCheck.isBlockedBySandbox(accessibilityFunction)),"
             + "\"canHearHotkey\":\(canHearHotkey),"
             + "\"inputMonitoring\":\(inputMonitoring),"
             + "\"microphone\":\(microphone),"

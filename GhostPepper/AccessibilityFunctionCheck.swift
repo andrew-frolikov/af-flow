@@ -10,11 +10,23 @@ import Foundation
 /// `accessibility:true` throughout a total outage and 235 of Andrew's dictations
 /// reached the clipboard instead of the field he was looking at.
 ///
-/// The cause is structural rather than a one-off: this app is ad-hoc signed, its
-/// signature changes on every build, about ten builds were installed on 08-04
-/// and 08-05, and macOS keeps the TCC row keyed to the old signature. The row
-/// still answers "granted" and the AX server still refuses to talk. So the flag
-/// and the capability are two different facts and only one of them was measured.
+/// So the flag and the capability are two different facts and only one of them
+/// was measured. That much still holds.
+///
+/// **THE EXPLANATION UNDERNEATH IT WAS WRONG, corrected 2026-08-21.** This file
+/// used to blame ad-hoc signing and a TCC row keyed to a stale signature. The app
+/// carries a real Apple Development certificate whose designated requirement is
+/// team plus bundle id with no CDHash, so TCC survives rebuilds; and a stale
+/// grant would have worked at least once immediately after being granted, while
+/// this has reported `broken` 28 times out of 28 across every build and three
+/// separate grants.
+///
+/// The cause is the **App Sandbox**, proven by experiment: a build identical
+/// except for `ENABLE_APP_SANDBOX=NO` reported `working` on its first launch.
+/// A sandboxed app cannot use the Accessibility API against other processes,
+/// while `AXIsProcessTrusted()` still answers true because the TCC row exists.
+/// Andrew decided on 2026-08-21 to keep the sandbox rather than migrate 15 GB
+/// out of the container, so this is permanent and by design.
 ///
 /// **Check the claim, not the intent.** A permission check that cannot fail the
 /// way the permission fails is not a check.
@@ -49,10 +61,35 @@ enum AccessibilityFunctionCheck {
         }
     }
 
+    /// Whether this process runs inside the App Sandbox.
+    static var isSandboxed: Bool {
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }
+
     /// True only for the case that needs him to re-add the grant. Deliberately
     /// NOT true for `.notTrusted`, which the existing warning already covers,
-    /// and NOT true for `.inconclusive`.
-    static func isStaleGrant(_ verdict: Verdict) -> Bool {
+    /// NOT true for `.inconclusive`, and NOT true inside the sandbox, where a
+    /// failing query is expected and no grant can change it.
+    static func isStaleGrant(_ verdict: Verdict, isSandboxed: Bool = AccessibilityFunctionCheck.isSandboxed) -> Bool {
+        guard !isSandboxed else { return false }
+
+        if case .broken = verdict {
+            return true
+        }
+        return false
+    }
+
+    /// A failing query that the sandbox explains, rather than anything he did.
+    ///
+    /// Recorded in the census line rather than shown as a warning: it is a
+    /// permanent design limitation, and a banner he can never dismiss is nagging,
+    /// not information. Nothing in System Settings can change it.
+    static func isBlockedBySandbox(
+        _ verdict: Verdict,
+        isSandboxed: Bool = AccessibilityFunctionCheck.isSandboxed
+    ) -> Bool {
+        guard isSandboxed else { return false }
+
         if case .broken = verdict {
             return true
         }

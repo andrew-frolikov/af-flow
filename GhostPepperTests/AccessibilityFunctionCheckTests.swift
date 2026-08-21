@@ -62,11 +62,16 @@ final class AccessibilityFunctionCheckTests: XCTestCase {
         XCTAssertFalse(AccessibilityFunctionCheck.isStaleGrant(verdict))
     }
 
+    /// `isSandboxed` is passed explicitly rather than left to the default, which
+    /// reads the environment: this test asserts what a broken verdict MEANS, and
+    /// it should not change answer depending on where it runs. Since 2026-08-21
+    /// the default is environment-dependent, and inside the sandboxed test host
+    /// the default is `true`.
     func testOnlyABrokenVerdictCountsAsAStaleGrant() {
-        XCTAssertTrue(AccessibilityFunctionCheck.isStaleGrant(.broken(rawAXError: -25204)))
-        XCTAssertFalse(AccessibilityFunctionCheck.isStaleGrant(.working))
-        XCTAssertFalse(AccessibilityFunctionCheck.isStaleGrant(.notTrusted))
-        XCTAssertFalse(AccessibilityFunctionCheck.isStaleGrant(.inconclusive))
+        XCTAssertTrue(AccessibilityFunctionCheck.isStaleGrant(.broken(rawAXError: -25204), isSandboxed: false))
+        XCTAssertFalse(AccessibilityFunctionCheck.isStaleGrant(.working, isSandboxed: false))
+        XCTAssertFalse(AccessibilityFunctionCheck.isStaleGrant(.notTrusted, isSandboxed: false))
+        XCTAssertFalse(AccessibilityFunctionCheck.isStaleGrant(.inconclusive, isSandboxed: false))
     }
 
     // MARK: - What the log and the warning say
@@ -107,5 +112,73 @@ final class AccessibilityFunctionCheckTests: XCTestCase {
         let verdict = AccessibilityFunctionCheck.run()
 
         XCTAssertNotEqual(verdict, .working, "A self-query would pass here. It must not.")
+    }
+
+    // MARK: - The sandbox
+
+    // PROVEN 2026-08-21. Accessibility has never worked in this app, and it is
+    // not a stale grant: a diagnostic build identical except for
+    // `ENABLE_APP_SANDBOX=NO` reported `working` on its first launch, while the
+    // shipping build has reported `broken(AXError -25204)` 28 times out of 28
+    // across every build and three separate grants. App Sandbox blocks the
+    // Accessibility API against other processes; `AXIsProcessTrusted()` still
+    // answers true because the TCC row exists, which is the split in the log.
+    //
+    // Andrew decided to KEEP the sandbox, because dropping it means migrating
+    // 15 GB out of the container and removing a real boundary on an app that
+    // records his microphone. So `.broken` inside a sandbox is expected, and
+    // must never be reported as something a permission grant can fix. He was
+    // sent to System Settings three times for it.
+    func testABrokenQueryInsideTheSandboxIsNotAStaleGrant() {
+        XCTAssertFalse(
+            AccessibilityFunctionCheck.isStaleGrant(.broken(rawAXError: -25204), isSandboxed: true),
+            "The sandbox blocks this by design. Calling it stale sends him to System Settings for nothing."
+        )
+    }
+
+    func testABrokenQueryOutsideTheSandboxIsStillAStaleGrant() {
+        XCTAssertTrue(
+            AccessibilityFunctionCheck.isStaleGrant(.broken(rawAXError: -25204), isSandboxed: false),
+            "Unsandboxed, a granted-but-refusing AX server is the 2026-08-05 outage and must still be reported."
+        )
+    }
+
+    // Post-paste learning reads the focused text field through Accessibility, so
+    // in the sandbox it cannot work AT ALL. His log holds ~1,200 polls across
+    // every day it has ever run and not one of them ever read a field. Six polls
+    // a second per dictation, all guaranteed to fail, plus seven log lines each.
+    func testPostPasteLearningIsSkippedWhenAccessibilityCannotWork() {
+        XCTAssertFalse(
+            PostPasteLearningCoordinator.canObserveFocusedField(accessibility: .broken(rawAXError: -25204)),
+            "Polling a field the app can never read is pure noise."
+        )
+        XCTAssertFalse(
+            PostPasteLearningCoordinator.canObserveFocusedField(accessibility: .notTrusted)
+        )
+    }
+
+    func testPostPasteLearningStillRunsWhenAccessibilityWorks() {
+        XCTAssertTrue(PostPasteLearningCoordinator.canObserveFocusedField(accessibility: .working))
+        XCTAssertTrue(
+            PostPasteLearningCoordinator.canObserveFocusedField(accessibility: .inconclusive),
+            "An unanswered question is not a no. Nothing was established, so do not disable the feature on it."
+        )
+    }
+
+    func testABrokenQueryInsideTheSandboxIsRecordedAsSandboxBlocked() {
+        XCTAssertTrue(
+            AccessibilityFunctionCheck.isBlockedBySandbox(.broken(rawAXError: -25204), isSandboxed: true)
+        )
+    }
+
+    func testABrokenQueryOutsideTheSandboxIsNotBlamedOnTheSandbox() {
+        XCTAssertFalse(
+            AccessibilityFunctionCheck.isBlockedBySandbox(.broken(rawAXError: -25204), isSandboxed: false)
+        )
+    }
+
+    func testAWorkingQueryIsNeverBlamedOnTheSandbox() {
+        XCTAssertFalse(AccessibilityFunctionCheck.isBlockedBySandbox(.working, isSandboxed: true))
+        XCTAssertFalse(AccessibilityFunctionCheck.isBlockedBySandbox(.inconclusive, isSandboxed: true))
     }
 }

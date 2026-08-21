@@ -18,6 +18,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
             scheduler: { delay, work in
                 scheduledCalls.append((delay, work))
             },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 revisitCallCount += 1
                 return nil
@@ -44,6 +45,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
         let coordinator = PostPasteLearningCoordinator(
             correctionStore: correctionStore,
             scheduler: { _, work in scheduledWork = work },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 PostPasteLearningObservation(
                     text: "This sentence was rewritten into something unrelated"
@@ -73,6 +75,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
         let coordinator = PostPasteLearningCoordinator(
             correctionStore: correctionStore,
             scheduler: { delay, work in scheduledCalls.append((delay, work)) },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 guard !observations.isEmpty else {
                     return nil
@@ -105,6 +108,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
             scheduler: { delay, work in
                 scheduledCalls.append((delay, work))
             },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 XCTFail("Revisit should not run until the test triggers the scheduled work")
                 return nil
@@ -127,6 +131,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
             scheduler: { _, work in
                 scheduledWork = work
             },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 XCTFail("Disabled learning should not trigger text-field revisit")
                 return nil
@@ -137,6 +142,67 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
 
         XCTAssertNil(scheduledWork)
         XCTAssertTrue(correctionStore.commonlyMisheard.isEmpty)
+    }
+
+    func testCoordinatorDoesNotScheduleWhenAccessibilityCannotReadFields() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        var scheduledWork: (() -> Void)?
+        let coordinator = PostPasteLearningCoordinator(
+            correctionStore: CorrectionStore(defaults: defaults),
+            scheduler: { _, work in scheduledWork = work },
+            accessibilityVerdict: { .broken(rawAXError: -25204) },
+            revisit: { _ in
+                XCTFail("Nothing should read a field the app cannot read")
+                return nil
+            }
+        )
+
+        coordinator.handlePaste(samplePasteSession())
+
+        XCTAssertNil(scheduledWork, "Six guaranteed-to-fail polls per dictation is pure noise.")
+    }
+
+    /// CODEX, 2026-08-21. The skip returned BEFORE retiring the current polling
+    /// generation, so a session started by an earlier paste kept running and
+    /// would compare the new paste's state against the old paste's baseline.
+    /// A skip must still end whatever was in flight.
+    func testASkippedPasteStillRetiresTheSessionAlreadyRunning() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        var scheduledWork: [() -> Void] = []
+        var accessibility = AccessibilityFunctionCheck.Verdict.working
+
+        // INVERTED, and it has to be. Codex round 2: simply reading a counter
+        // after calling the queued closure proves nothing, because the closure
+        // only SPAWNS the polling task — a synchronous assertion would find zero
+        // whether or not the session was retired, so the test would pass with
+        // the bug in place. This waits, and fails if the retired session reads.
+        let retiredSessionRead = expectation(description: "a retired session read the focused field")
+        retiredSessionRead.isInverted = true
+
+        let coordinator = PostPasteLearningCoordinator(
+            correctionStore: CorrectionStore(defaults: defaults),
+            scheduler: { _, work in scheduledWork.append(work) },
+            accessibilityVerdict: { accessibility },
+            revisit: { _ in
+                retiredSessionRead.fulfill()
+                return nil
+            }
+        )
+
+        coordinator.handlePaste(samplePasteSession())
+        XCTAssertEqual(scheduledWork.count, 1, "The first paste starts polling.")
+
+        accessibility = .broken(rawAXError: -25204)
+        coordinator.handlePaste(samplePasteSession())
+
+        // Run whatever the first paste had queued. It must find itself retired.
+        let queued = scheduledWork
+        scheduledWork = []
+        queued.forEach { $0() }
+
+        wait(for: [retiredSessionRead], timeout: 1.0)
     }
 
     func testCoordinatorRejectsChangesOutsideThePastedWords() async throws {
@@ -154,6 +220,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
         let coordinator = PostPasteLearningCoordinator(
             correctionStore: correctionStore,
             scheduler: { delay, work in scheduledCalls.append((delay, work)) },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 let text = observations.removeFirst()
                 return PostPasteLearningObservation(
@@ -184,6 +251,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
         let coordinator = PostPasteLearningCoordinator(
             correctionStore: correctionStore,
             scheduler: { delay, work in scheduledCalls.append((delay, work)) },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 let text = observations.removeFirst()
                 return PostPasteLearningObservation(
@@ -217,6 +285,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
         let coordinator = PostPasteLearningCoordinator(
             correctionStore: correctionStore,
             scheduler: { delay, work in scheduledCalls.append((delay, work)) },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 let text = observations.removeFirst()
                 return PostPasteLearningObservation(text: text)
@@ -271,6 +340,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
         let coordinator = PostPasteLearningCoordinator(
             correctionStore: correctionStore,
             scheduler: { delay, work in scheduledCalls.append((delay, work)) },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 let text = observations.removeFirst()
                 return PostPasteLearningObservation(
@@ -301,6 +371,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
         let coordinator = PostPasteLearningCoordinator(
             correctionStore: correctionStore,
             scheduler: { delay, work in scheduledCalls.append((delay, work)) },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 nil
             }
@@ -336,6 +407,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
         let coordinator = PostPasteLearningCoordinator(
             correctionStore: correctionStore,
             scheduler: { delay, work in scheduledCalls.append((delay, work)) },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 let text = observations.removeFirst()
                 return PostPasteLearningObservation(
@@ -369,6 +441,7 @@ final class PostPasteLearningCoordinatorTests: XCTestCase {
         let coordinator = PostPasteLearningCoordinator(
             correctionStore: correctionStore,
             scheduler: { delay, work in scheduledCalls.append((delay, work)) },
+            accessibilityVerdict: { .working },
             revisit: { _ in
                 guard !observations.isEmpty else {
                     return nil

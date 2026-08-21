@@ -46,6 +46,11 @@ final class PostPasteLearningCoordinator {
     private let correctionStore: CorrectionStore
     private let scheduler: Scheduler
     private let revisit: Revisit
+    /// Injected like every other dependency here. Reaching for
+    /// `AccessibilityFunctionCheck.run()` inline made this class answer
+    /// differently depending on where it ran, and broke two existing tests
+    /// because the sandboxed test host always reports `broken`.
+    private let accessibilityVerdict: () -> AccessibilityFunctionCheck.Verdict
 
     var debugLogger: ((DebugLogCategory, String) -> Void)?
 
@@ -55,12 +60,32 @@ final class PostPasteLearningCoordinator {
         scheduler: @escaping Scheduler = { delay, work in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
         },
+        accessibilityVerdict: @escaping () -> AccessibilityFunctionCheck.Verdict = {
+            AccessibilityFunctionCheck.run()
+        },
         revisit: @escaping Revisit
     ) {
         self.correctionStore = correctionStore
         self.learningEnabled = learningEnabled
         self.scheduler = scheduler
+        self.accessibilityVerdict = accessibilityVerdict
         self.revisit = revisit
+    }
+
+    /// Whether reading the focused field can possibly succeed.
+    ///
+    /// This feature reads another app's text through Accessibility, which the
+    /// App Sandbox blocks entirely. His log holds roughly 1,200 polls across
+    /// every day this has ever run and not one ever read a field. Six failed
+    /// polls and seven log lines per dictation, forever.
+    ///
+    /// `.inconclusive` still runs: nothing was established, and an unanswered
+    /// question is not a no.
+    static func canObserveFocusedField(accessibility: AccessibilityFunctionCheck.Verdict) -> Bool {
+        switch accessibility {
+        case .working, .inconclusive: return true
+        case .broken, .notTrusted: return false
+        }
     }
 
     func handlePaste(_ session: PasteSession) {
@@ -69,7 +94,20 @@ final class PostPasteLearningCoordinator {
             return
         }
 
+        // RETIRE ANY SESSION ALREADY RUNNING FIRST. Codex, 2026-08-21: skipping
+        // before this left an earlier paste's polling loop live, so it would go
+        // on comparing against a baseline that no longer described what is on
+        // screen. A new paste ends the old session whether or not this one polls.
         let startedGeneration = generation.next()
+
+        guard Self.canObserveFocusedField(accessibility: accessibilityVerdict()) else {
+            debugLogger?(
+                .cleanup,
+                "Post-paste learning skipped: this build cannot read another app's text field, so polling would never succeed."
+            )
+            return
+        }
+
         debugLogger?(.cleanup, "Scheduled post-paste learning polling session.")
         schedulePoll(
             for: session,
