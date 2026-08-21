@@ -197,4 +197,100 @@ final class DecodeOptionsBakeOffTests: XCTestCase {
         // silent zero cannot be mistaken for a result.
         XCTAssertGreaterThan(best.count, 0, "no candidate produced any text at all")
     }
+
+    // MARK: - Meeting chunks
+    //
+    // 2026-08-19. `applyDictationChunking` sets `chunkingStrategy = .vad` on
+    // EVERY transcription. Its own documentation says it was chosen by measuring
+    // "all 39 of his recordings over five seconds" — every one of them a
+    // DICTATION. Meeting chunks are a different workload: fixed 30-second
+    // windows, one per channel, with long stretches where that channel's speaker
+    // is silent because the other one is talking.
+    //
+    // On his 2026-08-19 Zoom, a 30-second mic chunk measured 79% voiced produced
+    // TEN CHARACTERS, while Whisper reported Russian at 99.9% confidence on the
+    // same audio. 192 of the 202 truncation warnings in his log are exactly
+    // 30.0-second chunks, on the three days he had meetings.
+    //
+    // This measures rather than argues: decode his real meeting chunks with and
+    // without vad and print both. Same method that chose vad in the first place,
+    // pointed at the workload it was never pointed at.
+    //
+    // Point AF_FLOW_FIXTURES at a directory of chunk WAVs and AF_FLOW_MODELS at
+    // the whisper model folder.
+    func testVadChunkingOnHisRealMeetingChunks() async throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["AF_FLOW_MEETING_BAKEOFF"] == "1",
+            "set TEST_RUNNER_AF_FLOW_MEETING_BAKEOFF=1"
+        )
+        let fixtures = try XCTUnwrap(
+            ProcessInfo.processInfo.environment["AF_FLOW_FIXTURES"],
+            "AF_FLOW_FIXTURES must point at a directory of meeting chunk WAVs"
+        )
+        let modelPath = try XCTUnwrap(
+            ProcessInfo.processInfo.environment["AF_FLOW_MODELS"],
+            "AF_FLOW_MODELS must point at the whisper model folder"
+        )
+
+        let whisper = try await WhisperKit(WhisperKitConfig(
+            modelFolder: modelPath, verbose: false, logLevel: .error,
+            prewarm: false, load: true, download: false
+        ))
+
+        // A THROWN DECODE IS NOT AN EMPTY TRANSCRIPT. Codex, 2026-08-21: `try?`
+        // turned a failure into "" while the chunk still counted, so the run
+        // could report vad better or worse when one side had never decoded at
+        // all. The error propagates and fails the test instead.
+        func decode(_ buffer: [Float], vad: Bool) async throws -> String {
+            var o = DecodingOptions()
+            o.language = "ru"
+            if vad { o.chunkingStrategy = .vad }
+            return try await whisper.transcribe(audioArray: buffer, decodeOptions: o)
+                .map(\.text).joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        let dir = URL(fileURLWithPath: fixtures, isDirectory: true)
+        let wavs = try FileManager.default
+            .contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "wav" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+        XCTAssertFalse(
+            wavs.isEmpty,
+            "AF_FLOW_FIXTURES held no .wav files, so this run measured nothing. Codex: a bake-off that decodes zero chunks must not pass."
+        )
+
+        var vadWorse = 0, vadBetter = 0, same = 0
+        var decoded = 0, skipped: [String] = []
+        print("MEETING-BAKEOFF \(wavs.count) chunks")
+        for wav in wavs {
+            guard let buffer = try? samples(at: wav), buffer.count > 16_000 else {
+                skipped.append(wav.lastPathComponent)
+                continue
+            }
+            let base = try await decode(buffer, vad: false)
+            let vad = try await decode(buffer, vad: true)
+            // Counted only once BOTH sides are in hand.
+            decoded += 1
+            let delta = vad.count - base.count
+            if delta < -base.count / 10 { vadWorse += 1 }
+            else if delta > base.count / 10 { vadBetter += 1 }
+            else { same += 1 }
+            print("MEETING-BAKEOFF \(wav.lastPathComponent) "
+                  + "secs=\(String(format: "%.1f", Double(buffer.count) / 16_000)) "
+                  + "base=\(base.count) vad=\(vad.count) delta=\(delta >= 0 ? "+" : "")\(delta)")
+        }
+        print("MEETING-BAKEOFF RESULT vad better on \(vadBetter), WORSE on \(vadWorse), unchanged \(same)")
+        if !skipped.isEmpty {
+            print("MEETING-BAKEOFF SKIPPED \(skipped.count): \(skipped.joined(separator: ", "))")
+        }
+        // A silently biased subset is worse than no measurement, because it
+        // looks like one. Codex, 2026-08-21.
+        XCTAssertEqual(
+            decoded,
+            wavs.count,
+            "\(wavs.count - decoded) of \(wavs.count) chunks were never decoded, so this result covers a subset the caller did not choose: \(skipped.joined(separator: ", "))"
+        )
+    }
 }

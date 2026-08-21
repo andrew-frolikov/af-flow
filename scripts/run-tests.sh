@@ -621,7 +621,7 @@ SENTINEL
 fi
 
 RUNNER_ENV=()
-for name in AF_FLOW_FIXTURES AF_FLOW_OUTPUT AF_FLOW_MODELS AF_FLOW_ALLOW_MODEL_DOWNLOAD AF_FLOW_PREFETCH_MODEL; do
+for name in AF_FLOW_FIXTURES AF_FLOW_OUTPUT AF_FLOW_MODELS AF_FLOW_ALLOW_MODEL_DOWNLOAD AF_FLOW_PREFETCH_MODEL AF_FLOW_MEETING_BAKEOFF; do
     value="${!name:-}"
     [ -n "$value" ] && RUNNER_ENV+=("TEST_RUNNER_$name=$value")
 done
@@ -690,7 +690,7 @@ if [ -z "$XCTESTRUN" ]; then
 fi
 
 TARGET=":TestConfigurations:0:TestTargets:0"
-for name in AF_FLOW_FIXTURES AF_FLOW_OUTPUT AF_FLOW_MODELS AF_FLOW_ALLOW_MODEL_DOWNLOAD AF_FLOW_PREFETCH_MODEL; do
+for name in AF_FLOW_FIXTURES AF_FLOW_OUTPUT AF_FLOW_MODELS AF_FLOW_ALLOW_MODEL_DOWNLOAD AF_FLOW_PREFETCH_MODEL AF_FLOW_MEETING_BAKEOFF; do
     value="${!name:-}"
     [ -z "$value" ] && continue
     /usr/libexec/PlistBuddy -c "Add $TARGET:EnvironmentVariables:$name string $value" "$XCTESTRUN" 2>/dev/null \
@@ -730,7 +730,7 @@ xcodebuild test-without-building \
     "${SKIPS[@]}" \
     "$@" \
     2>&1 | { if [ "${AF_FLOW_RAW_OUTPUT:-}" = "1" ]; then cat; else
-        grep -E "Test Case.*(failed|skipped)|Executed [0-9]+ tests|Test skipped|\*\* TEST|fixtures directory|clips awaiting|captured |wrote |not captured|^xcodebuild: error|error: .*flag|BUILD FAILED"
+        grep -E "Test Case.*(failed|skipped)|Executed [0-9]+ tests|Test skipped|\*\* TEST|fixtures directory|clips awaiting|captured |wrote |not captured|^xcodebuild: error|error: .*flag|BUILD FAILED|^\s*(MEETING-BAKEOFF|SWEEP) "
     fi; }
 # The alternation above must cover the failure shapes, not just the happy path.
 # Twice on 2026-07-21 this filter hid the answer: once a silent skip, once a

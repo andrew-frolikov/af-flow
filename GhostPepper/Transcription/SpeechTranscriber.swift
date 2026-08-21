@@ -64,11 +64,40 @@ final class SpeechTranscriber {
     /// Only audio over ten seconds is judged. Short utterances have too much
     /// variance: a two-second "yes" is 3 characters at 1.5 per second and
     /// perfectly correct.
-    static func looksTruncated(text: String, audioDuration: TimeInterval) -> Bool {
-        guard audioDuration > 10 else { return false }
+    /// `speechDuration` is how much of the audio actually carries speech. Pass it
+    /// whenever it is known; the rate is judged against it rather than against
+    /// wall-clock.
+    ///
+    /// THE DENOMINATOR WAS WRONG FOR MEETINGS AND IT COST AN HOUR. Measured
+    /// 2026-08-21: this guard had fired 202 times, 192 of them on 30.0-second
+    /// meeting chunks, and every one was a false positive. Re-decoding all 16
+    /// chunks of his 2026-08-19 Zoom gave 1,349 characters against the 1,338 the
+    /// app stored on the day — nothing had been lost.
+    ///
+    /// A meeting is two channels and each is silent while the other person
+    /// talks. `chunk-0-mic` held 7 seconds of speech in 30 seconds of audio and
+    /// 110 characters of transcript: 3.7 per second of AUDIO, which looks like
+    /// 85% loss, and 15.6 per second of SPEECH, which is faster than his healthy
+    /// range. Only the silence made it look thin.
+    ///
+    /// A warning that is wrong 202 times out of 202 is worse than no warning,
+    /// because it teaches the reader to skip the line that exists to catch real
+    /// loss.
+    static func looksTruncated(
+        text: String,
+        audioDuration: TimeInterval,
+        speechDuration: TimeInterval? = nil
+    ) -> Bool {
+        // Unknown speech duration falls back to the audio, so callers that do
+        // not measure it keep the 2026-08-05 protection.
+        let judged = speechDuration ?? audioDuration
+
+        // Below this there is not enough speech to infer a rate from at all.
+        guard judged > 10 else { return false }
+
         let characters = text.trimmingCharacters(in: .whitespacesAndNewlines).count
         guard characters > 0 else { return false }
-        return Double(characters) / audioDuration < 5.0
+        return Double(characters) / judged < 5.0
     }
 
     static func removeArtifacts(from text: String) -> String {

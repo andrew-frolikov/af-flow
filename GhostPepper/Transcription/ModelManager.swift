@@ -207,6 +207,45 @@ final class ModelManager: ObservableObject {
     /// Below this RMS the buffer is treated as silence. Roughly the noise floor.
     nonisolated static let silenceRMSThreshold: Float = 0.001
 
+    /// How many seconds of the buffer actually carry speech.
+    ///
+    /// Frame-wise rather than whole-buffer RMS, because a meeting channel is a
+    /// mixture: loud where its speaker talks and near-zero where the other one
+    /// does. Averaging across the whole thing hides that structure, and hiding
+    /// it is what made `looksTruncated` fire 202 times without ever being right.
+    ///
+    /// The threshold is the same noise floor `isEffectivelySilent` uses, so the
+    /// two agree about what silence is.
+    /// Whether the truncation rate is judged against voiced time rather than
+    /// wall-clock. Only meeting and other background work, never dictation.
+    nonisolated static func usesSpeechDurationForTruncation(_ priority: SpeechTranscriber.Priority) -> Bool {
+        switch priority {
+        case .dictation: return false
+        case .background: return true
+        }
+    }
+
+    nonisolated static func speechDuration(of samples: [Float], sampleRate: Double = 16_000) -> TimeInterval {
+        let frameLength = max(1, Int(sampleRate * 0.02))
+        guard samples.count >= frameLength else { return 0 }
+
+        var voicedFrames = 0
+        var index = 0
+        while index + frameLength <= samples.count {
+            var sumOfSquares: Float = 0
+            for offset in index..<(index + frameLength) {
+                let sample = samples[offset]
+                sumOfSquares += sample * sample
+            }
+            if (sumOfSquares / Float(frameLength)).squareRoot() >= silenceRMSThreshold {
+                voicedFrames += 1
+            }
+            index += frameLength
+        }
+
+        return Double(voicedFrames) * Double(frameLength) / sampleRate
+    }
+
     nonisolated static func isEffectivelySilent(_ samples: [Float]) -> Bool {
         guard !samples.isEmpty else { return true }
         var sumOfSquares: Float = 0
@@ -297,10 +336,35 @@ final class ModelManager: ObservableObject {
                 // Say so when the result is implausibly short for the audio. The
                 // 2026-08-05 loss was silent, and silence is what let it survive.
                 let seconds = Double(audioBuffer.count) / 16_000
-                if SpeechTranscriber.looksTruncated(text: cleaned, audioDuration: seconds) {
+                // DICTATION KEEPS THE WALL-CLOCK DENOMINATOR. Codex, 2026-08-21:
+                // the 5 chars/s threshold and the 10-second floor were calibrated
+                // against whole dictation durations — his lost recording was 193
+                // characters in 43.5 s (4.4/s, flagged) against a slowest healthy
+                // 6.0/s. Dividing by voiced time instead would raise every rate
+                // and let the case this guard exists for slip through: 80
+                // characters from a 20 s dictation with 15 s voiced goes 4.0/s to
+                // 5.3/s, and under 10 voiced seconds it is not judged at all.
+                //
+                // The speech denominator is for MEETING chunks, where a channel
+                // is silent whenever the other person talks and the wall-clock
+                // rate is meaningless.
+                let speechSeconds = Self.usesSpeechDurationForTruncation(priority)
+                    ? Self.speechDuration(of: audioBuffer)
+                    : nil
+                if SpeechTranscriber.looksTruncated(
+                    text: cleaned,
+                    audioDuration: seconds,
+                    speechDuration: speechSeconds
+                ) {
                     debugLogger?(
                         .model,
-                        String(
+                        speechSeconds.map { speech in
+                            String(
+                                format: "TRUNCATION SUSPECTED: %.1fs of speech in %.1fs of audio produced only %d characters (%.1f per second of speech). His healthy range is 7 to 12 per second.",
+                                speech, seconds, cleaned.count,
+                                Double(cleaned.count) / max(speech, 0.001)
+                            )
+                        } ?? String(
                             format: "TRUNCATION SUSPECTED: %.1fs of audio produced only %d characters (%.1f/s). His healthy range is 7 to 12 per second.",
                             seconds, cleaned.count, Double(cleaned.count) / max(seconds, 0.001)
                         )
