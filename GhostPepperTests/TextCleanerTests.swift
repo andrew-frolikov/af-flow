@@ -427,6 +427,200 @@ final class TextCleanerTests: XCTestCase {
         )
         XCTAssertEqual(result.transcript?.rawOutput, "...")
     }
+
+    /// **His preferred spelling must survive.** With ASR `AF FLOW` and a
+    /// preferred transcription of `AF Flow`, the dictionary lowers those
+    /// capitals ON PURPOSE before the model sees them. A guard that reads only
+    /// the raw transcription sees a lost capital and hands back `AF FLOW`,
+    /// undoing the spelling he configured. Codex, 2026-08-24.
+    func testAPreferredSpellingIsNeverUndone() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "AF Flow is ready",
+                spokenInput: "AF FLOW is ready",
+                afterDictionary: "AF Flow is ready"
+            ),
+            "AF Flow is ready"
+        )
+    }
+
+    /// **A DELIBERATE limitation, pinned so it cannot be "fixed" by accident.**
+    ///
+    /// Where the dictionary rewrote only SOME occurrences of a word, the guard
+    /// stands down for all of them and that occurrence goes unrepaired. Codex
+    /// raised it in round 2 and it was declined on purpose: the alternative,
+    /// per-occurrence alignment, would restore the occurrence the dictionary
+    /// deliberately rewrote and destroy his configured spelling. Missing a
+    /// repair is recoverable; undoing his settings is not.
+    func testAWordTheDictionaryOnlyPartlyOwnsIsLeftAloneOnPurpose() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "AF Flow and flow",
+                spokenInput: "AF FLOW and FLOW",
+                afterDictionary: "AF Flow and FLOW"
+            ),
+            "AF Flow and flow",
+            "the guard must not repair here, because doing so would undo his preferred spelling"
+        )
+    }
+
+    /// Sentence-casing a word he writes mixed-case is not a capital worth
+    /// keeping. The first version merged them and produced `MacOS` and
+    /// `IPhone` — spellings neither he nor the model wrote, on his clipboard.
+    /// An independent reviewer caught both, 2026-08-24.
+    func testSentenceCasingAWordHeWritesMixedCaseIsUndone() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "on Macos today",
+                spokenInput: "on macOS today",
+                afterDictionary: "on macOS today"
+            ),
+            "on macOS today"
+        )
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "my Iphone died",
+                spokenInput: "my iPhone died",
+                afterDictionary: "my iPhone died"
+            ),
+            "my iPhone died"
+        )
+    }
+
+    /// **The capital Whisper puts on every sentence start is NOT evidence.**
+    ///
+    /// The model may split sentences; when it does the mirror and MERGES two,
+    /// the demoted word arrives lower case and the first version dragged its
+    /// positional capital into the middle of the new sentence. Found by an
+    /// independent reviewer on 2026-08-24, after Codex passed the same code
+    /// twice.
+    func testAMergedSentenceDoesNotDragItsCapitalIntoTheMiddle() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "We should ship the fix today, then I will write the release notes.",
+                spokenInput: "We should ship the fix today. Then I will write the release notes.",
+                afterDictionary: "We should ship the fix today. Then I will write the release notes."
+            ),
+            "We should ship the fix today, then I will write the release notes."
+        )
+    }
+
+    func testAMergedRussianSentenceIsAlsoLeftAlone() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "Я проверил это вчера вечером, потом я отправлю тебе результат.",
+                spokenInput: "Я проверил это вчера вечером. Потом я отправлю тебе результат.",
+                afterDictionary: "Я проверил это вчера вечером. Потом я отправлю тебе результат."
+            ),
+            "Я проверил это вчера вечером, потом я отправлю тебе результат."
+        )
+    }
+
+    /// **Punctuation between the full stop and the word must not hide it.**
+    ///
+    /// The first version looked back only as far as the previous non-whitespace
+    /// character, so a closing quote, a bracket, a guillemet or a dash sat in
+    /// that slot and masked the terminator behind it. `Then` was then classified
+    /// mid-sentence and its purely positional capital became EVIDENCE, which is
+    /// the one input the sentence rule has to be able to trust. Found by an
+    /// independent reviewer, 2026-08-24.
+    ///
+    /// It has never fired on his own data: across the 50 archived dictations the
+    /// raw punctuation inventory is `. , ? ' - %` with no quotes, brackets,
+    /// dashes or newlines. All 50 are Whisper turbo, and Settings steers him to
+    /// Parakeet v3 for non-English, which punctuates differently.
+    func testPunctuationBetweenTheFullStopAndTheWordDoesNotHideIt() {
+        let cases: [(spoken: String, cleaned: String)] = [
+            ("He said \"no.\" Then he left the room and shut the door",
+             "He said \"no,\" then he left the room and shut the door"),
+            ("He agreed. (Then he left the room and shut the door)",
+             "He agreed, (then he left the room and shut the door)"),
+            ("Он сказал. \u{00AB}Потом он ушёл из комнаты и закрыл дверь\u{00BB}",
+             "Он сказал, \u{00AB}потом он ушёл из комнаты и закрыл дверь\u{00BB}"),
+            ("He agreed. \u{2014} Then he left the room and shut the door",
+             "He agreed, \u{2014} then he left the room and shut the door")
+        ]
+        for (spoken, cleaned) in cases {
+            XCTAssertEqual(
+                TextCleaner.restoringCapitalsLoweredFromSpeech(
+                    cleaned,
+                    spokenInput: spoken,
+                    afterDictionary: spoken
+                ),
+                cleaned,
+                "a capital was dragged mid-sentence past intervening punctuation: \(spoken)"
+            )
+        }
+    }
+
+    /// **A comma after a full stop means the sentence is still running.**
+    ///
+    /// A regression introduced by the fix above: the flag was set by a
+    /// terminator and cleared only by emitting a word, so nothing in between
+    /// could clear it. An abbreviation followed by a comma — `и т.д.,` — left
+    /// the next word classified as a sentence start, which skips the
+    /// mid-sentence check and lets the whole of the merge defect back in.
+    /// Caught by a reviewer as a v2 to v3 regression, 2026-08-24.
+    func testAClauseCommaAfterAnAbbreviationKeepsTheSentenceRunning() {
+        let cases: [(spoken: String, cleaned: String)] = [
+            ("Купи молоко хлеб и т.д. Потом заедь к маме и забери документы",
+             "Купи молоко, хлеб и т.д., потом заедь к маме и забери документы"),
+            ("Get milk bread eggs etc. Then go home and check the post box",
+             "Get milk, bread, eggs etc., then go home and check the post box"),
+            ("Он занят сегодня т.е. Позже я позвоню ему насчёт документов",
+             "Он занят сегодня, т.е., позже я позвоню ему насчёт документов")
+        ]
+        for (spoken, cleaned) in cases {
+            XCTAssertEqual(
+                TextCleaner.restoringCapitalsLoweredFromSpeech(
+                    cleaned,
+                    spokenInput: spoken,
+                    afterDictionary: spoken
+                ),
+                cleaned,
+                "a comma failed to clear the sentence flag: \(spoken)"
+            )
+        }
+    }
+
+    /// A newline ends a sentence on its own; nothing else marks the boundary.
+    func testANewlineEndsASentence() {
+        let spoken = "Meeting notes\nThen we discussed the budget for next quarter"
+        let cleaned = "Meeting notes, then we discussed the budget for next quarter"
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                cleaned,
+                spokenInput: spoken,
+                afterDictionary: spoken
+            ),
+            cleaned
+        )
+    }
+
+    /// A word moved to the front must not keep a capital it never earned.
+    func testAReorderedOpenerIsNotCapitalisedMidSentence() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "Please send it to him tomorrow, I think that works",
+                spokenInput: "Send it to him tomorrow please, I think that works",
+                afterDictionary: "Send it to him tomorrow please, I think that works"
+            ),
+            "Please send it to him tomorrow, I think that works"
+        )
+    }
+
+    /// The repair he actually needs still happens: these are attested
+    /// mid-sentence, so the capital is his spelling and not the sentence's.
+    func testACapitalAttestedMidSentenceIsStillRestored() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "I don't need a pdf of my cv on google doc",
+                spokenInput: "I don't need a PDF of my CV on Google Doc",
+                afterDictionary: "I don't need a PDF of my CV on Google Doc"
+            ),
+            "I don't need a PDF of my CV on Google Doc"
+        )
+    }
 }
 
 /// Tests at the layer of the actual claim: "Andrew can minimize the window".
@@ -688,5 +882,155 @@ extension CodexRound1RegressionTests {
         XCTAssertEqual(layer.apply(to: "face, then more"), "Hugging Face, then more")
         XCTAssertEqual(layer.apply(to: "(face)"), "(Hugging Face)")
         XCTAssertEqual(layer.apply(to: "af flow works"), "AF Flow works")
+    }
+
+    /// End to end, through the real pipeline, because a helper that works in
+    /// isolation and is never called is the shape this project keeps hitting.
+    func testTheCleanupPipelinePutsBackACapitalTheModelLowercased() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let correctionStore = CorrectionStore(defaults: defaults)
+        let localBackend = SpyCleanupBackend(nextResult: .success("I need a pdf of my cv"))
+        let cleaner = TextCleaner(localBackend: localBackend, correctionStore: correctionStore)
+
+        let result = await cleaner.clean(text: "I need a PDF of my CV", prompt: "unused prompt")
+
+        XCTAssertEqual(result, "I need a PDF of my CV")
+    }
+
+    // MARK: - The model must not lowercase what he said with a capital
+
+    /// **Measured 2026-08-24 over his live archive: 9 mid-text downcases across
+    /// 4 of 204 dictations.** `PDF` came back `pdf`, `CV` came back `cv`,
+    /// `Google` came back `google`, `Ikea` came back `ikea`, and `I` came back
+    /// `i`. The RAW transcription was right every time; the corrected text is
+    /// what reaches his clipboard.
+    ///
+    /// **This is NOT the check removed on 2026-07-26.** That one scored the
+    /// FIRST WORD's capital and encoded a backwards lean about his own editing
+    /// (he lowercases the first word 28 times against 692 where he keeps it).
+    /// This is the MODEL lowercasing proper nouns mid-sentence, and the
+    /// measurement found zero first-word downcases.
+    ///
+    /// The guard is deliberately ASYMMETRIC. Capitals the model ADDS are left
+    /// alone, because every added capital measured over the same archive was
+    /// either licensed by the split-sentence rule or wanted: `сколько` to
+    /// `Сколько` after a new period, `AF flow` to `AF Flow`, `codex` to `Codex`.
+
+    func testACapitalHeSaidIsPutBackWhenTheModelLowercasesIt() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "I need a pdf of my cv",
+                spokenInput: "I need a PDF of my CV",
+                afterDictionary: "I need a PDF of my CV"
+            ),
+            "I need a PDF of my CV"
+        )
+    }
+
+    func testAnAcronymKeepsEveryLetterItHad() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "put it in md format",
+                spokenInput: "put it in MD format",
+                afterDictionary: "put it in MD format"
+            ),
+            "put it in MD format"
+        )
+    }
+
+    /// First letter lowercase in BOTH, so a first-letter test would miss it.
+    /// The guard counts capitals instead.
+    func testInternalCapitalsSurviveToo() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "my iphone died",
+                spokenInput: "my iPhone died",
+                afterDictionary: "my iPhone died"
+            ),
+            "my iPhone died"
+        )
+    }
+
+    func testTheFirstWordIsCoveredAsWell() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "google says otherwise",
+                spokenInput: "Google says otherwise",
+                afterDictionary: "Google says otherwise"
+            ),
+            "Google says otherwise"
+        )
+    }
+
+    /// The split-sentence rule capitalizes the word after a new period. Undoing
+    /// that would break the one casing change the prompt licenses.
+    func testACapitalTheModelAddedIsLeftAlone() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "Keychain. Сколько это стоит",
+                spokenInput: "Keychain, сколько это стоит",
+                afterDictionary: "Keychain, сколько это стоит"
+            ),
+            "Keychain. Сколько это стоит"
+        )
+    }
+
+    /// `codex` to `Codex` and `AF flow` to `AF Flow` are both improvements he
+    /// wants. The guard only ever restores capitals, never removes them.
+    func testAProperNounTheModelCapitalisedStaysCapitalised() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "working with the Codex limits",
+                spokenInput: "working with the codex limits",
+                afterDictionary: "working with the codex limits"
+            ),
+            "working with the Codex limits"
+        )
+    }
+
+    /// When he said the same word BOTH ways there is no single right answer, so
+    /// the guard does nothing rather than guess. Copying when unsure is the
+    /// prompt's own rule.
+    func testAWordHeSaidBothWaysIsLeftAlone() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "flow and flow",
+                spokenInput: "Flow and flow",
+                afterDictionary: "Flow and flow"
+            ),
+            "flow and flow"
+        )
+    }
+
+    func testAWordHeNeverSaidIsLeftAlone() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "something entirely different",
+                spokenInput: "I need a PDF",
+                afterDictionary: "I need a PDF"
+            ),
+            "something entirely different"
+        )
+    }
+
+    func testTextTheModelDidNotTouchComesBackIdentical() {
+        let spoken = "I need a PDF of my CV on Google Doc"
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(spoken, spokenInput: spoken, afterDictionary: spoken),
+            spoken
+        )
+    }
+
+    /// Punctuation the model added around a restored word must survive.
+    func testPunctuationAroundARestoredWordSurvives() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "Send the pdf, please.",
+                spokenInput: "Send the PDF please",
+                afterDictionary: "Send the PDF please"
+            ),
+            "Send the PDF, please."
+        )
     }
 }

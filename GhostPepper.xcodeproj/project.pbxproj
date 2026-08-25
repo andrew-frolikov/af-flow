@@ -197,6 +197,7 @@
 		B0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */; };
 		B0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift */; };
 		B0B2C3D4E5F607182930A4B5 /* OneWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B2C3D4E5F607182930A4B5 /* OneWindowTests.swift */; };
+		B0C3D4E5F60718293A4B5C6D /* CasingGuardAdversarialReplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C3D4E5F60718293A4B5C6D /* CasingGuardAdversarialReplay.swift */; };
 		BFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift */; };
 		BD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift */; };
 		B1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift */; };
@@ -319,6 +320,7 @@
 		F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLabStoreCorruptionTests.swift; sourceTree = "<group>"; };
 		F0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLabTimingsAppendOnlyTests.swift; sourceTree = "<group>"; };
 		F0B2C3D4E5F607182930A4B5 /* OneWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneWindowTests.swift; sourceTree = "<group>"; };
+		F0C3D4E5F60718293A4B5C6D /* CasingGuardAdversarialReplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CasingGuardAdversarialReplay.swift; sourceTree = "<group>"; };
 		FFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeWindowLanguageSummaryTests.swift; sourceTree = "<group>"; };
 		FD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistorySectionTests.swift; sourceTree = "<group>"; };
 		F1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStoreTests.swift; sourceTree = "<group>"; };
@@ -956,6 +958,7 @@
 				F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */,
 				F0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift */,
 				F0B2C3D4E5F607182930A4B5 /* OneWindowTests.swift */,
+				F0C3D4E5F60718293A4B5C6D /* CasingGuardAdversarialReplay.swift */,
 				FFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift */,
 				FD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift */,
 				F1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift */,
@@ -1329,6 +1332,7 @@
 				B0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift in Sources */,
 				B0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift in Sources */,
 				B0B2C3D4E5F607182930A4B5 /* OneWindowTests.swift in Sources */,
+				B0C3D4E5F60718293A4B5C6D /* CasingGuardAdversarialReplay.swift in Sources */,
 				BFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift in Sources */,
 				BD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift in Sources */,
 				B1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift in Sources */,

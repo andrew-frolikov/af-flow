@@ -333,6 +333,14 @@ final class TextCleaner {
             preferredTranscriptions: correctionStore.preferredTranscriptions,
             commonlyMisheard: correctionStore.commonlyMisheard
         )
+        // Kept BEFORE the dictionary runs, and only the casing guard uses it.
+        // `testPreferredTranscriptionsRewriteInputButNeverOutput` caught why:
+        // preferred terms normalise what goes IN to the model and must NEVER
+        // rewrite what comes OUT. Comparing the output against the corrected
+        // input would have let the dictionary edit the model's finished text
+        // through the back door — a different and worse power than fixing
+        // terminology before it is read.
+        let transcribedBeforeDictionary = text
         let text = corrections.apply(to: text)
 
         let formattedInput = Self.formatCleanupInput(userInput: text)
@@ -490,15 +498,34 @@ final class TextCleaner {
                 )
             }
 
+            // LAST, and after every guard has already passed.
+            //
+            // Deliberately not earlier: `deletedSpokenRuns` and `droppedTooMuch`
+            // decide whether to throw the whole cleanup away, and a pass that
+            // rewrites tokens must not be able to change what they see. This only
+            // ever swaps a word for the same word with the capitals he said, so
+            // it cannot turn a rejected output into an accepted one.
+            let recasedText = Self.restoringCapitalsLoweredFromSpeech(
+                deduplicatedText,
+                spokenInput: transcribedBeforeDictionary,
+                afterDictionary: text
+            )
+            if recasedText != deduplicatedText {
+                debugLogger?(
+                    .cleanup,
+                    "Cleanup lowercased words he said with a capital. Put back."
+                )
+            }
+
             logCleanupTranscript(
                 prompt: activePrompt,
                 input: formattedInput,
                 rawOutput: cleanedText,
                 sanitizedOutput: deduplicatedText,
-                finalOutput: deduplicatedText
+                finalOutput: recasedText
             )
             return TextCleanerResult(
-                text: deduplicatedText,
+                text: recasedText,
                 performance: TextCleanerPerformance(
                     modelCallDuration: modelCallDuration,
                     postProcessDuration: Date().timeIntervalSince(postProcessStart)
@@ -616,8 +643,16 @@ final class TextCleaner {
     /// Compute the denominator over everything, including the times he did
     /// nothing, or the finding is an artefact of how it was counted.
     ///
-    /// Casing and final punctuation are now left exactly as the model produced
-    /// them, which is what 96 percent of his real edits do.
+    /// Final punctuation is left exactly as the model produced it, which is what
+    /// 96 percent of his real edits do.
+    ///
+    /// **Casing is NOT, as of 2026-08-24, and this paragraph is where someone
+    /// would look to conclude otherwise.** Nothing above is withdrawn: no rule
+    /// scores or rewrites the FIRST WORD's capital, and none should. What was
+    /// added is `restoringCapitalsLoweredFromSpeech`, which puts back a capital
+    /// he SAID mid-sentence and that the model lowered — `PDF` to `pdf`, `CV` to
+    /// `cv`. Measured separately, and that measurement found zero first-word
+    /// downcases, so the two do not touch.
 
     /// The share of his words a cleanup must keep, measured rather than chosen.
     ///
@@ -801,6 +836,303 @@ final class TextCleaner {
     private static func contentTokens(_ text: String) -> [(original: String, normalised: String)] {
         text.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
             .map { (String($0), String($0).lowercased()) }
+    }
+
+    /// Puts back a capital letter he SAID that the model handed back lower case.
+    ///
+    /// **Measured 2026-08-24 over his live archive**, whole population rather
+    /// than the cases that caught the eye: 9 mid-text downcases across 4 of 204
+    /// dictations. `PDF` came back `pdf`, `CV` came back `cv`, `Google` came
+    /// back `google`, `Ikea` came back `ikea`, and `I` came back `i`. The raw
+    /// transcription was right every time, and the corrected text is what
+    /// reaches his clipboard.
+    ///
+    /// **This is not the check removed on 2026-07-26.** That one scored the
+    /// FIRST WORD's capital and encoded a lean that does not exist: he lowercases
+    /// the first word 28 times against 692 where he keeps it. This is the MODEL
+    /// lowercasing proper nouns mid-sentence, and the same measurement found
+    /// ZERO first-word downcases. Two different things that both mention casing.
+    ///
+    /// **Deliberately asymmetric: it adds capitals back, and removes one only in
+    /// the single narrow case named below.** Every capital the model added over
+    /// that archive was either licensed or wanted — `сколько` to `Сколько` after
+    /// a new period, which is the one casing change the prompt licenses, plus
+    /// `AF flow` to `AF Flow` and `codex` to `Codex`. A symmetric guard would
+    /// have destroyed all six.
+    ///
+    /// The exception is sentence-casing a word he writes mixed-case: `iPhone`
+    /// arriving as `Iphone` becomes `iPhone` again, which does delete the
+    /// model's leading capital. See `mergingCapitals`. An earlier version of
+    /// this paragraph claimed a capital is NEVER removed, and a reviewer caught
+    /// that the code below it had stopped agreeing.
+    ///
+    /// It compares capitals per position rather than testing the first letter,
+    /// so `iPhone` coming back `iphone` is caught even though both start lower
+    /// case.
+    ///
+    /// **Where he said the same word both ways, it does nothing.** There is no
+    /// single right answer, and copying when unsure is the prompt's own rule.
+    ///
+    /// **It compares against the transcription as it ARRIVED, before the
+    /// deterministic dictionary.** Comparing against the corrected input would
+    /// let `preferredTranscriptions` reach the model's finished text: the
+    /// dictionary normalises what goes IN and must never rewrite what comes OUT,
+    /// and `testPreferredTranscriptionsRewriteInputButNeverOutput` is what caught
+    /// this guard breaking that rule. It restores only capitals HE said.
+    static func restoringCapitalsLoweredFromSpeech(
+        _ cleaned: String,
+        spokenInput: String,
+        afterDictionary: String
+    ) -> String {
+        guard !cleaned.isEmpty, !spokenInput.isEmpty else { return cleaned }
+
+        func formsByKey(_ text: String) -> [String: Set<String>] {
+            var map: [String: Set<String>] = [:]
+            for token in text.split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
+                let word = String(token)
+                map[word.lowercased(), default: []].insert(word)
+            }
+            return map
+        }
+
+        let spokenForms = formsByKey(spokenInput)
+        let dictionaryForms = formsByKey(afterDictionary)
+        let spokenMidSentenceForms = midSentenceFormsByKey(spokenInput)
+
+        func restoring(_ word: String, isSentenceInitial: Bool) -> String {
+            let key = word.lowercased()
+            // `count == 1`: he was consistent about this word, so there IS a
+            // right answer. Two forms and the guard stays out of it.
+            guard let forms = spokenForms[key],
+                  forms.count == 1,
+                  let spoken = forms.first else {
+                return word
+            }
+
+            // THE DICTIONARY OWNS THIS TERM'S CASING, so the model did not
+            // choose it and this must not attribute it to the model. Codex,
+            // 2026-08-24: with ASR "AF FLOW" and a preferred spelling of
+            // "AF Flow", the dictionary lowers those capitals ON PURPOSE. A
+            // guard reading only the raw transcription sees a lost capital and
+            // hands him back "AF FLOW", silently undoing the spelling he set.
+            // The comparison is KEY-WIDE, and that is a deliberate trade rather
+            // than an oversight. Codex, round 2: with raw "AF FLOW and FLOW" and
+            // a preferred spelling that rewrites only the first occurrence, the
+            // key carries two forms and this skips BOTH, leaving the second one
+            // unrepaired.
+            //
+            // The proposed alternative is per-occurrence alignment, and it walks
+            // straight back into the round 1 defect: restoring the occurrence the
+            // dictionary DID rewrite hands him back "AF FLOW" and destroys the
+            // spelling he configured. Between missing a repair and undoing his
+            // settings, this misses the repair.
+            //
+            // It is also the rule the rest of this file already follows.
+            // `restoringWordsDeletedFromSpeech` only acts where the flanking
+            // words are still adjacent "so the position is unambiguous", and the
+            // prompt's own last line is "If you are unsure, copy". The failure
+            // here is a no-op, which is the behaviour he had before this guard
+            // existed.
+            if let corrected = dictionaryForms[key], corrected != [spoken] {
+                return word
+            }
+
+            // A CAPITAL THAT IS ONLY EVER SENTENCE-INITIAL IS NOT EVIDENCE.
+            //
+            // Whisper capitalises the first word of every sentence it punctuates,
+            // so that capital says where the word sat, not how he spells it. The
+            // model is allowed to SPLIT sentences; when it does the mirror of that
+            // and merges two, the demoted word arrives lower case and this pass
+            // would drag its positional capital into the middle of the new
+            // sentence: "ship it today. Then I will write" cleaned to
+            // "ship it today, then I will write" came back as "today, Then I".
+            //
+            // Found by an independent reviewer on 2026-08-24 after Codex had
+            // passed the same code twice. It also explains the one archive case
+            // that never looked like the others: Russian "Может" is
+            // sentence-initial, and it was counted as a model defect purely
+            // because a merge and a downcase look identical from token counts.
+            //
+            // So a capital only counts when he used it somewhere the sentence did
+            // not demand it. The measurement above survives this: PDF, CV,
+            // Google, Ikea, MD and I are all attested mid-sentence in his archive.
+            if !isSentenceInitial, spokenMidSentenceForms[key] != [spoken] {
+                return word
+            }
+
+            // Equal lengths, because the merge below is positional and a
+            // case-folding that changes length (ß to SS) has no position map.
+            guard spoken != word, spoken.count == word.count else {
+                return word
+            }
+            return mergingCapitals(spoken: spoken, cleaned: word)
+        }
+
+        // The SAME classification the raw side used, consumed in order, rather
+        // than a second copy of the state machine walking alongside it.
+        let positions = Self.wordsWithSentencePositions(cleaned)
+        var nextWord = 0
+
+        var result = ""
+        result.reserveCapacity(cleaned.count)
+        var word = ""
+        for character in cleaned {
+            if character.isLetter || character.isNumber {
+                word.append(character)
+                continue
+            }
+            if !word.isEmpty {
+                let startsSentence = nextWord < positions.count ? positions[nextWord].startsSentence : false
+                nextWord += 1
+                result += restoring(word, isSentenceInitial: startsSentence)
+                word = ""
+            }
+            result.append(character)
+        }
+        if !word.isEmpty {
+            let startsSentence = nextWord < positions.count ? positions[nextWord].startsSentence : false
+            result += restoring(word, isSentenceInitial: startsSentence)
+        }
+        return result
+    }
+
+    /// Every word of a text, each tagged with whether a sentence starts there.
+    ///
+    /// **One scanner, called by both sides.** The first version had two copies of
+    /// this state machine, one for the raw text and one for the output, and a
+    /// reviewer's first job was checking they agreed on 23 different prefixes.
+    /// Two copies of a rule is how they stop agreeing.
+    ///
+    /// The look-back does NOT stop at the previous non-whitespace character.
+    /// That version was wrong and a reviewer demonstrated it on 2026-08-24: a
+    /// closing quote, a bracket, a guillemet or a dash sits in that slot and
+    /// hides the full stop behind it, so `He said "no." Then he left` classified
+    /// `Then` as mid-sentence and its positional capital became evidence. Any
+    /// character that is neither alphanumeric nor a terminator is skipped over
+    /// instead, and a newline ends a sentence on its own.
+    ///
+    /// **It has never fired on his own data**: across the 50 archived dictations
+    /// the entire punctuation inventory of the raw transcriptions is
+    /// `. , ? ' - %`, with no quotes, brackets, dashes or newlines. All 50 came
+    /// from Whisper turbo, and Settings steers him to Parakeet v3 for non-English,
+    /// which punctuates differently. This is one model switch from live, which is
+    /// why it is fixed rather than noted.
+    private static func wordsWithSentencePositions(_ text: String) -> [(word: String, startsSentence: Bool)] {
+        var words: [(word: String, startsSentence: Bool)] = []
+        var word = ""
+        var wordStartsSentence = true
+        var atSentenceStart = true
+
+        for character in text {
+            if character.isLetter || character.isNumber {
+                if word.isEmpty {
+                    wordStartsSentence = atSentenceStart
+                }
+                word.append(character)
+                continue
+            }
+
+            if !word.isEmpty {
+                words.append((word, wordStartsSentence))
+                word = ""
+                atSentenceStart = false
+            }
+            // THREE CLASSES, not two, and the middle one is why.
+            //
+            // The first version of this fix set the flag on a terminator and
+            // cleared it only by emitting a word, so nothing between the two
+            // could clear it — including a comma, which unambiguously means the
+            // sentence is still running. `и т.д., потом` classified `потом` as a
+            // sentence start and let the whole of finding 1 back in. A reviewer
+            // caught it as a regression introduced by the previous fix: v2 read
+            // the character before the word, saw the comma and was right; v3
+            // skipped it. The fix had traded one punctuation class for another
+            // instead of covering both.
+            if endsASentence(character) {
+                atSentenceStart = true
+            } else if endsAClause(character) {
+                atSentenceStart = false
+            }
+        }
+        if !word.isEmpty {
+            words.append((word, wordStartsSentence))
+        }
+        return words
+    }
+
+    /// Forms of each word taken ONLY from occurrences the sentence did not force
+    /// a capital on, so a capital that is merely positional is never used as
+    /// evidence of how he spells the word.
+    private static func midSentenceFormsByKey(_ text: String) -> [String: Set<String>] {
+        var map: [String: Set<String>] = [:]
+        for entry in wordsWithSentencePositions(text) where !entry.startsSentence {
+            map[entry.word.lowercased(), default: []].insert(entry.word)
+        }
+        return map
+    }
+
+    /// Ends a sentence: the next word starts one.
+    private static func endsASentence(_ character: Character) -> Bool {
+        character.isNewline
+            || character == "." || character == "!" || character == "?" || character == "\u{2026}"
+    }
+
+    /// Ends a clause, so the sentence is still running and the next word is
+    /// mid-sentence. Everything NOT in either set — whitespace, quotes,
+    /// brackets, guillemets, dashes — is transparent and leaves the state alone,
+    /// which is what stops a closing quote hiding the full stop behind it.
+    private static func endsAClause(_ character: Character) -> Bool {
+        character == "," || character == ";" || character == ":"
+    }
+
+    /// Keeps every capital EITHER of them has, position by position.
+    ///
+    /// Counting capitals and taking the larger total was wrong, and Codex found
+    /// both halves of why on 2026-08-24. Spoken `macOS` against cleaned `Macos`
+    /// has more capitals in the spoken form, so a total-based rule returned
+    /// `macOS` and DELETED the capital the model added — the one thing this
+    /// guard promises never to do. Spoken `iPhone` against cleaned `Iphone` ties
+    /// at one each, so the lost `P` was not restored at all.
+    ///
+    /// A positional union fixes both, but on its own it produced `MacOS` and
+    /// `IPhone` — forms neither of them wrote. So the union is not the whole
+    /// rule: the sentence-casing branch below takes his spelling wholesale, and
+    /// `macOS`/`Macos` gives `macOS`, `iPhone`/`Iphone` gives `iPhone`.
+    private static func mergingCapitals(spoken: String, cleaned: String) -> String {
+        let spokenCharacters = Array(spoken)
+        let cleanedCharacters = Array(cleaned)
+
+        // SENTENCE-CASING A WORD HE WRITES MIXED-CASE IS NOT A CAPITAL WORTH
+        // KEEPING, so this branch DOES remove one — the only place in this pass
+        // that ever does.
+        //
+        // Merging positions alone produced `IPhone` from `iPhone`/`Iphone` and
+        // `MacOS` from `macOS`/`Macos`: spellings neither he nor the model wrote,
+        // on his clipboard. The general rule elsewhere is that a capital the
+        // model added is kept, and it is justified by added capitals being
+        // licensed or wanted. A capital produced by sentence-casing a word he
+        // deliberately writes mixed-case is neither, so his spelling wins.
+        //
+        // The widening is real and worth stating plainly: after a licensed
+        // sentence split, "done. MacOS update" becomes "done. macOS update",
+        // which deletes a capital the split rule had licensed. That output is
+        // Apple's own sentence-initial spelling and is judged correct, but it is
+        // a power this pass did not previously have.
+        let addedIndices = cleanedCharacters.indices.filter {
+            cleanedCharacters[$0].isUppercase && !spokenCharacters[$0].isUppercase
+        }
+        let spokenCapitalisesLater = spokenCharacters.indices.dropFirst().contains {
+            spokenCharacters[$0].isUppercase
+        }
+        if addedIndices == [0], spokenCapitalisesLater {
+            return spoken
+        }
+
+        return String(
+            zip(spokenCharacters, cleanedCharacters).map { spokenCharacter, cleanedCharacter in
+                cleanedCharacter.isUppercase ? cleanedCharacter : spokenCharacter
+            }
+        )
     }
 
     static func droppedTooMuch(input: String, output: String) -> Bool {
