@@ -28,4 +28,4 @@ echo "archive: $ARCHIVE ($(wc -l < "$ARCHIVE" | tr -d ' ') entries)"
 
 AF_FLOW_LAB_ARCHIVE="$ARCHIVE" AF_FLOW_RAW_OUTPUT=1 \
     ./scripts/run-tests.sh -only-testing:GhostPepperTests/CasingGuardAdversarialReplay 2>&1 \
-    | grep -E "ADVERSARIAL-REPLAY|Test Case.*(failed|passed)|Executed [0-9]+ tests|was skipped|error:"
+    | grep -E "ARCHIVE-RATES|ADVERSARIAL-REPLAY|Test Case.*(failed|passed)|Executed [0-9]+ tests|was skipped|error:"

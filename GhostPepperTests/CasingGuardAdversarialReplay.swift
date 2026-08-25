@@ -92,6 +92,61 @@ final class CasingGuardAdversarialReplay: XCTestCase {
         print("ADVERSARIAL-REPLAY restorations checked: \(checked), missed: \(missed.count)")
     }
 
+    // MARK: - The fabrication guard's false-positive rate on his real archive
+
+    /// **A rejection costs him the polish on that dictation**, so the guard has
+    /// to be rare. Measured here against the real archive with the real
+    /// function, rather than a Python mirror that can drift from the Swift.
+    ///
+    /// Expected: exactly the one dictation where the model invented a sixteen
+    /// word clause. The floor of two content words sits in open space — over 289
+    /// dictations the next largest invented run is one word, and those are the
+    /// substitution defect, repaired rather than rejected.
+    func testTheFabricationGuardIsRareOnHisRealArchive() throws {
+        // Denominator and numerator come from the SAME reader. They did not, and
+        // a reviewer caught that the two filter differently, so the share was
+        // computed against a population the loop never visited.
+        let pairs = try archivePairs()
+        var rejected = 0
+        for (raw, delivered) in pairs where !TextCleaner.inventedRuns(input: raw, output: delivered).isEmpty {
+            rejected += 1
+        }
+
+        XCTAssertGreaterThan(pairs.count, 0)
+        print("ARCHIVE-RATES fabrication rejections: \(rejected) of \(pairs.count)")
+        XCTAssertLessThan(
+            Double(rejected) / Double(pairs.count), 0.02,
+            "the guard would reject \(rejected) of \(pairs.count) real dictations, which costs him the polish too often"
+        )
+    }
+
+    /// **The rate test above passes against a no-op**, because an upper bound is
+    /// satisfied by never firing. A reviewer caught that, so this is the other
+    /// half: a clause he demonstrably never said, appended to each of his real
+    /// transcriptions, must be reported every time.
+    func testTheFabricationGuardCatchesAnInventedClauseOnHisOwnVocabulary() throws {
+        let transcriptions = try archiveTranscriptions()
+        // Words chosen because they appear in none of his dictations; the test
+        // asserts that below rather than trusting it.
+        let invention = "zqx plovdiv marzipan"
+        var checked = 0
+        var missed = 0
+
+        for raw in transcriptions {
+            guard !raw.lowercased().contains("zqx"),
+                  !raw.lowercased().contains("plovdiv"),
+                  !raw.lowercased().contains("marzipan") else { continue }
+            checked += 1
+            if TextCleaner.inventedRuns(input: raw, output: raw + " " + invention).isEmpty {
+                missed += 1
+            }
+        }
+
+        XCTAssertGreaterThan(checked, 0, "no transcriptions were usable, so this proves nothing")
+        print("ARCHIVE-RATES invented-clause detections: \(checked - missed) of \(checked)")
+        XCTAssertEqual(missed, 0, "\(missed) of \(checked) invented clauses went unreported")
+    }
+
     // MARK: - Synthesis
 
     private struct Variant {
@@ -206,6 +261,25 @@ final class CasingGuardAdversarialReplay: XCTestCase {
             transcriptions.append(raw)
         }
         return transcriptions
+    }
+
+    private func archivePairs() throws -> [(String, String)] {
+        guard let path = ProcessInfo.processInfo.environment["AF_FLOW_LAB_ARCHIVE"] else {
+            throw XCTSkip("AF_FLOW_LAB_ARCHIVE not set; his transcripts are never committed.")
+        }
+        let text = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+        var pairs: [(String, String)] = []
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+            guard let data = line.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let raw = object["rawTranscription"] as? String,
+                  let corrected = object["correctedTranscription"] as? String,
+                  !raw.isEmpty, !corrected.isEmpty else {
+                continue
+            }
+            pairs.append((raw, corrected))
+        }
+        return pairs
     }
 
     private func firstDifference(_ expected: String, _ actual: String) -> String {

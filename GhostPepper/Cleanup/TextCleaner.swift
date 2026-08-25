@@ -440,11 +440,40 @@ final class TextCleaner {
                 deduplicatedText = restored
             }
 
+            // HIS WORD BACK, where the model put a different one in its slot.
+            // His decision on 2026-08-24, after being shown that no rule
+            // separates the seven swaps that damage his words from the one that
+            // repairs: block them, and keep the corrections he wants in the
+            // `commonlyMisheard` dictionary that already runs before the model.
+            let swapped = Self.swappedSpokenWords(input: text, output: deduplicatedText)
+            if !swapped.isEmpty {
+                deduplicatedText = Self.restoringWordsSwappedFromSpeech(
+                    deduplicatedText,
+                    spokenInput: text,
+                    swaps: swapped
+                )
+                debugLogger?(
+                    .cleanup,
+                    "Cleanup swapped \(swapped.map { "\"\($0.delivered)\" for \"\($0.spoken)\"" }.joined(separator: ", ")). His words put back."
+                )
+            }
+
             let remainingRuns = Self.deletedSpokenRuns(input: text, output: deduplicatedText)
-            if Self.droppedTooMuch(input: text, output: deduplicatedText) || !remainingRuns.isEmpty {
-                let reason = remainingRuns.isEmpty
-                    ? "dropped too much of the transcription"
-                    : "deleted words he said and they could not be placed back unambiguously: \(remainingRuns.map { "\"\($0)\"" }.joined(separator: ", "))"
+            // A THIRD SHAPE, because the two above cannot see it. `droppedTooMuch`
+            // is a global ratio and `deletedSpokenRuns` is a deletion; neither
+            // notices the model ADDING a clause he never said.
+            let invented = Self.inventedRuns(input: text, output: deduplicatedText)
+            if Self.droppedTooMuch(input: text, output: deduplicatedText)
+                || !remainingRuns.isEmpty
+                || !invented.isEmpty {
+                let reason: String
+                if !invented.isEmpty {
+                    reason = "invented words he never said: \(invented.map { "\"\($0)\"" }.joined(separator: ", "))"
+                } else if remainingRuns.isEmpty {
+                    reason = "dropped too much of the transcription"
+                } else {
+                    reason = "deleted words he said and they could not be placed back unambiguously: \(remainingRuns.map { "\"\($0)\"" }.joined(separator: ", "))"
+                }
                 debugLogger?(
                     .cleanup,
                     "Cleanup \(reason). Returning raw text instead, because losing his words is worse than losing the polish."
@@ -734,6 +763,283 @@ final class TextCleaner {
         return runs
     }
 
+    /// Runs of words in the OUTPUT that he never said.
+    ///
+    /// **Nothing in this file checked for insertions until 2026-08-24, and the
+    /// model had already used the gap.** On one dictation it invented a sixteen
+    /// word clause — "so that recruiters and talent acquisition specialists can
+    /// see what is worth improving or not for version 1" — and dropped the end
+    /// of his sentence to make room. That reached his clipboard.
+    ///
+    /// **Every existing guard passed it, and the reason is worth keeping.** The
+    /// invented clause was stitched together from HIS OWN words appearing later
+    /// in the same dictation, so the order-preserving alignment in
+    /// `deletedSpokenRuns` matched them happily and the real deletion vanished;
+    /// `droppedTooMuch` saw 66 words out of 67 and shrugged. A guard that only
+    /// looks for missing words cannot see a swap.
+    ///
+    /// This is the summariser fabrication of 2026-08-21 on the dictation path.
+    ///
+    /// **It is NOT `deletedSpokenRuns` with the arguments swapped**, although the
+    /// first version was and it looked elegant. A reviewer showed the swap is a
+    /// different question in three ways, all of which turned the guard off where
+    /// it was most needed:
+    ///
+    /// - `deletedSpokenRuns` gates on its FIRST argument's length, so swapped it
+    ///   gated on the OUTPUT. A short output carrying an invented clause was
+    ///   exempt.
+    /// - Adding an input gate on top did not fix it, it made a second hole: the
+    ///   guard switched off entirely on short dictations, which is exactly where
+    ///   a small model continues instead of copying.
+    /// - The filler filter forgave the model for ADDING fillers, and
+    ///   `fillerWords` contains ordinary Russian words, so an invented
+    ///   "ну вот это там типа значит" scored zero at any length.
+    ///
+    /// So the alignment is written out here, with NO length gate and no filler
+    /// forgiveness.
+    ///
+    /// **Both removals were measured free.** Over 307 real dictations, gating on
+    /// the input, gating on the output and not gating at all all reject the same
+    /// two — and dropping the gate brings 64 short dictations under the check
+    /// without adding a single rejection. The gate on the other guards exists
+    /// because a RATIO is meaningless on a short utterance; two consecutive
+    /// words he never said are not a ratio, and mean the same thing at any
+    /// length. Filler forgiveness changes the count by zero as well.
+    ///
+    /// **The floor is measured, not chosen, and the gap is clean.** Over 289 real
+    /// dictations, runs of two or more content words occur ONCE — the fabrication
+    /// above, at fourteen content words. Runs of exactly one occur twelve times
+    /// and are a different defect, the word substitutions. There is nothing
+    /// between two and fourteen, so the threshold sits in open space rather than
+    /// on a judgement call.
+    static func inventedRuns(input: String, output: String) -> [String] {
+        let spoken = contentTokens(input)
+        let delivered = contentTokens(output)
+        guard !delivered.isEmpty else { return [] }
+
+        var lengths = Array(
+            repeating: Array(repeating: 0, count: spoken.count + 1),
+            count: delivered.count + 1
+        )
+        for i in stride(from: delivered.count - 1, through: 0, by: -1) {
+            for j in stride(from: spoken.count - 1, through: 0, by: -1) {
+                lengths[i][j] = delivered[i].normalised == spoken[j].normalised
+                    ? lengths[i + 1][j + 1] + 1
+                    : max(lengths[i + 1][j], lengths[i][j + 1])
+            }
+        }
+
+        var runs: [String] = []
+        var current: [String] = []
+        var i = 0, j = 0
+        func closeRun() {
+            // No filler forgiveness. He did not say these words at all.
+            if current.count >= 2 { runs.append(current.joined(separator: " ")) }
+            current = []
+        }
+        while i < delivered.count {
+            if j < spoken.count, delivered[i].normalised == spoken[j].normalised {
+                closeRun()
+                i += 1; j += 1
+            } else if j < spoken.count, lengths[i + 1][j] >= lengths[i][j + 1] {
+                current.append(delivered[i].original)
+                i += 1
+            } else if j < spoken.count {
+                j += 1
+            } else {
+                current.append(delivered[i].original)
+                i += 1
+            }
+        }
+        closeRun()
+        return runs
+    }
+
+    /// One-for-one word swaps: he said A and the model delivered B in that slot.
+    ///
+    /// **Measured 2026-08-24, with his dictionary applied to the raw first**, or
+    /// the dictionary's own corrections get credited to the model — an error
+    /// made twice in this session before it was caught. Eight swaps across 291
+    /// dictations, of which seven damage his words:
+    /// `получил` to `получал` (the tense change he reported), `работать` to
+    /// `работу`, `решение` to `решения`, `диалоге` to `диалога`, `код` to `кода`,
+    /// `статейку` to `статьику`, `примитирую` to `примитивировать`.
+    ///
+    /// **His decision, 2026-08-24, once shown there is no rule that separates
+    /// damage from repair**: block the swaps. The corrections he wants —
+    /// `codecs` to `Codex`, `cloud MD` to `CLAUDE.md` — are already in his
+    /// `commonlyMisheard` dictionary, which runs BEFORE the model and is his to
+    /// edit. Explicit rules he controls, rather than a 0.8B guessing at his
+    /// vocabulary.
+    ///
+    /// A stem heuristic was measured and rejected: common-prefix share runs
+    /// 0.47 to 0.86 across the damage and 0.33 to 0.67 across the repairs, so
+    /// they overlap and no threshold separates them.
+    /// **Apostrophes are part of a word HERE, and only here.**
+    ///
+    /// `contentTokens` splits on every non-alphanumeric, so `I'm` is two tokens,
+    /// `I` and `m`. When the model expands the contraction to `I am` — which the
+    /// prompt forbids, so it is a real possibility — `m` against `am` is a
+    /// textbook one-in one-out, and the first version of this pass dutifully
+    /// wrote the fragment back and delivered **"I m going to send you the file"**.
+    /// A reviewer found it, and it is worse than the defect being fixed: 30% of
+    /// his dictations contain an apostrophe, though no expansion has actually
+    /// occurred in 307 of them, so it was latent rather than live.
+    ///
+    /// Keeping the apostrophe attached makes `I'm` one token against `I` + `am`,
+    /// which is one-against-two and correctly declined. The normalised form
+    /// trims apostrophes at the edges so a quoted word still matches its plain
+    /// twin.
+    private static func swapTokens(_ text: String) -> [(original: String, normalised: String)] {
+        text.split(whereSeparator: { !$0.isLetter && !$0.isNumber && !Self.isApostrophe($0) })
+            .map { token in
+                let original = String(token)
+                let normalised = original.lowercased().trimmingCharacters(
+                    in: CharacterSet(charactersIn: "'\u{2019}")
+                )
+                return (original, normalised)
+            }
+    }
+
+    private static func isApostrophe(_ character: Character) -> Bool {
+        character == "'" || character == "\u{2019}"
+    }
+
+    static func swappedSpokenWords(input: String, output: String) -> [(spoken: String, delivered: String, at: Int)] {
+        let spoken = swapTokens(input)
+        let delivered = swapTokens(output)
+        guard !spoken.isEmpty, !delivered.isEmpty else { return [] }
+
+        var lengths = Array(
+            repeating: Array(repeating: 0, count: delivered.count + 1),
+            count: spoken.count + 1
+        )
+        for i in stride(from: spoken.count - 1, through: 0, by: -1) {
+            for j in stride(from: delivered.count - 1, through: 0, by: -1) {
+                lengths[i][j] = spoken[i].normalised == delivered[j].normalised
+                    ? lengths[i + 1][j + 1] + 1
+                    : max(lengths[i + 1][j], lengths[i][j + 1])
+            }
+        }
+
+        var swaps: [(spoken: String, delivered: String, at: Int)] = []
+        var pendingSpoken: [String] = []
+        var pendingDelivered: [(word: String, index: Int)] = []
+        var i = 0, j = 0
+
+        // EXACTLY one in and one out, between two words that both still match.
+        // Anything else is a rewrite this cannot place unambiguously, and the
+        // rule everywhere else in this file is to leave those alone.
+        func settle() {
+            if pendingSpoken.count == 1, pendingDelivered.count == 1 {
+                swaps.append((pendingSpoken[0], pendingDelivered[0].word, pendingDelivered[0].index))
+            }
+            pendingSpoken = []
+            pendingDelivered = []
+        }
+
+        while i < spoken.count || j < delivered.count {
+            if i < spoken.count, j < delivered.count, spoken[i].normalised == delivered[j].normalised {
+                settle()
+                i += 1; j += 1
+            } else if i < spoken.count, j < delivered.count {
+                if lengths[i + 1][j] >= lengths[i][j + 1] {
+                    pendingSpoken.append(spoken[i].original); i += 1
+                } else {
+                    pendingDelivered.append((delivered[j].original, j)); j += 1
+                }
+            } else if i < spoken.count {
+                pendingSpoken.append(spoken[i].original); i += 1
+            } else {
+                pendingDelivered.append((delivered[j].original, j)); j += 1
+            }
+        }
+        settle()
+        return swaps
+    }
+
+    /// Puts his word back where the model swapped exactly one for exactly one.
+    static func restoringWordsSwappedFromSpeech(
+        _ cleaned: String,
+        spokenInput: String,
+        swaps: [(spoken: String, delivered: String, at: Int)]? = nil
+    ) -> String {
+        // The caller already computed these. Recomputing was a second O(n*m)
+        // table on the paste path for no new information.
+        let swaps = swaps ?? swappedSpokenWords(input: spokenInput, output: cleaned)
+        guard !swaps.isEmpty else { return cleaned }
+        let replacements = Dictionary(swaps.map { ($0.at, $0.spoken) }, uniquingKeysWith: { first, _ in first })
+
+        // Same tokenisation as `swapTokens`, so the indexes line up.
+        let positions = wordsWithSentencePositions(cleaned) { character in
+            character.isLetter || character.isNumber || Self.isApostrophe(character)
+        }
+
+        var result = ""
+        result.reserveCapacity(cleaned.count)
+        var word = ""
+        var index = 0
+        func flush() {
+            guard !word.isEmpty else { return }
+            if let spoken = replacements[index] {
+                let startsSentence = index < positions.count ? positions[index].startsSentence : false
+                // KEEP A CAPITAL THE SPLIT-SENTENCE RULE PUT THERE. The model is
+                // allowed to start a new sentence at this word, and handing back
+                // his lower-case version would undo the one casing change the
+                // prompt licenses. The casing pass runs after this and only
+                // restores capitals HE said, so nothing else would repair it.
+                result += capitalisedLikeDelivered(
+                    spoken: spoken,
+                    delivered: word,
+                    startsSentence: startsSentence
+                )
+            } else {
+                result += word
+            }
+            index += 1
+            word = ""
+        }
+        for character in cleaned {
+            if character.isLetter || character.isNumber || Self.isApostrophe(character) {
+                word.append(character)
+            } else {
+                flush()
+                result.append(character)
+            }
+        }
+        flush()
+        return result
+    }
+
+    /// Copies a capital onto his restored word ONLY where the sentence put it
+    /// there.
+    ///
+    /// The first version copied any leading capital, and a reviewer showed both
+    /// ways that goes wrong. A capital the model added MID-SENTENCE is not
+    /// licensed by anything, and transferring it produced `я Получил это письмо`
+    /// — a capital in neither his speech nor the transcription — with the casing
+    /// pass unable to remove it, because that pass only restores capitals HE
+    /// said. And an ALL-CAPS delivered word sentence-cased his into a third form
+    /// neither side wrote: `PDF` against `pdfs` gave `Pdfs`.
+    ///
+    /// So: only at a sentence start, and only when the delivered word is simply
+    /// sentence-cased rather than shouting or mixed-case.
+    private static func capitalisedLikeDelivered(
+        spoken: String,
+        delivered: String,
+        startsSentence: Bool
+    ) -> String {
+        guard startsSentence,
+              let deliveredFirst = delivered.first,
+              deliveredFirst.isUppercase,
+              delivered.dropFirst().allSatisfy({ !$0.isUppercase }),
+              let spokenFirst = spoken.first,
+              spokenFirst.isLowercase else {
+            return spoken
+        }
+        return spokenFirst.uppercased() + spoken.dropFirst()
+    }
+
     /// Puts back a run of words the cleanup deleted, where it is safe to do so.
     ///
     /// Returning the raw ASR text whenever a deletion is found — which is what
@@ -1017,14 +1323,21 @@ final class TextCleaner {
     /// from Whisper turbo, and Settings steers him to Parakeet v3 for non-English,
     /// which punctuates differently. This is one model switch from live, which is
     /// why it is fixed rather than noted.
-    private static func wordsWithSentencePositions(_ text: String) -> [(word: String, startsSentence: Bool)] {
+    /// `isWordCharacter` is a parameter because the swap pass keeps apostrophes
+    /// inside words and the casing pass does not, and they must not each grow
+    /// their own copy of this state machine. A reviewer's first job on the casing
+    /// work was checking two copies agreed on 23 prefixes; there is one copy.
+    private static func wordsWithSentencePositions(
+        _ text: String,
+        isWordCharacter: (Character) -> Bool = { $0.isLetter || $0.isNumber }
+    ) -> [(word: String, startsSentence: Bool)] {
         var words: [(word: String, startsSentence: Bool)] = []
         var word = ""
         var wordStartsSentence = true
         var atSentenceStart = true
 
         for character in text {
-            if character.isLetter || character.isNumber {
+            if isWordCharacter(character) {
                 if word.isEmpty {
                     wordStartsSentence = atSentenceStart
                 }

@@ -22,7 +22,12 @@ final class TextCleanerTests: XCTestCase {
         defaults.removePersistentDomain(forName: #function)
         let correctionStore = CorrectionStore(defaults: defaults)
         correctionStore.preferredTranscriptionsText = "AF Flow"
-        let localBackend = SpyCleanupBackend(nextResult: .success("ghost pepper is ready"))
+        // The stub answers with a plausible cleanup of the input rather than
+        // unrelated words. THE SUBJECT OF THIS TEST IS THE INPUT SIDE — that
+        // preferred terms reach the model canonicalised — and that assertion is
+        // untouched. The output side is covered by
+        // testPreferredTranscriptionsRewriteInputButNeverOutput.
+        let localBackend = SpyCleanupBackend(nextResult: .success("AF Flow is ready."))
         let cleaner = TextCleaner(
             localBackend: localBackend,
             correctionStore: correctionStore
@@ -30,7 +35,7 @@ final class TextCleanerTests: XCTestCase {
 
         let result = await cleaner.clean(text: "AF Flow is ready", prompt: "unused prompt")
 
-        XCTAssertEqual(result, "ghost pepper is ready")
+        XCTAssertEqual(result, "AF Flow is ready.")
         XCTAssertEqual(
             localBackend.cleanedInputs.map(\.text),
             [TextCleaner.formatCleanupInput(userInput: "AF Flow is ready")]
@@ -208,7 +213,14 @@ final class TextCleanerTests: XCTestCase {
             localBackend: localBackend
         )
 
-        let result = await cleaner.clean(text: "raw text", prompt: "unused prompt")
+        // FIXTURE UPDATED 2026-08-24, and the subject of this test is unchanged.
+        // The stub used to answer with words the input never contained, which
+        // predates any fidelity guard. `inventedRuns` now rejects a cleanup that
+        // returns words he never said, so an unrelated stub makes the pipeline
+        // fall back to the raw text and this test would be measuring the guard
+        // rather than its own subject. The input now contains the words the stub
+        // returns; nothing else about the assertion changed.
+        let result = await cleaner.clean(text: "final cleaned text", prompt: "unused prompt")
 
         XCTAssertEqual(result, "Final cleaned text")
     }
@@ -268,7 +280,14 @@ final class TextCleanerTests: XCTestCase {
             localBackend: localBackend
         )
 
-        let result = await cleaner.clean(text: "raw text", prompt: "unused prompt")
+        // FIXTURE UPDATED 2026-08-24, and the subject of this test is unchanged.
+        // The stub used to answer with words the input never contained, which
+        // predates any fidelity guard. `inventedRuns` now rejects a cleanup that
+        // returns words he never said, so an unrelated stub makes the pipeline
+        // fall back to the raw text and this test would be measuring the guard
+        // rather than its own subject. The input now contains the words the stub
+        // returns; nothing else about the assertion changed.
+        let result = await cleaner.clean(text: "cleaned sentence", prompt: "unused prompt")
 
         XCTAssertEqual(result, "Cleaned sentence.")
     }
@@ -279,7 +298,10 @@ final class TextCleanerTests: XCTestCase {
         let correctionStore = CorrectionStore(defaults: defaults)
         correctionStore.commonlyMisheardText = "chat gbt -> ChatGPT"
         correctionStore.preferredTranscriptionsText = "AF Flow"
-        let localBackend = SpyCleanupBackend(nextResult: .success("ghost-pepper is ready"))
+        // See the fixture note above. The stub answers with a plausible cleanup
+        // of the DICTIONARY-CORRECTED input, "chat gbt" having become "ChatGPT",
+        // rather than unrelated words. The subject here is the sensitive log.
+        let localBackend = SpyCleanupBackend(nextResult: .success("ChatGPT is ready."))
         let cleaner = TextCleaner(
             localBackend: localBackend,
             correctionStore: correctionStore
@@ -294,7 +316,7 @@ final class TextCleanerTests: XCTestCase {
             prompt: "Use OCR context if present."
         )
 
-        XCTAssertEqual(result, "ghost-pepper is ready")
+        XCTAssertEqual(result, "ChatGPT is ready.")
         XCTAssertTrue(sensitiveMessages.contains(where: { $0.contains("Cleanup LLM transcript") }))
         XCTAssertTrue(sensitiveMessages.contains(where: { $0.contains("System prompt") }))
         XCTAssertTrue(sensitiveMessages.contains(where: { $0.contains("<USER-INPUT>") }))
@@ -360,7 +382,9 @@ final class TextCleanerTests: XCTestCase {
         )
         let cleaner = TextCleaner(localBackend: localBackend)
 
-        let result = await cleaner.cleanWithPerformance(text: "raw text", prompt: "unused prompt")
+        // See the fixture note above: the input carries the stub's words so this
+        // test measures durations rather than the fidelity guard.
+        let result = await cleaner.cleanWithPerformance(text: "final cleaned text", prompt: "unused prompt")
 
         XCTAssertEqual(result.text, "Final cleaned text")
         XCTAssertNotNil(result.performance.modelCallDuration)
@@ -619,6 +643,409 @@ final class TextCleanerTests: XCTestCase {
                 afterDictionary: "I don't need a PDF of my CV on Google Doc"
             ),
             "I don't need a PDF of my CV on Google Doc"
+        )
+    }
+
+    /// End to end, through the real pipeline, because a helper that works in
+    /// isolation and is never called is the shape this project keeps hitting.
+    func testTheCleanupPipelinePutsBackACapitalTheModelLowercased() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let correctionStore = CorrectionStore(defaults: defaults)
+        let localBackend = SpyCleanupBackend(nextResult: .success("I need a pdf of my cv"))
+        let cleaner = TextCleaner(localBackend: localBackend, correctionStore: correctionStore)
+
+        let result = await cleaner.clean(text: "I need a PDF of my CV", prompt: "unused prompt")
+
+        XCTAssertEqual(result, "I need a PDF of my CV")
+    }
+
+    // MARK: - What the independent reviewer found in the two guards
+
+    /// **The worst defect this session, and it CORRUPTED his text.**
+    ///
+    /// `contentTokens` splits on every non-alphanumeric, so `I'm` is `I` and
+    /// `m`. When the model expands the contraction — which the prompt forbids,
+    /// so it will happen — `m` against `am` is a one-for-one swap and the first
+    /// version wrote the fragment back. He would have received "I m going to".
+    /// 30% of his dictations contain an apostrophe.
+    func testExpandingAContractionNeverSplicesAFragmentIntoHisText() {
+        let cases: [(spoken: String, delivered: String)] = [
+            ("I'm going to send you the file tomorrow morning",
+             "I am going to send you the file tomorrow morning"),
+            ("it's ready for review whenever you have a moment",
+             "it is ready for review whenever you have a moment"),
+            ("let's look at the document together tomorrow afternoon",
+             "let us look at the document together tomorrow afternoon"),
+            ("I am going to send you the file tomorrow morning",
+             "I'm going to send you the file tomorrow morning")
+        ]
+        for (spoken, delivered) in cases {
+            XCTAssertEqual(
+                TextCleaner.restoringWordsSwappedFromSpeech(delivered, spokenInput: spoken),
+                delivered,
+                "a contraction fragment was spliced into his text: \(spoken)"
+            )
+        }
+
+        // Every case above asserts that NOTHING changed, so all of them pass
+        // against a pass that does nothing. A reviewer caught that. One positive
+        // case makes the test stand on its own.
+        XCTAssertEqual(
+            TextCleaner.restoringWordsSwappedFromSpeech(
+                "I'm going to send you the document tomorrow morning",
+                spokenInput: "I'm going to send you the file tomorrow morning"
+            ),
+            "I'm going to send you the file tomorrow morning",
+            "the swap next to a contraction was not repaired"
+        )
+    }
+
+    /// **A capital the model added MID-SENTENCE is not licensed**, and copying it
+    /// onto his restored word put one in `я Получил это письмо` that appears in
+    /// neither his speech nor the transcription. The casing pass cannot remove
+    /// it, because that pass only restores capitals he said.
+    func testACapitalTheModelAddedMidSentenceIsNotCopiedOntoHisWord() {
+        XCTAssertEqual(
+            TextCleaner.restoringWordsSwappedFromSpeech(
+                "я Получал это письмо вчера вечером и сразу ответил ему",
+                spokenInput: "я получил это письмо вчера вечером и сразу ответил ему"
+            ),
+            "я получил это письмо вчера вечером и сразу ответил ему"
+        )
+        XCTAssertEqual(
+            TextCleaner.restoringWordsSwappedFromSpeech(
+                "When you have a moment, please check the Codecs limits for me.",
+                spokenInput: "when you have a moment please check the codex limits for me"
+            ),
+            "When you have a moment, please check the codex limits for me."
+        )
+    }
+
+    /// An ALL-CAPS delivered word must not sentence-case his into a third form
+    /// neither of them wrote: `PDF` against `pdfs` gave `Pdfs`.
+    func testAShoutingDeliveredWordDoesNotSentenceCaseHisWord() {
+        XCTAssertEqual(
+            TextCleaner.restoringWordsSwappedFromSpeech(
+                "PDF of my cv before tomorrow morning please send it over",
+                spokenInput: "pdfs of my cv before tomorrow morning please send it over"
+            ),
+            "pdfs of my cv before tomorrow morning please send it over"
+        )
+    }
+
+    /// A capital the split-sentence rule put there must survive his word coming
+    /// back. The casing pass runs afterwards and only restores capitals HE said,
+    /// so nothing else would repair it.
+    func testRestoringHisWordKeepsACapitalTheModelWasAllowedToAdd() {
+        XCTAssertEqual(
+            TextCleaner.restoringWordsSwappedFromSpeech(
+                "He called me yesterday. Reckon about it tomorrow morning, please.",
+                spokenInput: "he called me yesterday think about it tomorrow morning please"
+            ),
+            "He called me yesterday. Think about it tomorrow morning, please."
+        )
+    }
+
+    /// **No length gate.** The gate on the other guards exists because a RATIO is
+    /// meaningless on a short utterance. Two consecutive words he never said are
+    /// not a ratio. Measured free: gating on input, on output, or not at all all
+    /// reject the same two dictations of 307, and dropping it brings 64 short
+    /// ones under the check without adding a rejection.
+    func testAShortDictationIsStillProtectedFromFabrication() {
+        XCTAssertFalse(
+            TextCleaner.inventedRuns(
+                input: "напиши рекрутеру",
+                output: "напиши рекрутеру письмо с благодарностью за уделённое время сегодня"
+            ).isEmpty,
+            "a fabricated clause on a short dictation was not reported"
+        )
+    }
+
+    /// **No filler forgiveness either.** Reusing the deletion guard's filter
+    /// forgave the model for ADDING fillers, and that list contains ordinary
+    /// Russian words, so an invented clause made of them scored zero.
+    func testInventedFillerWordsAreStillReported() {
+        XCTAssertFalse(
+            TextCleaner.inventedRuns(
+                input: "посмотри документ и скажи что ты думаешь об этом сегодня",
+                output: "посмотри документ и скажи что ты думаешь об этом сегодня ну вот это там типа значит"
+            ).isEmpty,
+            "an invented run made of filler words was forgiven"
+        )
+    }
+
+    // MARK: - The model must not swap one of his words for another
+
+    /// `получил` came back `получал` — the tense change he reported. Seven of
+    /// the eight measured swaps damage his words, and no rule separates them
+    /// from the one that repairs, so his decision was to block them all.
+    func testHisWordIsPutBackWhenTheModelSwapsIt() {
+        XCTAssertEqual(
+            TextCleaner.restoringWordsSwappedFromSpeech(
+                "я получал это письмо вчера вечером и сразу ответил",
+                spokenInput: "я получил это письмо вчера вечером и сразу ответил"
+            ),
+            "я получил это письмо вчера вечером и сразу ответил"
+        )
+    }
+
+    /// Punctuation the cleanup added around a restored word must survive.
+    func testPunctuationAroundASwappedWordSurvives() {
+        XCTAssertEqual(
+            TextCleaner.restoringWordsSwappedFromSpeech(
+                "Please look at the document, and tell me what you reckon about it.",
+                spokenInput: "please look at the document and tell me what you think about it"
+            ),
+            "Please look at the document, and tell me what you think about it."
+        )
+    }
+
+    /// A deletion is not a swap, and must be left to the pass that handles it.
+    func testADeletionIsNotTreatedAsASwap() {
+        XCTAssertEqual(
+            TextCleaner.swappedSpokenWords(
+                input: "please look at the document and tell me what you think about it",
+                output: "please look at the document and tell me what you think about"
+            ).count,
+            0
+        )
+    }
+
+    /// Two words for two is a rewrite this cannot place unambiguously, so it is
+    /// left alone. `применитируй это` to `применить ты` is that shape, and the
+    /// fabrication guard is what rejects it.
+    func testATwoForTwoRewriteIsNotTreatedAsASwap() {
+        XCTAssertEqual(
+            TextCleaner.swappedSpokenWords(
+                input: "просто применитируй это но когда ты это сделаешь делай это так",
+                output: "просто применить ты но когда ты это сделаешь делай это так"
+            ).count,
+            0
+        )
+    }
+
+    /// A clean cleanup must not be told it swapped anything.
+    func testACleanCleanupSwapsNothing() {
+        XCTAssertEqual(
+            TextCleaner.swappedSpokenWords(
+                input: "um so please look at the document and tell me what you think about it",
+                output: "Please look at the document and tell me what you think about it."
+            ).count,
+            0
+        )
+    }
+
+    /// End to end: his word reaches the clipboard, not the model's.
+    func testTheCleanupPipelinePutsHisSwappedWordBack() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let spoken = "please look at the document and tell me what you think about it"
+        let localBackend = SpyCleanupBackend(
+            nextResult: .success("please look at the document and tell me what you reckon about it")
+        )
+        let cleaner = TextCleaner(
+            localBackend: localBackend,
+            correctionStore: CorrectionStore(defaults: defaults)
+        )
+
+        let result = await cleaner.clean(text: spoken, prompt: "unused prompt")
+
+        XCTAssertEqual(result, spoken, "the model's word was delivered instead of his")
+    }
+
+    // MARK: - The model must not invent words he never said
+
+    /// **On one real dictation the model invented a sixteen-word clause and
+    /// dropped the end of his sentence to make room**, and it reached his
+    /// clipboard. Nothing in this file checked for insertions at all.
+    func testAnInventedClauseIsReported() {
+        let spoken = "please look at the document and tell me what you think about it today"
+        let cleaned = "please look at the document and tell me what you think about it today, so that we can decide together tomorrow"
+
+        XCTAssertFalse(
+            TextCleaner.inventedRuns(input: spoken, output: cleaned).isEmpty,
+            "a clause he never said was not reported"
+        )
+    }
+
+    /// A clean cleanup must not be accused of inventing anything, or the guard
+    /// would hand him the raw transcript on every dictation.
+    func testACleanCleanupInventsNothing() {
+        let spoken = "um so please look at the document and tell me what you think about it"
+        let cleaned = "Please look at the document and tell me what you think about it."
+
+        XCTAssertEqual(TextCleaner.inventedRuns(input: spoken, output: cleaned), [])
+    }
+
+    /// **The floor is two content words, measured with a clean gap.** Over 289
+    /// real dictations, runs of two or more occur once at fourteen words; runs
+    /// of exactly one occur twelve times and are the substitution defect, which
+    /// is repaired rather than rejected.
+    func testASingleSwappedWordIsNotAFabrication() {
+        let spoken = "please look at the document and tell me what you think about it"
+        let cleaned = "please look at the document and tell me what you reckon about it"
+
+        XCTAssertEqual(
+            TextCleaner.inventedRuns(input: spoken, output: cleaned), [],
+            "a one-word swap must not trigger the fabrication fallback"
+        )
+    }
+
+    /// End to end: a fabricated clause must cost him the polish, not his words.
+    func testAFabricatedClauseFallsBackToHisRawTranscription() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let spoken = "please look at the document and tell me what you think about it today"
+        let localBackend = SpyCleanupBackend(
+            nextResult: .success("Please look at the document and tell me what you think about it today, so that we can decide together tomorrow.")
+        )
+        let cleaner = TextCleaner(
+            localBackend: localBackend,
+            correctionStore: CorrectionStore(defaults: defaults)
+        )
+
+        let result = await cleaner.clean(text: spoken, prompt: "unused prompt")
+
+        XCTAssertEqual(
+            result, spoken,
+            "an invented clause was delivered instead of falling back to what he actually said"
+        )
+    }
+
+    // MARK: - The model must not lowercase what he said with a capital
+
+    /// **Measured 2026-08-24 over his live archive: 9 mid-text downcases across
+    /// 4 of 204 dictations.** `PDF` came back `pdf`, `CV` came back `cv`,
+    /// `Google` came back `google`, `Ikea` came back `ikea`, and `I` came back
+    /// `i`. The RAW transcription was right every time; the corrected text is
+    /// what reaches his clipboard.
+    ///
+    /// **This is NOT the check removed on 2026-07-26.** That one scored the
+    /// FIRST WORD's capital and encoded a backwards lean about his own editing
+    /// (he lowercases the first word 28 times against 692 where he keeps it).
+    /// This is the MODEL lowercasing proper nouns mid-sentence, and the
+    /// measurement found zero first-word downcases.
+    ///
+    /// The guard is deliberately ASYMMETRIC. Capitals the model ADDS are left
+    /// alone, because every added capital measured over the same archive was
+    /// either licensed by the split-sentence rule or wanted: `сколько` to
+    /// `Сколько` after a new period, `AF flow` to `AF Flow`, `codex` to `Codex`.
+
+    func testACapitalHeSaidIsPutBackWhenTheModelLowercasesIt() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "I need a pdf of my cv",
+                spokenInput: "I need a PDF of my CV",
+                afterDictionary: "I need a PDF of my CV"
+            ),
+            "I need a PDF of my CV"
+        )
+    }
+
+    func testAnAcronymKeepsEveryLetterItHad() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "put it in md format",
+                spokenInput: "put it in MD format",
+                afterDictionary: "put it in MD format"
+            ),
+            "put it in MD format"
+        )
+    }
+
+    /// First letter lowercase in BOTH, so a first-letter test would miss it.
+    /// The guard counts capitals instead.
+    func testInternalCapitalsSurviveToo() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "my iphone died",
+                spokenInput: "my iPhone died",
+                afterDictionary: "my iPhone died"
+            ),
+            "my iPhone died"
+        )
+    }
+
+    func testTheFirstWordIsCoveredAsWell() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "google says otherwise",
+                spokenInput: "Google says otherwise",
+                afterDictionary: "Google says otherwise"
+            ),
+            "Google says otherwise"
+        )
+    }
+
+    /// The split-sentence rule capitalizes the word after a new period. Undoing
+    /// that would break the one casing change the prompt licenses.
+    func testACapitalTheModelAddedIsLeftAlone() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "Keychain. Сколько это стоит",
+                spokenInput: "Keychain, сколько это стоит",
+                afterDictionary: "Keychain, сколько это стоит"
+            ),
+            "Keychain. Сколько это стоит"
+        )
+    }
+
+    /// `codex` to `Codex` and `AF flow` to `AF Flow` are both improvements he
+    /// wants. The guard only ever restores capitals, never removes them.
+    func testAProperNounTheModelCapitalisedStaysCapitalised() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "working with the Codex limits",
+                spokenInput: "working with the codex limits",
+                afterDictionary: "working with the codex limits"
+            ),
+            "working with the Codex limits"
+        )
+    }
+
+    /// When he said the same word BOTH ways there is no single right answer, so
+    /// the guard does nothing rather than guess. Copying when unsure is the
+    /// prompt's own rule.
+    func testAWordHeSaidBothWaysIsLeftAlone() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "flow and flow",
+                spokenInput: "Flow and flow",
+                afterDictionary: "Flow and flow"
+            ),
+            "flow and flow"
+        )
+    }
+
+    func testAWordHeNeverSaidIsLeftAlone() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "something entirely different",
+                spokenInput: "I need a PDF",
+                afterDictionary: "I need a PDF"
+            ),
+            "something entirely different"
+        )
+    }
+
+    func testTextTheModelDidNotTouchComesBackIdentical() {
+        let spoken = "I need a PDF of my CV on Google Doc"
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(spoken, spokenInput: spoken, afterDictionary: spoken),
+            spoken
+        )
+    }
+
+    /// Punctuation the model added around a restored word must survive.
+    func testPunctuationAroundARestoredWordSurvives() {
+        XCTAssertEqual(
+            TextCleaner.restoringCapitalsLoweredFromSpeech(
+                "Send the pdf, please.",
+                spokenInput: "Send the PDF please",
+                afterDictionary: "Send the PDF please"
+            ),
+            "Send the PDF, please."
         )
     }
 }
@@ -882,155 +1309,5 @@ extension CodexRound1RegressionTests {
         XCTAssertEqual(layer.apply(to: "face, then more"), "Hugging Face, then more")
         XCTAssertEqual(layer.apply(to: "(face)"), "(Hugging Face)")
         XCTAssertEqual(layer.apply(to: "af flow works"), "AF Flow works")
-    }
-
-    /// End to end, through the real pipeline, because a helper that works in
-    /// isolation and is never called is the shape this project keeps hitting.
-    func testTheCleanupPipelinePutsBackACapitalTheModelLowercased() async throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
-        defaults.removePersistentDomain(forName: #function)
-        let correctionStore = CorrectionStore(defaults: defaults)
-        let localBackend = SpyCleanupBackend(nextResult: .success("I need a pdf of my cv"))
-        let cleaner = TextCleaner(localBackend: localBackend, correctionStore: correctionStore)
-
-        let result = await cleaner.clean(text: "I need a PDF of my CV", prompt: "unused prompt")
-
-        XCTAssertEqual(result, "I need a PDF of my CV")
-    }
-
-    // MARK: - The model must not lowercase what he said with a capital
-
-    /// **Measured 2026-08-24 over his live archive: 9 mid-text downcases across
-    /// 4 of 204 dictations.** `PDF` came back `pdf`, `CV` came back `cv`,
-    /// `Google` came back `google`, `Ikea` came back `ikea`, and `I` came back
-    /// `i`. The RAW transcription was right every time; the corrected text is
-    /// what reaches his clipboard.
-    ///
-    /// **This is NOT the check removed on 2026-07-26.** That one scored the
-    /// FIRST WORD's capital and encoded a backwards lean about his own editing
-    /// (he lowercases the first word 28 times against 692 where he keeps it).
-    /// This is the MODEL lowercasing proper nouns mid-sentence, and the
-    /// measurement found zero first-word downcases.
-    ///
-    /// The guard is deliberately ASYMMETRIC. Capitals the model ADDS are left
-    /// alone, because every added capital measured over the same archive was
-    /// either licensed by the split-sentence rule or wanted: `сколько` to
-    /// `Сколько` after a new period, `AF flow` to `AF Flow`, `codex` to `Codex`.
-
-    func testACapitalHeSaidIsPutBackWhenTheModelLowercasesIt() {
-        XCTAssertEqual(
-            TextCleaner.restoringCapitalsLoweredFromSpeech(
-                "I need a pdf of my cv",
-                spokenInput: "I need a PDF of my CV",
-                afterDictionary: "I need a PDF of my CV"
-            ),
-            "I need a PDF of my CV"
-        )
-    }
-
-    func testAnAcronymKeepsEveryLetterItHad() {
-        XCTAssertEqual(
-            TextCleaner.restoringCapitalsLoweredFromSpeech(
-                "put it in md format",
-                spokenInput: "put it in MD format",
-                afterDictionary: "put it in MD format"
-            ),
-            "put it in MD format"
-        )
-    }
-
-    /// First letter lowercase in BOTH, so a first-letter test would miss it.
-    /// The guard counts capitals instead.
-    func testInternalCapitalsSurviveToo() {
-        XCTAssertEqual(
-            TextCleaner.restoringCapitalsLoweredFromSpeech(
-                "my iphone died",
-                spokenInput: "my iPhone died",
-                afterDictionary: "my iPhone died"
-            ),
-            "my iPhone died"
-        )
-    }
-
-    func testTheFirstWordIsCoveredAsWell() {
-        XCTAssertEqual(
-            TextCleaner.restoringCapitalsLoweredFromSpeech(
-                "google says otherwise",
-                spokenInput: "Google says otherwise",
-                afterDictionary: "Google says otherwise"
-            ),
-            "Google says otherwise"
-        )
-    }
-
-    /// The split-sentence rule capitalizes the word after a new period. Undoing
-    /// that would break the one casing change the prompt licenses.
-    func testACapitalTheModelAddedIsLeftAlone() {
-        XCTAssertEqual(
-            TextCleaner.restoringCapitalsLoweredFromSpeech(
-                "Keychain. Сколько это стоит",
-                spokenInput: "Keychain, сколько это стоит",
-                afterDictionary: "Keychain, сколько это стоит"
-            ),
-            "Keychain. Сколько это стоит"
-        )
-    }
-
-    /// `codex` to `Codex` and `AF flow` to `AF Flow` are both improvements he
-    /// wants. The guard only ever restores capitals, never removes them.
-    func testAProperNounTheModelCapitalisedStaysCapitalised() {
-        XCTAssertEqual(
-            TextCleaner.restoringCapitalsLoweredFromSpeech(
-                "working with the Codex limits",
-                spokenInput: "working with the codex limits",
-                afterDictionary: "working with the codex limits"
-            ),
-            "working with the Codex limits"
-        )
-    }
-
-    /// When he said the same word BOTH ways there is no single right answer, so
-    /// the guard does nothing rather than guess. Copying when unsure is the
-    /// prompt's own rule.
-    func testAWordHeSaidBothWaysIsLeftAlone() {
-        XCTAssertEqual(
-            TextCleaner.restoringCapitalsLoweredFromSpeech(
-                "flow and flow",
-                spokenInput: "Flow and flow",
-                afterDictionary: "Flow and flow"
-            ),
-            "flow and flow"
-        )
-    }
-
-    func testAWordHeNeverSaidIsLeftAlone() {
-        XCTAssertEqual(
-            TextCleaner.restoringCapitalsLoweredFromSpeech(
-                "something entirely different",
-                spokenInput: "I need a PDF",
-                afterDictionary: "I need a PDF"
-            ),
-            "something entirely different"
-        )
-    }
-
-    func testTextTheModelDidNotTouchComesBackIdentical() {
-        let spoken = "I need a PDF of my CV on Google Doc"
-        XCTAssertEqual(
-            TextCleaner.restoringCapitalsLoweredFromSpeech(spoken, spokenInput: spoken, afterDictionary: spoken),
-            spoken
-        )
-    }
-
-    /// Punctuation the model added around a restored word must survive.
-    func testPunctuationAroundARestoredWordSurvives() {
-        XCTAssertEqual(
-            TextCleaner.restoringCapitalsLoweredFromSpeech(
-                "Send the pdf, please.",
-                spokenInput: "Send the PDF please",
-                afterDictionary: "Send the PDF please"
-            ),
-            "Send the PDF, please."
-        )
     }
 }
