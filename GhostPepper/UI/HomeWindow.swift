@@ -110,11 +110,13 @@ struct AFFlowHomeView: View {
             HStack(spacing: 8) {
                 Text("Hold")
                     .font(theme.displayFont)
+                    .tracking(-0.48)
                     .foregroundColor(theme.textPrimary)
                 Keycap(text: pushToTalk)
             }
             Text("and speak")
                 .font(theme.displayFont)
+                .tracking(-0.48)
                 .foregroundColor(theme.textPrimary)
         }
     }
@@ -165,9 +167,9 @@ struct AFFlowHomeView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(
-                    RoundedRectangle(cornerRadius: 7)
+                    RoundedRectangle(cornerRadius: 8)
                         .fill(theme.textBackground)
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.separator, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.separator, lineWidth: 1))
                 )
         }
     }
@@ -208,8 +210,12 @@ struct AFFlowHomeView: View {
 
         var body: some View {
             VStack(spacing: 3) {
-                Text(label)
-                    .font(theme.textFont(size: 10.5))
+                // The Eyebrow role: Inter 11 semibold, uppercase, +0.9pt
+                // tracking. Eyebrows are the one place the ladder tracks
+                // POSITIVE; everything larger tracks tighter.
+                Text(label.uppercased())
+                    .font(theme.eyebrowFont)
+                    .tracking(0.9)
                     .foregroundColor(theme.textSecondary)
                 Text(value)
                     .font(theme.textFont(size: 12, weight: 500))

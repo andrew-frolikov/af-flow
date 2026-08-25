@@ -200,7 +200,6 @@ private struct SavedModelExperimentPrompt: Identifiable, Equatable, Codable {
 struct SettingsView: View {
     @Environment(\.appTheme) private var theme
     @ObservedObject var appState: AppState
-    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppThemeID.current.rawValue
     @State private var inputDevices: [AudioInputDevice] = []
     @State private var selectedDeviceID: AudioDeviceID = 0
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -236,9 +235,6 @@ struct SettingsView: View {
     private static let savedExperimentPromptsDefaultsKey = "modelExperimentSavedPrompts"
     private static let experimentRunHistoryDefaultsKey = "modelExperimentRunHistory"
 
-    private var appTheme: AppTheme {
-        AppTheme.resolve(selectedThemeID)
-    }
 
     init(appState: AppState, initialSection: AFFlowSection = .general) {
         self.appState = appState
@@ -346,17 +342,17 @@ struct SettingsView: View {
     private func sidebarRow(_ section: AFFlowSection) -> some View {
         let isSelected = selectedSection == section
         let isHovered = hoveredSection == section
-        let squareCorners = appTheme.id == .windows95
+        let squareCorners = theme.id == .windows95
         Button {
             selectedSection = section
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: section.systemImageName)
                     .frame(width: 18)
-                    .foregroundStyle(isSelected ? appTheme.accentText : appTheme.textSecondary)
+                    .foregroundStyle(isSelected ? theme.accentText : theme.textSecondary)
                 Text(section.title)
-                    .font(isSelected ? appTheme.emphasisFont : appTheme.bodyStrongFont)
-                    .foregroundStyle(isSelected ? appTheme.accentText : appTheme.textPrimary)
+                    .font(isSelected ? theme.emphasisFont : theme.bodyStrongFont)
+                    .foregroundStyle(isSelected ? theme.accentText : theme.textPrimary)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
@@ -368,10 +364,10 @@ struct SettingsView: View {
             .background(
                 Group {
                     if squareCorners {
-                        Rectangle().fill(isSelected ? appTheme.accent : (isHovered ? appTheme.hoverFill : .clear))
+                        Rectangle().fill(isSelected ? theme.accent : (isHovered ? theme.hoverFill : .clear))
                     } else {
                         Capsule(style: .continuous)
-                            .fill(isSelected ? appTheme.accent : (isHovered ? appTheme.hoverFill : .clear))
+                            .fill(isSelected ? theme.accent : (isHovered ? theme.hoverFill : .clear))
                     }
                 }
             )
@@ -393,8 +389,8 @@ struct SettingsView: View {
                         .resizable()
                         .frame(width: 28, height: 28)
                     Text("AF Flow")
-                        .font(appTheme.brandNameFont)
-                        .foregroundStyle(appTheme.textPrimary)
+                        .font(theme.brandNameFont)
+                        .foregroundStyle(theme.textPrimary)
                 }
                 .padding(.leading, 16)
                 .padding(.top, 20)
@@ -411,8 +407,8 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
 
                 Text("AF Flow v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
-                    .font(appTheme.captionFont)
-                    .foregroundStyle(appTheme.textSecondary)
+                    .font(theme.captionFont)
+                    .foregroundStyle(theme.textSecondary)
                     .padding(.leading, 16)
                     .padding(.bottom, 16)
             }
@@ -422,10 +418,10 @@ struct SettingsView: View {
             .frame(minWidth: 232, idealWidth: 232, maxWidth: 232, maxHeight: .infinity, alignment: .topLeading)
             // No fill. The sidebar is not a differently coloured region; it is
             // the same sheet, distinguished by layout and one hairline.
-            .background(appTheme.windowBackground)
+            .background(theme.windowBackground)
             .overlay(alignment: .trailing) {
                 Rectangle()
-                    .fill(appTheme.separator)
+                    .fill(theme.separator)
                     .frame(width: 1)
             }
 
@@ -447,7 +443,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .background(appTheme.windowBackground)
+            .background(theme.windowBackground)
         }
         // The theme is injected ABOVE this view by AFFlowThemedRoot at the
         // hosting root, not here. A modifier applied inside a view's own body
@@ -1154,12 +1150,12 @@ struct SettingsView: View {
                                 dictationTestController.start()
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
 
                         if dictationTestController.isRecording {
                             HStack(spacing: 8) {
                                 Circle()
-                                    .fill(appTheme.statusLive)
+                                    .fill(theme.statusLive)
                                     .frame(width: 10, height: 10)
                                 Text("Recording…")
                                     .foregroundStyle(theme.textSecondary)
@@ -1180,7 +1176,7 @@ struct SettingsView: View {
                             .padding(16)
                             .background(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(appTheme.controlBackground)
+                                    .fill(theme.controlBackground)
                             )
                     } else if let lastError = dictationTestController.lastError {
                         Text(lastError)
@@ -1192,7 +1188,7 @@ struct SettingsView: View {
 
             // The "Appearance" card, offering the fork's Windows 95 and Space
             // skins, was deleted on 2026-07-26 at Andrew's instruction. The card
-            // only; `AppTheme` stays compiled and every `appTheme.id ==` branch
+            // only; `AppTheme` stays compiled and every `theme.id ==` branch
             // across this 4051-line file is untouched, because deleting the enum
             // would be a large edit through code he dictates in front of, for no
             // gain he can see.
@@ -1260,7 +1256,7 @@ struct SettingsView: View {
                         Button("Reset to Default") {
                             appState.cleanupPrompt = TextCleaner.defaultPrompt
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AFFlowGhostButtonStyle())
                     }
                 }
             }
@@ -1566,7 +1562,7 @@ struct SettingsView: View {
                         Button(isRunningExperiment ? "Running..." : "Run") {
                             runModelExperiment()
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
                         .disabled(
                             isRunningExperiment ||
                             experimentContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
@@ -1576,7 +1572,7 @@ struct SettingsView: View {
                         Button("Run All Downloaded") {
                             runAllDownloadedModelExperiments()
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AFFlowGhostButtonStyle())
                         .disabled(isRunningExperiment || experimentContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || downloadedRunnableExperimentModels.isEmpty)
 
                         Button("Clear Output") {
@@ -1585,14 +1581,14 @@ struct SettingsView: View {
                             experimentTokenCount = 0
                             experimentErrorMessage = nil
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AFFlowGhostButtonStyle())
                         .disabled(isRunningExperiment || (experimentOutput.isEmpty && experimentRawOutput.isEmpty && experimentErrorMessage == nil))
 
                         Button("Clear History") {
                             experimentRuns.removeAll()
                             persistExperimentRunHistory()
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AFFlowGhostButtonStyle())
                         .disabled(isRunningExperiment || experimentRuns.isEmpty)
 
                         if isRunningExperiment {
@@ -1610,7 +1606,7 @@ struct SettingsView: View {
                             .foregroundStyle(theme.statusLive)
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(appTheme.statusLive.opacity(0.08))
+                            .background(theme.statusLive.opacity(0.08))
                             .cornerRadius(8)
                     }
                 }
@@ -1633,10 +1629,10 @@ struct SettingsView: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
                         .padding(12)
-                        .background(appTheme.textBackground)
+                        .background(theme.textBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(appTheme.separator, lineWidth: 1)
+                                .stroke(theme.separator, lineWidth: 1)
                         )
                         .cornerRadius(8)
 
@@ -1649,10 +1645,10 @@ struct SettingsView: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
                             .padding(12)
-                            .background(appTheme.textBackground)
+                            .background(theme.textBackground)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(appTheme.separator, lineWidth: 1)
+                                    .stroke(theme.separator, lineWidth: 1)
                             )
                             .cornerRadius(8)
                     }
@@ -1861,7 +1857,7 @@ struct SettingsView: View {
                 } label: {
                     Label("Back to recordings", systemImage: "chevron.left")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
             }
 
             TranscriptionLabWorkshopSummary(
@@ -2169,7 +2165,7 @@ struct SettingsView: View {
                             Button("Reset to Default") {
                                 appState.cleanupPrompt = TextCleaner.defaultPrompt
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(AFFlowGhostButtonStyle())
                             .disabled(transcriptionLabController.runningStage != nil)
                         }
 
@@ -2207,7 +2203,7 @@ struct SettingsView: View {
                                 appState.showCleanupTranscript(transcript)
                             }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AFFlowGhostButtonStyle())
                         .disabled(transcriptionLabController.latestCleanupTranscript == nil)
 
                         Spacer()
@@ -2274,7 +2270,7 @@ struct SettingsView: View {
                 Text(isRunning ? runningTitle : title)
             }
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(AFFlowPrimaryButtonStyle())
         .disabled(disabled)
     }
 
@@ -2332,7 +2328,7 @@ struct SettingsView: View {
                         Text(correctionAdded ? "Added!" : "Add")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AFFlowPrimaryButtonStyle())
                 .tint(theme.accent)
                 .padding(.top, 16)
                 .disabled(correctionWrong.isEmpty || correctionRight.isEmpty)
@@ -2389,7 +2385,7 @@ struct SettingsView: View {
                         Text(exampleAdded ? "Example added!" : "Add Example")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AFFlowPrimaryButtonStyle())
                 .tint(theme.accent)
                 .disabled(exampleInput.isEmpty || exampleOutput.isEmpty)
 
@@ -2507,7 +2503,7 @@ struct SettingsView: View {
                             .font(theme.monoFont(size: 12))
                             .frame(height: 100)
                             .padding(4)
-                            .background(RoundedRectangle(cornerRadius: 6).stroke(appTheme.separator))
+                            .background(RoundedRectangle(cornerRadius: 6).stroke(theme.separator))
 
                         HStack {
                             Button("Reset to Default") {
@@ -2637,7 +2633,7 @@ private struct TranscriptionLabSpeakerProfileEditor: View {
                         Button("Split") {
                             onRecognizedVoiceChange(nil)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AFFlowGhostButtonStyle())
                         .font(theme.captionFont)
                     }
 
@@ -2669,7 +2665,7 @@ private struct TranscriptionLabSpeakerProfileEditor: View {
                     commitDisplayName()
                     onUpdateGlobalVoice()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .font(theme.captionFont)
             }
         }
@@ -2863,7 +2859,7 @@ private struct RecognizedVoiceLinkedSpeakerProfileRow: View {
                 Spacer()
 
                 Button("Unlink", action: onUnlink)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AFFlowGhostButtonStyle())
                     .controlSize(.small)
             }
 
@@ -3089,7 +3085,7 @@ private struct PermissionStatusRow: View {
             Spacer()
             if !isGranted {
                 Button("Grant") { action() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AFFlowPrimaryButtonStyle())
                     .tint(theme.accent)
                     .controlSize(.small)
             }
@@ -3511,7 +3507,7 @@ private struct TranscriptionLabSourceRecordingSummary: View {
         } label: {
             Label("Play recording", systemImage: "play.fill")
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(AFFlowGhostButtonStyle())
         .disabled(!canPlayRecording)
         .help(canPlayRecording ? "Play the saved recording" : "Playback is available for newly archived recordings")
     }

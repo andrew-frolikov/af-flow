@@ -2615,11 +2615,7 @@ struct MeetingRootView: View {
     @State private var showCommandKSearch: Bool = false
     @State private var showQAMentionSheet: Bool = false
     @State private var qaAttachments: [QAAttachment] = []
-    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppThemeID.current.rawValue
 
-    private var appTheme: AppTheme {
-        AppTheme.resolve(selectedThemeID)
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2631,7 +2627,7 @@ struct MeetingRootView: View {
 
                 // Draggable divider
                 Rectangle()
-                    .fill(appTheme.separator)
+                    .fill(theme.separator)
                     .frame(width: 3)
                     .contentShape(Rectangle())
                     .onHover { hovering in
@@ -2657,12 +2653,12 @@ struct MeetingRootView: View {
                 // Active tab content or new tab view
                 selectedSurfaceContent
             }
-            .background(appTheme.textBackground)
+            .background(theme.textBackground)
 
             if state.showModelsSidebar {
                 // Draggable divider on the panel's leading edge.
                 Rectangle()
-                    .fill(appTheme.separator)
+                    .fill(theme.separator)
                     .frame(width: 3)
                     .contentShape(Rectangle())
                     .onHover { hovering in
@@ -2700,8 +2696,8 @@ struct MeetingRootView: View {
             .layoutPriority(1)
         }
         .frame(minWidth: 500, minHeight: 400)
-        .background(appTheme.windowBackground)
-        .tint(appTheme.accent)
+        .background(theme.windowBackground)
+        .tint(theme.accent)
         .animation(.easeInOut(duration: 0.2), value: state.showSidebar)
         .animation(.easeInOut(duration: 0.2), value: state.showModelsSidebar)
         .onAppear { state.loadHistory() }
@@ -2935,7 +2931,7 @@ struct MeetingRootView: View {
             // Grip indicator — short horizontal line in the middle so the
             // drag affordance is discoverable.
             Capsule()
-                .fill(appTheme.hoverFill)
+                .fill(theme.hoverFill)
                 .frame(width: 36, height: 3)
         }
         .frame(height: 8)
@@ -3030,7 +3026,7 @@ struct MeetingRootView: View {
                     .padding(8)
                 }
                 .frame(maxHeight: 180)
-                .background(appTheme.hoverFill)
+                .background(theme.hoverFill)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 6)
             }
@@ -3079,7 +3075,7 @@ struct MeetingRootView: View {
                             }
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AFFlowPrimaryButtonStyle())
                     .tint(theme.accent)
                     .disabled(isApplyingDossier)
 
@@ -3095,7 +3091,7 @@ struct MeetingRootView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(appTheme.accent.opacity(0.08))
+                .background(theme.accent.opacity(0.08))
             }
         }
     }
@@ -3458,20 +3454,20 @@ struct MeetingRootView: View {
             Button("Restore") {
                 isWikiGenerationMinimized = false
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AFFlowPrimaryButtonStyle())
             .tint(theme.accent)
 
             if run.isRunning {
                 Button("Stop") {
                     cancelWikiGeneration(run)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
             } else {
                 Button("Close") {
                     isWikiGenerationMinimized = false
                     wikiGenerationRun = nil
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
             }
         }
         .padding(.horizontal, 14)
@@ -3481,7 +3477,7 @@ struct MeetingRootView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(appTheme.accent.opacity(0.32), lineWidth: 1)
+                .stroke(theme.accent.opacity(0.32), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.26), radius: 18, x: 0, y: 10)
     }
@@ -4019,7 +4015,7 @@ struct MeetingRootView: View {
             Button(action: { state.showSidebar.toggle() }) {
                 Image(systemName: "sidebar.left")
                     .font(theme.textFont(size: 12, weight: 500))
-                    .foregroundColor(state.showSidebar ? appTheme.accent : theme.textSecondary)
+                    .foregroundColor(state.showSidebar ? theme.accent : theme.textSecondary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
             }
@@ -4027,7 +4023,7 @@ struct MeetingRootView: View {
             .help(state.showSidebar ? "Hide sidebar" : "Show sidebar")
 
             Rectangle()
-                .fill(appTheme.separator.opacity(0.7))
+                .fill(theme.separator.opacity(0.7))
                 .frame(width: 1, height: 18)
                 .padding(.trailing, 4)
 
@@ -4091,17 +4087,17 @@ struct MeetingRootView: View {
             Button(action: { state.showModelsSidebar.toggle() }) {
                 Image(systemName: "sidebar.right")
                     .font(theme.textFont(size: 12, weight: 500))
-                    .foregroundColor(state.showModelsSidebar ? appTheme.accent : theme.textSecondary)
+                    .foregroundColor(state.showModelsSidebar ? theme.accent : theme.textSecondary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
             }
             .buttonStyle(.plain)
             .help(state.showModelsSidebar ? "Hide models" : "Show models")
         }
-        .background(appTheme.controlBackground.opacity(appTheme.id == .current ? 0.5 : 1))
+        .background(theme.controlBackground.opacity(theme.id == .current ? 0.5 : 1))
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(appTheme.separator).frame(height: 1)
+            Rectangle().fill(theme.separator).frame(height: 1)
         }
     }
 
@@ -4259,13 +4255,13 @@ struct MeetingRootView: View {
             Button("New Personal Note") {
                 state.startNewNote()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AFFlowPrimaryButtonStyle())
             .tint(theme.accent)
 
             Button("New Ad Hoc Meeting") {
                 state.startAdHocCall()
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(AFFlowGhostButtonStyle())
         }
     }
 
@@ -4700,14 +4696,14 @@ private struct SecondBrainLintSheet: View {
 
                 if run.isRunning {
                     Button("Stop", action: onCancel)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AFFlowGhostButtonStyle())
                 } else if run.resultMessage == nil, run.errorMessage == nil {
                     Button("Apply accepted", action: onApply)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
                         .disabled(run.acceptedCount == 0)
                 } else {
                     Button("Close", action: onClose)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
                 }
             }
 
@@ -4770,13 +4766,13 @@ private struct SecondBrainLintSheet: View {
                             run.setProposalAccepted(proposal, accepted: true)
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AFFlowGhostButtonStyle())
                     Button("Skip all") {
                         for proposal in run.proposals {
                             run.setProposalAccepted(proposal, accepted: false)
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AFFlowGhostButtonStyle())
                 }
 
                 ScrollView {
@@ -4835,7 +4831,7 @@ private struct SecondBrainLintSheet: View {
                 } label: {
                     Label("Accept", systemImage: proposal.accepted ? "checkmark.circle.fill" : "checkmark.circle")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(proposal.accepted ? theme.statusReady : nil)
 
                 Button {
@@ -4843,7 +4839,7 @@ private struct SecondBrainLintSheet: View {
                 } label: {
                     Label("Skip", systemImage: proposal.accepted ? "circle" : "xmark.circle.fill")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(proposal.accepted ? nil : theme.statusLive)
             }
 
@@ -5016,10 +5012,10 @@ private struct WikiGenerationConsoleSheet: View {
 
                 if run.isRunning {
                     Button("Stop", action: onCancel)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AFFlowGhostButtonStyle())
                 } else {
                     Button("Close", action: onClose)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
                 }
             }
 
@@ -5160,7 +5156,7 @@ private struct WikiGenerationConsoleSheet: View {
 
                         HStack {
                             Button(openOverviewButtonTitle, action: onOpenOverview)
-                                .buttonStyle(.borderedProminent)
+                                .buttonStyle(AFFlowPrimaryButtonStyle())
                             Text("Saved \(run.savedRelativePaths.count) files")
                                 .font(theme.textFont(size: 11, weight: 500))
                                 .foregroundStyle(theme.textSecondary)
@@ -5197,11 +5193,11 @@ private struct WikiGenerationConsoleSheet: View {
                 Button("Keep all") {
                     run.keepAllReviewItems()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 Button("Save approved") {
                     run.completeReview()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AFFlowPrimaryButtonStyle())
             }
 
             ScrollView {
@@ -5432,7 +5428,7 @@ private struct WikiGenerationConsoleSheet: View {
                 } label: {
                     Label("Add", systemImage: isKept ? "checkmark.circle.fill" : "plus.circle")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(isKept ? theme.statusReady : nil)
                 Button {
                     let target = mergeTarget.isEmpty
@@ -5442,7 +5438,7 @@ private struct WikiGenerationConsoleSheet: View {
                 } label: {
                     Label("Merge", systemImage: isMerged ? "checkmark.circle.fill" : "arrow.triangle.merge")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(isMerged ? theme.accent : nil)
                 .disabled(entity.suggestedMatches.isEmpty && entity.mergeOptions.isEmpty && mergeTarget.isEmpty)
                 Button {
@@ -5450,7 +5446,7 @@ private struct WikiGenerationConsoleSheet: View {
                 } label: {
                     Label("Discard", systemImage: isDiscarded ? "checkmark.circle.fill" : "xmark.circle")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(isDiscarded ? theme.statusLive : nil)
             }
 
@@ -5603,7 +5599,7 @@ private struct WikiGenerationConsoleSheet: View {
                 } label: {
                     Label("Keep", systemImage: isKept ? "checkmark.circle.fill" : "checkmark.circle")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(isKept ? theme.statusReady : nil)
                 Button {
                     let target = connectTarget.isEmpty
@@ -5613,14 +5609,14 @@ private struct WikiGenerationConsoleSheet: View {
                 } label: {
                     Label("Connect", systemImage: isConnected ? "checkmark.circle.fill" : "link")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(isConnected ? theme.accent : nil)
                 Button {
                     run.setTopicDecision(topic, keep: false, canonicalTopic: nil)
                 } label: {
                     Label("Discard", systemImage: isDiscarded ? "checkmark.circle.fill" : "xmark.circle")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(isDiscarded ? theme.statusLive : nil)
             }
             if !topic.description.isEmpty {
@@ -5747,7 +5743,7 @@ private struct WikiGenerationConsoleSheet: View {
                 } label: {
                     Label("Keep", systemImage: isMeetingOnly ? "checkmark.circle.fill" : "checkmark.circle")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(isMeetingOnly ? theme.statusReady : nil)
 
                 Button {
@@ -5758,7 +5754,7 @@ private struct WikiGenerationConsoleSheet: View {
                 } label: {
                     Label("Connect", systemImage: isConnected ? "checkmark.circle.fill" : "link")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(isConnected ? theme.accent : nil)
 
                 Button {
@@ -5766,7 +5762,7 @@ private struct WikiGenerationConsoleSheet: View {
                 } label: {
                     Label("Discard", systemImage: isDiscarded ? "checkmark.circle.fill" : "xmark.circle")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .tint(isDiscarded ? theme.statusLive : nil)
             }
 
@@ -6484,14 +6480,14 @@ private struct GeneratedWikiPageView: View {
                                 errorMessage = "Could not rename 2nd Brain page: \(error.localizedDescription)"
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
                         .disabled(renameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || renameDraft == page.title)
                         Button("Cancel") {
                             renameDraft = page.title
                             isRenaming = false
                             errorMessage = nil
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(AFFlowGhostButtonStyle())
                     }
                 } else {
                     HStack(spacing: 8) {
@@ -6562,7 +6558,7 @@ private struct GeneratedWikiPageView: View {
                         draftBody = lastSavedBody
                         errorMessage = nil
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(AFFlowGhostButtonStyle())
                 }
             }
         }
@@ -7208,7 +7204,7 @@ private struct SecondBrainDashboardView: View {
                 Button(action: onBuildNextBatch) {
                     Label(state.isGeneratingMeetingWiki ? "Adding..." : "Add next 50", systemImage: "sparkles.rectangle.stack")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AFFlowPrimaryButtonStyle())
                 .tint(theme.accent)
                 .controlSize(.small)
                 .disabled(state.isGeneratingMeetingWiki)
@@ -7216,19 +7212,19 @@ private struct SecondBrainDashboardView: View {
                 Button(action: rebuildGraph) {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .controlSize(.small)
 
                 Button(action: onLint) {
                     Label("Lint", systemImage: "checklist")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .controlSize(.small)
 
                 Button(role: .destructive, action: { showArchiveConfirmation = true }) {
                     Label("Archive", systemImage: "archivebox")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .controlSize(.small)
                 .disabled(state.isGeneratingMeetingWiki || graph.nodes.isEmpty)
             }
@@ -8582,7 +8578,7 @@ struct MeetingTabContentView: View {
                             Label(state.isGeneratingMeetingWiki ? "Adding…" : "Add to Brain", systemImage: "sparkles.rectangle.stack")
                                 .font(theme.textFont(size: 11.5, weight: 500))
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
                         .controlSize(.small)
                         .disabled(tab.fileURL == nil || tab.isRecording || state.isGeneratingMeetingWiki)
                         .help(tab.fileURL == nil ? "Save this meeting before adding it to the 2nd Brain" : "Create or update generated 2nd Brain pages for this meeting")
@@ -8785,7 +8781,7 @@ struct MeetingTabContentView: View {
             Text("No audio detected. Check your microphone.").font(theme.captionFont)
             Spacer()
             Button("Open Settings") { state.onOpenSettings?() }
-                .font(theme.textFont(size: 11.5, weight: 500)).buttonStyle(.borderedProminent).tint(theme.accent).controlSize(.small)
+                .font(theme.textFont(size: 11.5, weight: 500)).buttonStyle(AFFlowPrimaryButtonStyle()).tint(theme.accent).controlSize(.small)
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(theme.statusBusy.opacity(0.1))
@@ -9221,11 +9217,7 @@ struct MeetingSidebarView: View {
     @State private var expandedLibraryFolders: Set<String> = []
     @State private var expandedWikiFolders: Set<String> = []
     @State private var expandedAirtableFolders: Set<String> = []
-    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppThemeID.current.rawValue
 
-    private var appTheme: AppTheme {
-        AppTheme.resolve(selectedThemeID)
-    }
 
     private var meetingGroups: [(date: String, entries: [MeetingHistoryEntry])] {
         let groups = state.historyGroups.compactMap { group in
@@ -9318,8 +9310,8 @@ struct MeetingSidebarView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
-            .background(appTheme.textBackground.opacity(appTheme.id == .current ? 0.5 : 0.9))
-            .cornerRadius(appTheme.id == .windows95 ? 0 : 6)
+            .background(theme.textBackground.opacity(theme.id == .current ? 0.5 : 0.9))
+            .cornerRadius(theme.id == .windows95 ? 0 : 6)
             .padding(.horizontal, 12)
             .padding(.bottom, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -9358,10 +9350,10 @@ struct MeetingSidebarView: View {
                                 HStack(spacing: 6) {
                                     Image(systemName: entry.isGranola ? "square.and.arrow.down.on.square" : "doc.text")
                                         .font(theme.textFont(size: 10))
-                                        .foregroundColor(isOpen ? appTheme.accent : (entry.isGranola ? appTheme.statusReady.opacity(0.7) : appTheme.textSecondary))
+                                        .foregroundColor(isOpen ? theme.accent : (entry.isGranola ? theme.statusReady.opacity(0.7) : theme.textSecondary))
                                     Text(entry.name)
                                         .font(theme.textFont(size: 12))
-                                        .foregroundColor(isOpen ? appTheme.accent : appTheme.textPrimary)
+                                        .foregroundColor(isOpen ? theme.accent : theme.textPrimary)
                                         .lineLimit(1)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -9391,7 +9383,7 @@ struct MeetingSidebarView: View {
         }
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
-        .background(appTheme.controlBackground)
+        .background(theme.controlBackground)
         .onAppear {
             state.loadGeneratedWikiFolders()
         }
@@ -9585,10 +9577,10 @@ struct MeetingSidebarView: View {
             HStack(spacing: 6) {
                 Image(systemName: item.type == "meeting_overview" ? "doc.richtext" : "doc.text")
                     .font(theme.textFont(size: 10))
-                    .foregroundColor(isOpen ? appTheme.accent : appTheme.textSecondary)
+                    .foregroundColor(isOpen ? theme.accent : theme.textSecondary)
                 Text(item.title)
                     .font(theme.textFont(size: 12))
-                    .foregroundColor(isOpen ? appTheme.accent : appTheme.textPrimary)
+                    .foregroundColor(isOpen ? theme.accent : theme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer()
@@ -9651,7 +9643,7 @@ struct MeetingSidebarView: View {
             HStack(spacing: 6) {
                 Image(systemName: "tablecells")
                     .font(theme.textFont(size: 10))
-                    .foregroundColor(appTheme.statusReady.opacity(0.75))
+                    .foregroundColor(theme.statusReady.opacity(0.75))
                 Text(entry.name)
                     .font(theme.textFont(size: 12))
                     .foregroundColor(.primary)
@@ -9710,10 +9702,10 @@ struct MeetingSidebarView: View {
             HStack(spacing: 6) {
                 Image(systemName: kind.iconSystemName)
                     .font(theme.textFont(size: 11))
-                    .foregroundColor(isOpen ? appTheme.accent : appTheme.textSecondary)
+                    .foregroundColor(isOpen ? theme.accent : theme.textSecondary)
                 Text(kind.displayName)
                     .font(theme.textFont(size: 12, weight: 500))
-                    .foregroundColor(isOpen ? appTheme.accent : appTheme.textPrimary)
+                    .foregroundColor(isOpen ? theme.accent : theme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text("(\(count))")
@@ -9869,7 +9861,8 @@ private struct SummarySectionHeader: View {
     let title: String
     var body: some View {
         Text(title.uppercased())
-            .font(theme.textFont(size: 11, weight: 700))
+            .font(theme.eyebrowFont)
+            .tracking(0.9)
             .foregroundStyle(theme.textSecondary).tracking(0.5)
     }
 }
@@ -9992,7 +9985,7 @@ private struct SpeakerReviewRow: View {
                     Label("Save", systemImage: "checkmark")
                         .font(theme.textFont(size: 11.5, weight: 500))
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
                 .controlSize(.small)
                 .disabled(!canSave)
             }

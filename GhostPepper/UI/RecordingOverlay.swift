@@ -211,7 +211,6 @@ class RecordingOverlayController {
 }
 
 struct OverlayPillView: View {
-    @Environment(\.appTheme) private var theme
     let message: OverlayMessage
     var onTap: (() -> Void)?
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppThemeID.current.rawValue
@@ -258,7 +257,7 @@ struct OverlayPillView: View {
                     .colorScheme(.dark)
             } else if case .learnedCorrection = message {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(theme.textFont(size: 18, weight: 600))
+                    .font(appTheme.textFont(size: 18, weight: 600))
                     .foregroundStyle(appTheme.overlayStatusReady)
             } else {
                 // The pulse means "this is still happening". It used to run on
@@ -279,13 +278,17 @@ struct OverlayPillView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(message.primaryText)
-                    .font(theme.textFont(size: 13, weight: 600))
+                    .font(appTheme.textFont(size: 13, weight: 600))
                     .foregroundStyle(textColor)
 
                 if let secondaryText = message.secondaryText {
                     Text(secondaryText)
-                        .font(theme.textFont(size: 12, weight: 500))
-                        .foregroundStyle(textColor.opacity(0.8))
+                        .font(appTheme.textFont(size: 12, weight: 500))
+                        // The 80%-opacity trick dies. An opacity of the
+                        // primary colour is a guess; `overlaySecondaryText` is
+                        // the canon's --dark-muted and measures 9.21:1 on the
+                        // pill, computed rather than eyeballed.
+                        .foregroundStyle(appTheme.overlaySecondaryText)
                         .lineLimit(2)
                 }
             }

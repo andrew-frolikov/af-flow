@@ -57,7 +57,7 @@ struct ReaderCaptureSheet: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AFFlowPrimaryButtonStyle())
                 .tint(theme.accent)
                 .disabled(urlInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCapturing)
             }

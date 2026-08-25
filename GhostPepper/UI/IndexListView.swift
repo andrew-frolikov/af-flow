@@ -89,7 +89,7 @@ struct IndexListView: View {
             Button(action: onBuild) {
                 Label("Build \(kind.displayName) index", systemImage: "wand.and.stars")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AFFlowPrimaryButtonStyle())
             .tint(theme.accent)
             Spacer()
         }

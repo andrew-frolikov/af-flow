@@ -52,9 +52,10 @@ struct UsageReportView: View {
     private var summaryHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(snapshot.window.title)
-                .font(theme.textFont(size: 11, weight: 600))
+                .font(theme.eyebrowFont)
                 .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
+                .tracking(0.9)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(snapshot.totalWindowed)")
                     .font(theme.textFont(size: 26, weight: 600))
@@ -73,9 +74,10 @@ struct UsageReportView: View {
     private var chart: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("By feature · \(snapshot.window.title.lowercased())")
-                .font(theme.textFont(size: 11, weight: 600))
+                .font(theme.eyebrowFont)
                 .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
+                .tracking(0.9)
             if snapshot.totalWindowed == 0 && snapshot.totalLifetime == 0 {
                 Text("No usage tracked yet. Run dictation, record a meeting, build a People index, or ask a Q&A question, and counts show up here.")
                     .font(theme.textFont(size: 11))
@@ -133,9 +135,10 @@ struct UsageReportView: View {
         VStack(alignment: .leading, spacing: 6) {
             Divider()
             Text("Feature requests")
-                .font(theme.textFont(size: 11, weight: 600))
+                .font(theme.eyebrowFont)
                 .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
+                .tracking(0.9)
 
             Button(action: generate) {
                 HStack(spacing: 6) {

@@ -214,7 +214,7 @@ struct WelcomeStep: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AFFlowPrimaryButtonStyle())
             .tint(theme.accent)
             .padding(.horizontal, 40)
             .padding(.bottom, 24)
@@ -320,7 +320,7 @@ struct SetupStep: View {
                         Button("Open Settings") {
                             PermissionChecker.openMicrophoneSettings()
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
                         .tint(theme.accent)
                         .controlSize(.small)
                     } else if !micGranted {
@@ -337,7 +337,7 @@ struct SetupStep: View {
                                 }
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
                         .tint(theme.accent)
                         .controlSize(.small)
                     }
@@ -395,7 +395,7 @@ struct SetupStep: View {
                         Button("Grant") {
                             PermissionChecker.openAccessibilitySettings()
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
                         .tint(theme.accent)
                         .controlSize(.small)
                     }
@@ -415,7 +415,7 @@ struct SetupStep: View {
                             Button("Retry") {
                                 Task { await loadRequiredLocalModels() }
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(AFFlowPrimaryButtonStyle())
                             .tint(theme.accent)
                             .controlSize(.small)
                         }
@@ -442,7 +442,7 @@ struct SetupStep: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AFFlowPrimaryButtonStyle())
                 .tint(theme.accent)
                 .padding(.horizontal, 40)
                 .padding(.bottom, 24)
@@ -835,7 +835,7 @@ struct TryItStep: View {
                 Button("Skip") {
                     controller.advance(onAdvance: onContinue)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(AFFlowGhostButtonStyle())
 
                 Spacer()
 
@@ -847,7 +847,7 @@ struct TryItStep: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AFFlowPrimaryButtonStyle())
                 .tint(theme.accent)
             }
             .padding(.horizontal, 40)
@@ -970,7 +970,7 @@ struct DoneStep: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(AFFlowPrimaryButtonStyle())
             .tint(theme.accent)
             .disabled(isCompleting)
             .padding(.horizontal, 40)

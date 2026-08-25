@@ -284,9 +284,10 @@ struct ModelsSidebarView: View {
     private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(theme.textFont(size: 11, weight: 600))
+                .font(theme.eyebrowFont)
                 .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
+                .tracking(0.9)
             VStack(alignment: .leading, spacing: 6) {
                 content()
             }

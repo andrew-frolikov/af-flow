@@ -125,7 +125,7 @@ struct NewWikiSheet: View {
                     approve(proposal.spec)
                 }
                 .font(theme.textFont(size: 11))
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AFFlowPrimaryButtonStyle())
                 .tint(theme.accent)
             }
         }
@@ -183,7 +183,7 @@ struct NewWikiSheet: View {
                     customHint = ""
                 }
                 .disabled(customName.trimmingCharacters(in: .whitespaces).isEmpty)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(AFFlowPrimaryButtonStyle())
                 .tint(theme.accent)
             }
         }

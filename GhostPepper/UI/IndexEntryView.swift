@@ -102,7 +102,7 @@ struct IndexEntryView: View {
                 Image(systemName: "arrow.clockwise")
                     .font(theme.textFont(size: 12))
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(AFFlowGhostButtonStyle())
             .help("Refresh this entry by asking the agent")
         }
     }
@@ -220,9 +220,10 @@ struct IndexEntryView: View {
     private var sourcesSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Source meetings")
-                .font(theme.textFont(size: 12, weight: 600))
+                .font(theme.eyebrowFont)
                 .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
+                .tracking(0.9)
             ForEach(entry.sourceMeetings, id: \.self) { path in
                 Button(action: { onOpenMeeting(path) }) {
                     HStack(spacing: 4) {

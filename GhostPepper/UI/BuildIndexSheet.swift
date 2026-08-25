@@ -121,7 +121,7 @@ struct BuildIndexSheet: View {
                             runBuild()
                         }
                         .keyboardShortcut(.defaultAction)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(AFFlowPrimaryButtonStyle())
                         .tint(theme.accent)
                     }
                 }
@@ -198,7 +198,7 @@ struct BuildIndexSheet: View {
                 Spacer()
                 Button("Done", action: onClose)
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(AFFlowPrimaryButtonStyle())
                     .tint(theme.accent)
             }
         }

@@ -30,7 +30,6 @@ private struct PepperLogo: View {
 /// re-attachable in one line, which is not what "removed" means (LOOP.md
 /// section 3).
 struct ContextBubbleView: View {
-    @Environment(\.appTheme) private var theme
     @ObservedObject var session: PepperChatSession
     var onMinimize: () -> Void
     var onOpenInMeetings: ((URL) -> Void)?
@@ -78,13 +77,13 @@ struct ContextBubbleView: View {
 
             if let rendered = try? AttributedString(markdown: message.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
                 Text(rendered)
-                    .font(theme.textFont(size: 14, weight: 500))
+                    .font(appTheme.textFont(size: 14, weight: 500))
                     .foregroundColor(panelText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
             } else {
                 Text(message.text)
-                    .font(theme.textFont(size: 14, weight: 500))
+                    .font(appTheme.textFont(size: 14, weight: 500))
                     .foregroundColor(panelText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
@@ -97,7 +96,7 @@ struct ContextBubbleView: View {
                         session.markActionResponded(messageID: message.id)
                     }) {
                         Text(action.acceptLabel)
-                            .font(theme.textFont(size: 13, weight: 600))
+                            .font(appTheme.textFont(size: 13, weight: 600))
                             .foregroundColor(appTheme.accentText)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
@@ -110,7 +109,7 @@ struct ContextBubbleView: View {
                         session.markActionResponded(messageID: message.id)
                     }) {
                         Text(action.declineLabel)
-                            .font(theme.textFont(size: 13))
+                            .font(appTheme.textFont(size: 13))
                             .foregroundColor(subduedPanelText)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)

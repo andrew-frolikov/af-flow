@@ -163,3 +163,69 @@ extension AppTheme {
     /// system mono deliberately.
     func monoFont(size: CGFloat = 12) -> Font { .system(size: size, design: .monospaced) }
 }
+
+// MARK: - Buttons
+
+/// The brand's two button shapes, from design section 5.3.
+///
+/// They read the theme, so the novelty skins keep their own colours, and they
+/// drop to square corners on Windows 95 for the same reason the sidebar rows
+/// do: a capsule is a brand shape, not a universal one.
+private struct AFFlowButtonSurface<Content: View>: View {
+    let theme: AppTheme
+    let isPrimary: Bool
+    let isPressed: Bool
+    let content: Content
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    private var fill: Color {
+        if isPrimary {
+            return isPressed ? theme.accentPressed : (isHovered ? theme.accentHover : theme.accent)
+        }
+        return isPressed ? theme.pressedFill : (isHovered ? theme.hoverFill : .clear)
+    }
+
+    var body: some View {
+        content
+            .font(theme.emphasisFont)
+            .foregroundStyle(isPrimary ? theme.accentText : theme.textPrimary)
+            .padding(.horizontal, 14)
+            .frame(height: 28)
+            .frame(minWidth: 64)
+            .background(shape.fill(fill))
+            .overlay(isPrimary ? nil : shape.stroke(theme.separator, lineWidth: 1))
+            // A disabled control is dimmed rather than recoloured, so the
+            // shape it had is still the shape it has.
+            .opacity(isEnabled ? 1 : 0.4)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 && isEnabled }
+            .animation(.easeOut(duration: 0.18), value: isHovered)
+            .animation(.easeOut(duration: 0.18), value: isPressed)
+    }
+
+    /// One shape, one radius. A 14pt radius on a 28pt control IS a capsule, so
+    /// this avoids a conditional shape type while still letting Windows 95 keep
+    /// its square corners.
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: theme.id == .windows95 ? 0 : 14, style: .continuous)
+    }
+}
+
+/// Pine fill, paper text. The one strong action on a surface.
+struct AFFlowPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.appTheme) private var theme
+    func makeBody(configuration: Configuration) -> some View {
+        AFFlowButtonSurface(theme: theme, isPrimary: true,
+                            isPressed: configuration.isPressed, content: configuration.label)
+    }
+}
+
+/// Transparent with a hairline. Everything that is not the one strong action.
+struct AFFlowGhostButtonStyle: ButtonStyle {
+    @Environment(\.appTheme) private var theme
+    func makeBody(configuration: Configuration) -> some View {
+        AFFlowButtonSurface(theme: theme, isPrimary: false,
+                            isPressed: configuration.isPressed, content: configuration.label)
+    }
+}
