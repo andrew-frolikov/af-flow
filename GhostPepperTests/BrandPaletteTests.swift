@@ -550,6 +550,58 @@ final class BrandPaletteTests: XCTestCase {
         XCTAssertGreaterThan(brightest, 0, "nothing rendered, so this proved nothing")
     }
 
+    /// **The shell must not paint over the hero.**
+    ///
+    /// The fog was invisible in the built app, and the cause was structural
+    /// rather than a colour: `HSplitView` draws its own opaque system
+    /// background, so everything behind it was hidden no matter what the
+    /// backgrounds inside it were set to. It was also buying nothing, since the
+    /// sidebar is pinned at min == max and the boundary hairline is drawn by
+    /// hand.
+    ///
+    /// This renders both containers over a known colour and checks which one
+    /// lets it through. If a future tidy-up puts a split view back, the fog
+    /// disappears again and this goes red.
+    @MainActor
+    func testAnHStackLetsTheHeroThroughWhereASplitViewDoesNot() throws {
+        func backdropVisible<V: View>(behind container: V) throws -> Bool {
+            let probe = ZStack {
+                Color(hex: 0xFF0000)
+                container.frame(width: 200, height: 120)
+            }
+            .frame(width: 200, height: 120)
+            let renderer = ImageRenderer(content: probe)
+            renderer.scale = 1
+            guard let cg = renderer.cgImage else {
+                throw XCTSkip("this environment cannot rasterise SwiftUI")
+            }
+            let w = cg.width, h = cg.height
+            var buffer = [UInt8](repeating: 0, count: w * h * 4)
+            guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { throw XCTSkip("no sRGB") }
+            buffer.withUnsafeMutableBytes { raw in
+                guard let base = raw.baseAddress,
+                      let ctx = CGContext(data: base, width: w, height: h, bitsPerComponent: 8,
+                                          bytesPerRow: w * 4, space: space,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+                ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+            }
+            var red = 0
+            for i in stride(from: 0, to: buffer.count, by: 4) where buffer[i] > 180 && buffer[i + 1] < 80 {
+                red += 1
+            }
+            return red > (w * h) / 4
+        }
+
+        let throughStack = try backdropVisible(behind: HStack(spacing: 0) { Color.clear })
+        XCTAssertTrue(throughStack, "an HStack of clear content must not hide what is behind it")
+
+        let throughSplit = try backdropVisible(behind: HSplitView { Color.clear })
+        XCTAssertFalse(
+            throughSplit,
+            "HSplitView no longer paints an opaque background; the shell could use it again, but check the fog first"
+        )
+    }
+
     private func hex(_ c: (Double, Double, Double)) -> UInt32 {
         (UInt32((c.0 * 255).rounded()) << 16) | (UInt32((c.1 * 255).rounded()) << 8) | UInt32((c.2 * 255).rounded())
     }

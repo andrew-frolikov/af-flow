@@ -413,7 +413,12 @@ struct SettingsView: View {
     }
 
     private var shellContent: some View {
-        HSplitView {
+        // **An HStack, not an HSplitView.** `HSplitView` draws its own opaque
+        // system background, which sat on top of the fog and was why the
+        // animation did not appear at all in the built app. It was also buying
+        // nothing: the sidebar is pinned at min == max so the split was never
+        // draggable, and the boundary hairline is drawn here by hand anyway.
+        HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 // The brand lockup, exactly as the website header carries it,
                 // scaled down. The mark is a rendered asset rather than live
@@ -449,8 +454,7 @@ struct SettingsView: View {
                     .padding(.bottom, 16)
             }
             // Fixed, not draggable: the sidebar is a fixed narrow column and
-            // the detail pane takes the rest. min == max is what stops
-            // HSplitView offering a drag handle.
+            // the detail pane takes the rest.
             .frame(minWidth: 232, idealWidth: 232, maxWidth: 232, maxHeight: .infinity, alignment: .topLeading)
             // No fill of its own. On every section but Home the sidebar is
             // the same paper sheet as the pane. On Home it becomes a VEIL over
