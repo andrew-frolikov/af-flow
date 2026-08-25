@@ -719,6 +719,30 @@ if [ "${AF_FLOW_SCORING:-}" = "1" ]; then
     echo "  xctestrun time allowance = $(/usr/libexec/PlistBuddy -c "Print $TARGET:DefaultTestExecutionTimeAllowance" "$XCTESTRUN" 2>&1)s"
 fi
 
+# RE-CHECK, because the first check is stale by the time it matters.
+#
+# The refuse-while-running guard runs near the top of this script, but the test
+# host does not launch until the line below — a whole build later. On 2026-08-24
+# the margin was 95 SECONDS: Andrew's last dictation landed at 18:04:14 and the
+# test host started at 18:05:49. Had he dictated two minutes later, two copies of
+# the app would have been competing for his microphone, which is the exact thing
+# the first check exists to prevent.
+#
+# Deliberately placed AFTER the defaults trap on line 568, so refusing here still
+# restores his settings on the way out.
+if pgrep -x GhostPepper >/dev/null 2>&1; then
+    cat >&2 <<'RUNNING_NOW'
+REFUSING TO RUN: AF Flow was opened while this script was building.
+
+The check at the start of this run passed, then the build took long enough for
+the app to come back up. Launching the test host now would leave two instances
+competing for the microphone, and Andrew uses this app for all of his dictation.
+
+Nothing was run and his defaults have been restored. Quit AF Flow and try again.
+RUNNING_NOW
+    exit 2
+fi
+
 # -xctestrun requires an explicit -destination; xcodebuild cannot infer one
 # from a test-run file the way it can from a scheme.
 overall=0
