@@ -46,6 +46,7 @@ struct AFFlowHomeView: View {
         VStack(spacing: 0) {
             Spacer(minLength: 28)
 
+            VStack(spacing: 0) {
             StatusPill(status: appState.status, onHero: wearsHero)
                 .padding(.bottom, appState.permissionWarning == nil ? 26 : 10)
 
@@ -99,6 +100,42 @@ struct AFFlowHomeView: View {
                 .padding(.top, 16)
             }
 
+            }
+            // **The plate is derived from the block it protects, not guessed.**
+            //
+            // A fixed radius cannot promise anything: a wider block, a
+            // permission warning or a long error would push glyphs past the
+            // guaranteed zone and the floor would quietly stop applying. Sizing
+            // the plate to these bounds and extending it 36pt on every side
+            // means every glyph sits inside the flat core BY CONSTRUCTION,
+            // whatever the content does.
+            .background {
+                if wearsHero {
+                    // **A solid colour MASKED by a blurred shape, not a blurred
+                    // fill.** Blurring the fill itself lightens the middle: a
+                    // Gaussian spreads about three sigma, so the core came out
+                    // above its floor and every ratio in this design quietly
+                    // stopped holding. A render-and-sample test caught it.
+                    //
+                    // Masking separates the two jobs. The colour is flat at
+                    // exactly `plateAlpha`; the mask decides only WHERE it
+                    // lands. The mask shape is extended by the core inset plus
+                    // a full feather width, and blurred at a third of that
+                    // feather, so its solid region still reaches 36pt past the
+                    // block: every glyph sits on the full alpha by
+                    // construction, whatever the block's size.
+                    Color(hex: 0x17201D)
+                        .opacity(HeroSurface.plateAlpha)
+                        .mask {
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .padding(-(HeroSurface.plateCoreInset + HeroSurface.plateFeather))
+                                .blur(radius: HeroSurface.plateFeather / 3)
+                        }
+                        .padding(-(HeroSurface.plateCoreInset + HeroSurface.plateFeather))
+                        .allowsHitTesting(false)
+                }
+            }
+
             Spacer(minLength: 28)
             footer
         }
@@ -114,12 +151,9 @@ struct AFFlowHomeView: View {
                     // falls to 1.76:1 for paper text at its weak end.
                     HeroSurface.diagonalScrim
                     HeroSurface.groundingScrim
-                    // The guarantee. Ink at an effective 0.84 under the text,
-                    // feathered out. Because compositing is monotone per
-                    // channel, 0.84 over any SDR pixel is darker than 0.84 over
-                    // pure white, which is `#3C4441`: paper 8.92:1, muted
-                    // 5.56:1, mist 7.18:1, on EVERY frame rather than on one.
-                    HeroSurface.softPlate
+                    // The soft plate is NOT here: it is drawn behind the text
+                    // block itself, sized to that block, so its guarantee
+                    // cannot be outgrown. See the `.background` above.
                 }
                 .ignoresSafeArea()
             } else {
@@ -216,12 +250,16 @@ struct AFFlowHomeView: View {
             // itself, and the light-surface keycap keeps its hairline.
             Text(text.isEmpty ? "no shortcut set" : text)
                 .font(theme.textFont(size: 15, weight: 500))
-                .foregroundColor(Brand.textPrimary)
+                // Brand values ONLY on the hero, where the guarantee is the
+                // point. Off it the keycap is the skin's own: hardcoding these
+                // gave Space a warm-white keycap instead of its navy one and
+                // took Windows 95's grey away.
+                .foregroundColor(onHero ? Brand.textPrimary : theme.textPrimary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Brand.well)
+                        .fill(onHero ? Brand.well : theme.textBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(onHero ? Color.clear : theme.separator, lineWidth: 1)
@@ -421,5 +459,19 @@ final class HomeWindowController: NSObject, NSWindowDelegate {
 
     func windowDidDeminiaturize(_ notification: Notification) {
         NotificationCenter.default.post(name: .afFlowWindowVisibilityChanged, object: true)
+    }
+
+    /// **Occlusion is part of "really visible", and the other signals miss it.**
+    ///
+    /// Show, close and miniaturize between them do not see the two cases that
+    /// matter most for a running video: the window sitting on another Space,
+    /// and the window completely covered by another app. Both leave it
+    /// `isVisible` while nothing of it reaches a screen, so the fog would keep
+    /// decoding for a window nobody can see. `occlusionState` is the only
+    /// signal that reports those.
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        let onScreen = window.isVisible && window.occlusionState.contains(.visible)
+        NotificationCenter.default.post(name: .afFlowWindowVisibilityChanged, object: onScreen)
     }
 }

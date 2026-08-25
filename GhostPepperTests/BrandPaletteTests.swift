@@ -470,6 +470,86 @@ final class BrandPaletteTests: XCTestCase {
         XCTAssertNotNil(HeroFogAsset.poster, "the graded poster is not in the bundle")
     }
 
+    /// **Does the plate as BUILT actually reach its floor?**
+    ///
+    /// Every other contrast test here combines tokens and constants, which a
+    /// reviewer correctly pointed out proves arithmetic rather than the shipped
+    /// surface. This one renders the plate the way `AFFlowHomeView` builds it,
+    /// a rounded rectangle at `plateAlpha` extended 36pt past the block and
+    /// feathered with a blur, over PURE WHITE, and reads the pixels back.
+    ///
+    /// The specific risk it exists to catch: **a blur used as a feather also
+    /// eats into the core.** If the shape were not large enough relative to the
+    /// blur radius, the centre would land above `#3C4441` and every ratio in
+    /// this file would quietly stop holding.
+    @MainActor
+    func testThePlateAsBuiltReachesItsFloorInTheMiddle() throws {
+        let block = CGSize(width: 300, height: 120)
+        // Mirrors `AFFlowHomeView` exactly: the plate is a BACKGROUND of the
+        // block, so it takes the block's size and then extends past it.
+        let plate = ZStack {
+            Color.white
+            Color.clear
+                .frame(width: block.width, height: block.height)
+                .background {
+                    Color(hex: 0x17201D)
+                        .opacity(HeroSurface.plateAlpha)
+                        .mask {
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .padding(-(HeroSurface.plateCoreInset + HeroSurface.plateFeather))
+                                .blur(radius: HeroSurface.plateFeather / 3)
+                        }
+                        .padding(-(HeroSurface.plateCoreInset + HeroSurface.plateFeather))
+                }
+        }
+        .frame(width: block.width + 420, height: block.height + 420)
+
+        let renderer = ImageRenderer(content: plate)
+        renderer.scale = 1
+        guard let cg = renderer.cgImage else {
+            throw XCTSkip("this environment cannot rasterise SwiftUI; the floor stays proven by arithmetic")
+        }
+
+        let w = cg.width, h = cg.height
+        var buffer = [UInt8](repeating: 0, count: w * h * 4)
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw XCTSkip("no sRGB colour space")
+        }
+        buffer.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress,
+                  let ctx = CGContext(data: base, width: w, height: h, bitsPerComponent: 8,
+                                      bytesPerRow: w * 4, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            ctx.setFillColor(gray: 1, alpha: 1)
+            ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        }
+
+        // Sample the region a glyph can occupy: the block's own bounds, which
+        // sit 36pt inside the shape's edge by construction.
+        let insetX = (w - Int(block.width)) / 2, insetY = (h - Int(block.height)) / 2
+        var brightest = 0.0
+        for y in stride(from: insetY, to: insetY + Int(block.height), by: 4) {
+            for x in stride(from: insetX, to: insetX + Int(block.width), by: 4) {
+                let i = (y * w + x) * 4
+                guard i + 2 < buffer.count else { continue }
+                let px = (Double(buffer[i]) / 255, Double(buffer[i + 1]) / 255, Double(buffer[i + 2]) / 255)
+                brightest = max(brightest, relativeLuminance(px))
+            }
+        }
+
+        // The arithmetic floor, ink at plateAlpha over pure white.
+        let floor = relativeLuminance(over(components(Brand.textPrimary), (1.0, 1.0, 1.0), HeroSurface.plateAlpha))
+        // A little tolerance for rasteriser rounding, far below anything that
+        // could move a ratio across its minimum.
+
+        XCTAssertLessThanOrEqual(
+            brightest, floor + 0.004,
+            String(format: "the built plate is lighter than its floor: %.4f against %.4f", brightest, floor)
+        )
+        XCTAssertGreaterThan(brightest, 0, "nothing rendered, so this proved nothing")
+    }
+
     private func hex(_ c: (Double, Double, Double)) -> UInt32 {
         (UInt32((c.0 * 255).rounded()) << 16) | (UInt32((c.1 * 255).rounded()) << 8) | UInt32((c.2 * 255).rounded())
     }

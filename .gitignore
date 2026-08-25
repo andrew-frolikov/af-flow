@@ -50,6 +50,9 @@ cache-v6.json.enc
 *.aiff
 *.mov
 *.mp4
+# ...except the shipped hero clip, which is a bundle resource: without it a
+# clean checkout fails the resource copy phase and the app has no fog.
+!GhostPepper/Resources/hero-fog-960-graded.mp4
 *.webm
 screenshots/
 Screenshots/

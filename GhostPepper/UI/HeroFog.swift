@@ -124,7 +124,10 @@ private struct HeroFogPlayerView: NSViewRepresentable {
             player.isMuted = true
             // Ambience must never fight the audio session this app records with.
             player.audiovisualBackgroundPlaybackPolicy = .pauses
-            player.actionAtItemEnd = .pause
+            // NOT `.pause`. At the forward end AVPlayer would set the rate to
+            // zero, and a zero rate is a state the turn below cannot leave, so
+            // one missed callback froze the clip after a single traversal.
+            player.actionAtItemEnd = .none
             self.player = player
 
             let layer = AVPlayerLayer(player: player)
@@ -141,17 +144,37 @@ private struct HeroFogPlayerView: NSViewRepresentable {
                 queue: .main
             ) { [weak self] time in
                 guard let self, let player = self.player,
-                      let duration = player.currentItem?.duration,
-                      duration.isNumeric else { return }
+                      let item = player.currentItem,
+                      item.status == .readyToPlay,
+                      item.duration.isNumeric else { return }
                 let now = CMTimeGetSeconds(time)
-                let end = CMTimeGetSeconds(duration)
-                // A tenth of a second of margin at each end: the observer fires
-                // at 0.1s intervals, so a tighter turn can be stepped over.
-                if player.rate > 0, now >= end - 0.12 {
+                let end = CMTimeGetSeconds(item.duration)
+                guard end > 0.5 else { return }
+                let margin = 0.25
+
+                // **A zero rate must be recoverable.** If the main queue is
+                // busy the callback can be delayed past the turn and the
+                // player can come to rest at an end. Deciding the next
+                // direction from POSITION rather than from the current rate
+                // means the loop restarts itself instead of freezing.
+                if player.rate == 0 {
+                    player.rate = now >= end - margin ? -Self.rate : Self.rate
+                    return
+                }
+                if player.rate > 0, now >= end - margin {
                     player.rate = -Self.rate
-                } else if player.rate < 0, now <= 0.12 {
+                } else if player.rate < 0, now <= margin {
                     player.rate = Self.rate
                 }
+            }
+
+            // Backstop for the case the periodic callback misses the turn
+            // completely: reaching the end is itself the signal to reverse.
+            endObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
+            ) { [weak self] _ in
+                guard let self, let player = self.player else { return }
+                player.rate = -Self.rate
             }
 
             // Restart deterministically from frame zero. Ambience has no plot,
@@ -173,9 +196,12 @@ private struct HeroFogPlayerView: NSViewRepresentable {
         }
 
         deinit {
-            // `tearDown` is main-actor isolated and deinit is not, so the
-            // observer is removed here directly rather than hopping.
-            if let observer, let player { player.removeTimeObserver(observer) }
+            // `deinit` is nonisolated on a `@MainActor` type, so it must not
+            // touch main-actor state. `dismantleNSView` already calls
+            // `tearDown()` on the main actor for every real teardown; the only
+            // thing safe to do here is drop the notification observer, which
+            // NotificationCenter allows from any thread.
+            if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         }
     }
 }
@@ -222,21 +248,19 @@ enum HeroSurface {
     /// `#E8836B` measures 3.78 and so is BANNED as body text on the fog: an
     /// error message here is set in paper with a clay dot marker instead.
     static let plateAlpha: Double = 0.84
+
+    /// The flat core extends this far past the text block on every side, so a
+    /// glyph can never sit in the falloff.
+    static let plateCoreInset: CGFloat = 36
+
+    /// The falloff width beyond the core, 0.84 down to nothing.
     static let plateFeather: CGFloat = 56
 
-    static var softPlate: RadialGradient {
-        RadialGradient(
-            stops: [
-                .init(color: Color(hex: 0x17201D).opacity(plateAlpha), location: 0.0),
-                .init(color: Color(hex: 0x17201D).opacity(plateAlpha), location: 0.52),
-                .init(color: Color(hex: 0x17201D).opacity(plateAlpha * 0.52), location: 0.74),
-                .init(color: Color(hex: 0x17201D).opacity(plateAlpha * 0.18), location: 0.89),
-                .init(color: Color(hex: 0x17201D).opacity(0.0), location: 1.0)
-            ],
-            center: .center, startRadius: 0, endRadius: 430
-        )
-    }
-
+    /// The feather width, in points, from the flat core outward.
+    ///
+    /// There is deliberately no ready-made gradient here. A fixed radius could
+    /// not promise the floor for a block whose size changes, so the plate is
+    /// built in `AFFlowHomeView` from the text block's own bounds.
     /// A flat 0.88 band under the footer, composited `#333B38` at luminance
     /// 0.0409. Eyebrows 6.39:1, values 10.25:1, the privacy value in mist
     /// 8.25:1.

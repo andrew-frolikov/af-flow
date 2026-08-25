@@ -383,8 +383,11 @@ struct SettingsView: View {
     /// what the debug log's raw-text claim already learned the hard way.
     @State private var isWindowVisible = true
 
-    /// Home is the only section that wears the hero.
-    private var showsHero: Bool { selectedSection == .home }
+    /// Home is the only section that wears the hero, and only on the brand
+    /// skin. Gating on the theme here as well as in `AFFlowHomeView` matters:
+    /// without it Windows 95 and Space still BUILT the player and paid its
+    /// decode and memory underneath their own opaque surfaces.
+    private var showsHero: Bool { selectedSection == .home && theme.id == .current }
 
     var body: some View {
         heroShell
@@ -441,7 +444,7 @@ struct SettingsView: View {
                     .font(theme.captionFont)
                     // Ink, not muted, because the veil under it is only 0.86:
                     // muted measures 3.50:1 there and fails, ink gives 10.74:1.
-                    .foregroundStyle(showsHero && theme.id == .current ? theme.textPrimary : theme.textSecondary)
+                    .foregroundStyle(showsHero ? theme.textPrimary : theme.textSecondary)
                     .padding(.leading, 16)
                     .padding(.bottom, 16)
             }
@@ -461,7 +464,7 @@ struct SettingsView: View {
             // which measures 3.50:1 here and fails.
             .background(
                 theme.windowBackground
-                    .opacity(showsHero && theme.id == .current ? HeroSurface.sidebarVeilAlpha : 1)
+                    .opacity(showsHero ? HeroSurface.sidebarVeilAlpha : 1)
             )
             .overlay(alignment: .trailing) {
                 Rectangle()
