@@ -2885,6 +2885,189 @@ final class GhostPepperTests: XCTestCase {
         XCTAssertFalse(entries[0].cleanupUsedFallback)
     }
 
+    // 2026-08-24. His voice-to-text history stopped on 2026-08-08 and he never
+    // touched the setting. One guard governed BOTH the audio and the text, while
+    // the toggle read "Save voice-to-text recordings to history" and the screen
+    // said "Audio from dictation is not saved to disk" — so switching off what
+    // looked like audio storage silently threw away every transcript too.
+    //
+    // The store was always built for this: 365-day transcripts, 7-day audio,
+    // pruned independently. Only the caller conflated them.
+    //
+    // The TEXT IS NOT OPTIONAL. It is what he goes to the history tab to copy
+    // back when something is lost.
+    // HIS META-RULE: when something goes wrong, build the mechanism that was
+    // missing rather than resolving to be careful. His history stopped on
+    // 2026-08-08, he never touched the setting, and NOTHING IN THE LOG SAID SO —
+    // which is why it cannot be explained now. A line at every launch makes the
+    // next change visible as a step in the log.
+    // CODEX, 2026-08-24. With audio off and transcription failed, the relaxed
+    // guard would store an entry holding neither text nor audio: nothing to
+    // copy, play or rerun, sitting in a one-year history. Repeated failures
+    // would fill it with rows that can never be acted on.
+    func testARecordingWithNeitherTextNorAudioIsNotKept() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = false
+        defer { try? FileManager.default.removeItem(at: storeDirectory) }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: nil,
+            rawTranscription: nil,
+            correctedTranscription: nil,
+            cleanupUsedFallback: false
+        )
+
+        XCTAssertEqual(
+            try labStore.loadEntries().count,
+            0,
+            "An entry with no text and no audio can never be acted on. It is clutter for a year."
+        )
+    }
+
+    /// With audio ON, a failed transcription is still worth keeping: the WAV is
+    /// the evidence for diagnosing why it failed. That is the whole reason he
+    /// agreed to keep three days of audio.
+    func testAFailedTranscriptionIsStillKeptWhenTheAudioIsThere() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = true
+        defer { try? FileManager.default.removeItem(at: storeDirectory) }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: nil,
+            rawTranscription: nil,
+            correctedTranscription: nil,
+            cleanupUsedFallback: false
+        )
+
+        XCTAssertEqual(try labStore.loadEntries().count, 1)
+    }
+
+    // The old check read the filename's extension, which is always ".wav", so
+    // playback and rerun were offered for entries whose audio was never written
+    // OR had been pruned. The retention design has outlived the audio on purpose
+    // since 2026-07-29, so this has been wrong for a while.
+    func testPlaybackIsOfferedOnlyWhenTheAudioIsActuallyOnDisk() throws {
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: storeDirectory) }
+        let store = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+
+        let entry = TranscriptionLabEntry(
+            id: UUID(),
+            createdAt: Date(),
+            audioFileName: "\(UUID().uuidString).wav",
+            audioDuration: 3,
+            windowContext: nil,
+            rawTranscription: "text only",
+            correctedTranscription: "Text only.",
+            speechModelID: "whatever",
+            cleanupModelName: "none",
+            cleanupUsedFallback: false
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: store.audioURL(for: entry.audioFileName).path),
+            "precondition: no audio was written"
+        )
+        XCTAssertEqual(
+            store.audioURL(for: entry.audioFileName).pathExtension.lowercased(),
+            "wav",
+            "and the old check would still have said yes, because the NAME ends in .wav"
+        )
+    }
+
+    func testTheHistorySettingIsStatedAtLaunch() {
+        XCTAssertEqual(
+            AppState.historyStateLine(audioEnabled: false, transcriptRetentionDays: 365, audioRetentionDays: 3),
+            "History: transcripts kept 365d, dictation audio NOT kept"
+        )
+        XCTAssertEqual(
+            AppState.historyStateLine(audioEnabled: true, transcriptRetentionDays: 365, audioRetentionDays: 3),
+            "History: transcripts kept 365d, dictation audio kept 3d"
+        )
+    }
+
+    func testTheTranscriptIsKeptEvenWhenAudioSavingIsOff() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = false
+        defer { try? FileManager.default.removeItem(at: storeDirectory) }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: nil,
+            rawTranscription: "the words he would go looking for",
+            correctedTranscription: "The words he would go looking for.",
+            cleanupUsedFallback: false
+        )
+
+        let entries = try labStore.loadEntries()
+        XCTAssertEqual(entries.count, 1, "The transcript must be kept whether or not the audio is.")
+        XCTAssertEqual(entries[0].correctedTranscription, "The words he would go looking for.")
+    }
+
+    func testNoAudioFileIsWrittenWhenAudioSavingIsOff() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = false
+        defer { try? FileManager.default.removeItem(at: storeDirectory) }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: nil,
+            rawTranscription: "raw",
+            correctedTranscription: "Corrected.",
+            cleanupUsedFallback: false
+        )
+
+        let audioDirectory = storeDirectory.appendingPathComponent("audio", isDirectory: true)
+        let wavs = (try? FileManager.default.contentsOfDirectory(atPath: audioDirectory.path)) ?? []
+        XCTAssertTrue(
+            wavs.isEmpty,
+            "He asked for no wasted disk on dictation WAVs. Got: \(wavs)"
+        )
+    }
+
     func testAppStateArchivesNonEmptyAudioEvenWhenLiveTranscriptionFailed() async throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
         defaults.removePersistentDomain(forName: #function)

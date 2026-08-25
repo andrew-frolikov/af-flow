@@ -459,6 +459,18 @@ final class TranscriptionLabController: ObservableObject {
         audioURLForEntry(entry)
     }
 
+    /// Whether the WAV for this entry is actually on disk.
+    ///
+    /// The UI used to infer this from the FILENAME'S EXTENSION, which is always
+    /// `.wav` and therefore always true. Codex found it on 2026-08-24 against
+    /// audio-less entries, but it was already wrong for every entry whose audio
+    /// had been pruned while its transcript stayed — the retention design has
+    /// outlived the audio deliberately since 2026-07-29, so playback controls
+    /// have been offered on missing files for a while.
+    func hasStoredAudio(for entry: TranscriptionLabEntry) -> Bool {
+        FileManager.default.fileExists(atPath: audioURLForEntry(entry).path)
+    }
+
     func reloadEntries() {
         do {
             let loadedEntries = try loadEntries().sorted { $0.createdAt > $1.createdAt }

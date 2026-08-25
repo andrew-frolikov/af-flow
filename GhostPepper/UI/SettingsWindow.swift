@@ -1564,13 +1564,17 @@ struct SettingsView: View {
             if let selectedEntry = transcriptionLabController.selectedEntry {
                 transcriptionLabDetail(for: selectedEntry)
             } else {
+                // The label now matches what the switch DOES. Until 2026-08-24
+                // it said "recordings" and silently governed the transcripts as
+                // well, so his history went empty on 08-08 and the explanation
+                // underneath talked only about audio.
                 Toggle(
-                    "Save voice-to-text recordings to history",
+                    "Also keep the audio of each dictation",
                     isOn: $appState.transcriptionLabEnabled
                 )
 
                 if !appState.transcriptionLabEnabled {
-                    Text("Voice-to-text history is off. Audio from dictation is not saved to disk. Meeting transcripts are saved separately as markdown files, and are still listed below.")
+                    Text("Transcripts are always kept here for a year. Audio is not being saved, which costs nothing in disk but means a dictation that comes back wrong cannot be re-checked against what you actually said. Meeting transcripts are saved separately as markdown files, and are still listed below.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1720,7 +1724,8 @@ struct SettingsView: View {
     }
 
     private func transcriptionLabDetail(for entry: TranscriptionLabEntry) -> some View {
-        let canPlayRecording = transcriptionLabController.audioURL(for: entry).pathExtension.lowercased() == "wav"
+        // Asks whether the file is THERE, not whether its name ends in .wav.
+        let canPlayRecording = transcriptionLabController.hasStoredAudio(for: entry)
         let originalSpeechModelName = SpeechModelCatalog.model(named: entry.speechModelID)?.pickerLabel ?? entry.speechModelID
 
         return VStack(alignment: .leading, spacing: 16) {
@@ -1760,7 +1765,10 @@ struct SettingsView: View {
         for entry: TranscriptionLabEntry,
         originalSpeechModelName: String
     ) -> some View {
-        TranscriptionLabStageDisclosure(
+        // Rerunning decodes the stored WAV, so it needs the file to be there.
+        let canPlayRecording = transcriptionLabController.hasStoredAudio(for: entry)
+
+        return TranscriptionLabStageDisclosure(
             "Transcription",
             isExpanded: $isTranscriptionStageExpanded
         ) {
@@ -1809,7 +1817,12 @@ struct SettingsView: View {
                         title: "Rerun transcription",
                         runningTitle: "Running...",
                         isRunning: transcriptionLabController.isRunningTranscription,
-                        disabled: transcriptionLabController.runningStage != nil
+                        // Rerunning reads the WAV, so it needs the same
+                        // capability playback does. Codex, 2026-08-24: without
+                        // this the button stayed live on transcript-only entries
+                        // and produced a missing-audio error instead of being
+                        // plainly unavailable.
+                        disabled: transcriptionLabController.runningStage != nil || !canPlayRecording
                     ) {
                         Task {
                             await transcriptionLabController.rerunTranscription()
@@ -1905,7 +1918,11 @@ struct SettingsView: View {
                         title: "Rerun speaker tagging",
                         runningTitle: "Running...",
                         isRunning: transcriptionLabController.isRunningTranscription,
-                        disabled: transcriptionLabController.runningStage != nil || !selectedModelSupportsSpeakerTagging
+                        // Same audio-backed rerun as transcription, so the same
+                        // capability gates it. Codex, 2026-08-24.
+                        disabled: transcriptionLabController.runningStage != nil
+                            || !selectedModelSupportsSpeakerTagging
+                            || !transcriptionLabController.hasStoredAudio(for: entry)
                     ) {
                         Task {
                             await transcriptionLabController.rerunDiarization()

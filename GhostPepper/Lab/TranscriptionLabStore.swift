@@ -17,7 +17,18 @@ final class TranscriptionLabStore {
     /// It is the window the lab rerun needs, and 30 dictations a day of audio is
     /// real disk. A transcript therefore outlives its audio, deliberately: the
     /// row stays searchable and the playback button goes away.
-    static let defaultAudioRetention: TimeInterval = 7 * 86_400
+    /// THREE DAYS, his decision on 2026-08-24, down from seven.
+    ///
+    /// He wants no disk spent on dictation WAVs and asked for them gone
+    /// entirely. Three days is the compromise he took once told what it costs:
+    /// keeping audio is the only way to answer "it dropped half my sentence",
+    /// which is how the 2026-08-05 loss was finally diagnosed and how the
+    /// truncation defect was withdrawn on 2026-08-21. Three days covers a bug he
+    /// notices and reports the same week, and nothing beyond that.
+    ///
+    /// Meeting audio is a SEPARATE store and keeps its 7 days; it is the
+    /// recovery path when a call's capture dies mid-meeting.
+    static let defaultAudioRetention: TimeInterval = 3 * 86_400
 
     /// A backstop, not a policy. Time decides what is kept; this only stops an
     /// unbounded file if something goes wrong with the clock.
@@ -161,13 +172,22 @@ final class TranscriptionLabStore {
         }
     }
 
+    /// `audioData` is optional, and the transcript is stored either way.
+    ///
+    /// 2026-08-24: his history stopped on 08-08 and he had not touched the
+    /// setting. One guard in the caller governed both the WAV and the text,
+    /// while the toggle spoke only about recordings. This store was always built
+    /// for the split — 365-day transcripts, 7-day audio, pruned independently —
+    /// so the text simply stops depending on the audio.
     func insert(
         _ entry: TranscriptionLabEntry,
-        audioData: Data,
+        audioData: Data?,
         stageTimings: TranscriptionLabStageTimings
     ) throws {
-        try FileManager.default.createDirectory(at: audioDirectoryURL, withIntermediateDirectories: true)
-        try audioData.write(to: audioURL(for: entry.audioFileName), options: .atomic)
+        if let audioData {
+            try FileManager.default.createDirectory(at: audioDirectoryURL, withIntermediateDirectories: true)
+            try audioData.write(to: audioURL(for: entry.audioFileName), options: .atomic)
+        }
 
         migrateLegacyArchiveIfNeeded()
 

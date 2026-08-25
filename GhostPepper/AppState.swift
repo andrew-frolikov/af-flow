@@ -337,6 +337,21 @@ class AppState: ObservableObject {
     /// that captured nothing is never a mis-press.
     /// How long push-to-talk was actually held, key-down to key-up. Unknown if
     /// either end of the hold is missing, in which case callers must not guess.
+    /// One line at every launch saying what history is keeping.
+    ///
+    /// His voice-to-text history stopped on 2026-08-08 and he had not touched
+    /// the setting; the reason it cannot be explained today is that nothing
+    /// recorded the state or its changes. This makes the next change a visible
+    /// step in the durable log rather than a mystery a fortnight later.
+    static func historyStateLine(
+        audioEnabled: Bool,
+        transcriptRetentionDays: Int,
+        audioRetentionDays: Int
+    ) -> String {
+        let audio = audioEnabled ? "kept \(audioRetentionDays)d" : "NOT kept"
+        return "History: transcripts kept \(transcriptRetentionDays)d, dictation audio \(audio)"
+    }
+
     static func pushToTalkHoldDuration(from trace: PerformanceTrace?) -> TimeInterval? {
         guard let downAt = trace?.hotkeyDetectedAt, let upAt = trace?.hotkeyLiftedAt else {
             return nil
@@ -738,6 +753,39 @@ class AppState: ObservableObject {
         Task.detached(priority: .utility) {
             MeetingAudioStore.pruneRecordings()
         }
+
+        // SAID ON EVERY LAUNCH, BEFORE ANYTHING CAN RETURN EARLY. Codex,
+        // 2026-08-24: this used to sit in `startHotkeyMonitor`, which gives up
+        // when the microphone permission is missing or the speech model never
+        // becomes ready — exactly the broken launches whose history state you
+        // would most want recorded. His voice-to-text history stopped on
+        // 2026-08-08 with nothing in the log to say when or why, and this line
+        // exists so that cannot happen silently again.
+        debugLogStore.record(
+            category: .model,
+            message: Self.historyStateLine(
+                audioEnabled: transcriptionLabEnabled,
+                transcriptRetentionDays: Int(TranscriptionLabStore.defaultTranscriptRetention / 86_400),
+                audioRetentionDays: Int(TranscriptionLabStore.defaultAudioRetention / 86_400)
+            )
+        )
+
+        // RETENTION ONLY EVER RAN WHEN HE OPENED HISTORY. Codex, 2026-08-24:
+        // pruning lives in `loadEntries()`, which the Settings screen calls, so
+        // now that every dictation files a transcript the index would grow past
+        // the advertised year and the 20,000-entry backstop for anyone who never
+        // opens the tab. Same shape and same reasoning as the meeting prune
+        // above: off the main thread, nothing waits on it.
+        // ON THE MAIN ACTOR, unlike the meeting prune above, and that difference
+        // is deliberate. Codex, 2026-08-24: `loadEntries()` rewrites the whole
+        // index from a snapshot it took earlier, so running it detached races
+        // every insert, delete and clear — a dictation finishing mid-prune could
+        // be compacted straight back out of the index, or a deleted entry
+        // resurrected. The meeting prune only deletes files and shares no
+        // mutable index, so it is safe detached. This one is not.
+        //
+        // The cost is small: the index is a JSONL read of a few hundred lines.
+        _ = try? transcriptionLabStore.loadEntries()
 
         // Push-to-talk becomes Globe alone, by his decision of 2026-08-02, but only if
         // what is stored is one of the two bindings this replaces.
@@ -3030,14 +3078,33 @@ class AppState: ObservableObject {
         speakerFilteringRan: Bool = false,
         diarizationSummary: DiarizationSummary? = nil
     ) async {
-        guard transcriptionLabEnabled, audioBuffer.count >= Self.minimumArchivedRecordingSampleCount else {
+        // THE TEXT IS NOT GATED. Only the audio is.
+        //
+        // Until 2026-08-24 one guard governed both, so turning off a toggle that
+        // read "Save voice-to-text recordings to history" also threw away every
+        // transcript, with the on-screen explanation talking only about audio.
+        // His history stopped on 2026-08-08 and he never knowingly asked for it.
+        // The transcript is what he opens the history tab to copy back.
+        guard audioBuffer.count >= Self.minimumArchivedRecordingSampleCount else {
+            return
+        }
+
+        // Nothing to keep is nothing to store. Codex, 2026-08-24: with audio off
+        // and transcription failed, this would file an entry holding neither
+        // text nor a WAV — un-copyable, un-playable, un-rerunnable, and sitting
+        // in a one-year history. With audio ON a failed transcription IS worth
+        // keeping, because the WAV is the evidence for why it failed.
+        let hasText = !(rawTranscription ?? "").isEmpty || !(correctedTranscription ?? "").isEmpty
+        guard hasText || transcriptionLabEnabled else {
             return
         }
 
         let entryID = UUID()
         let audioFileName = "\(entryID.uuidString).wav"
         do {
-            let audioData = try AudioRecorder.serializePlayableArchiveAudioBuffer(audioBuffer)
+            let audioData = transcriptionLabEnabled
+                ? try AudioRecorder.serializePlayableArchiveAudioBuffer(audioBuffer)
+                : nil
             let transcriptionDuration: TimeInterval?
             if let start = activePerformanceTrace?.transcriptionStartAt,
                let end = activePerformanceTrace?.transcriptionEndAt {
