@@ -2,7 +2,7 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-APP_NAME="GhostPepper"
+APP_NAME="AFFlow"
 BUNDLE_ID="com.frolikov.afflow"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DERIVED_DATA="$ROOT_DIR/build/run-derived"
@@ -12,7 +12,7 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 xcodebuild build \
-    -project "$ROOT_DIR/GhostPepper.xcodeproj" \
+    -project "$ROOT_DIR/AFFlow.xcodeproj" \
     -scheme "$APP_NAME" \
     -derivedDataPath "$DERIVED_DATA" \
     -jobs 4 \

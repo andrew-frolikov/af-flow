@@ -11,7 +11,7 @@ defending that line. Investigating it found:
 
   - The mechanism is INHERITED FORK CODE. `TextPaster.swift` was written by
     Matt Hartman on 2026-03-19 and `FocusedElementLocator.swift` by Jesse
-    Vincent on 2026-03-24, in upstream Ghost Pepper. The fork baseline is
+    Vincent on 2026-03-24, in the upstream project. The fork baseline is
     2026-07-17. Nobody built it for Andrew; it was already there.
   - The requirement was written into a Claude-authored planning brief under
     "Locked product requirements (from interview 2026-07-18)".

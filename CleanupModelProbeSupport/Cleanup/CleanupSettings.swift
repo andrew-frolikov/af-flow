@@ -1,1 +1,1 @@
-../../GhostPepper/Cleanup/CleanupSettings.swift
+../../AFFlow/Cleanup/CleanupSettings.swift

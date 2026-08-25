@@ -39,7 +39,7 @@ warn_on_output() {
 
 check_no_output \
   "Tracked private/generated artifact paths found. Move them out of the repo or update ignores before deploying." \
-  "git ls-files | rg -n '(^|/)(Ghost Pepper Meetings|transcription-lab|screenshots|Screenshots|\\.indexes|wikis|Reads)(/|$)|(^|/)(debug-log\\.json|cache-v6\\.json|cache-v6\\.json\\.enc|transcription-lab-index\\.jsonl?|transcription-lab-timings\\.jsonl?)$|(^|/)(20[0-9]{2}-[0-9]{2}-[0-9]{2})(/|$)|\\.(wav|m4a|mp3|caf|aiff|mov|mp4|webm)$'"
+  "git ls-files | rg -n '(^|/)(AF Flow Meetings|transcription-lab|screenshots|Screenshots|\\.indexes|wikis|Reads)(/|$)|(^|/)(debug-log\\.json|cache-v6\\.json|cache-v6\\.json\\.enc|transcription-lab-index\\.jsonl?|transcription-lab-timings\\.jsonl?)$|(^|/)(20[0-9]{2}-[0-9]{2}-[0-9]{2})(/|$)|\\.(wav|m4a|mp3|caf|aiff|mov|mp4|webm)$'"
 
 check_no_output \
   "Likely credentials or private keys found in tracked files." \
@@ -47,11 +47,11 @@ check_no_output \
 
 warn_on_output \
   "Sensitive debug/export affordances found. Confirm each one is local-only, intentional, and acceptable for this release." \
-  "git grep -n -I -E 'Copy thread|full conversation|fullThreadDebugText|--- TRACE ---|recordSensitive|debugLogger\\?.*(rawTranscription|transcription|cleaned)' -- GhostPepper"
+  "git grep -n -I -E 'Copy thread|full conversation|fullThreadDebugText|--- TRACE ---|recordSensitive|debugLogger\\?.*(rawTranscription|transcription|cleaned)' -- AFFlow"
 
 echo ""
 echo "Network-capable code paths to review against the release allowlist:"
-git grep -n -I -E 'URLSession|URLRequest|https?://' -- GhostPepper scripts project.yml README.md PRIVACY_AUDIT.md | sed -n '1,120p' || true
+git grep -n -I -E 'URLSession|URLRequest|https?://' -- AFFlow scripts project.yml README.md PRIVACY_AUDIT.md | sed -n '1,120p' || true
 
 if [ "$failures" -ne 0 ]; then
   echo ""

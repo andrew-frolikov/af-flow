@@ -21,7 +21,7 @@
 #   scripts/observe-egress.sh <process-name-pattern> -- <command...>
 #
 # Example:
-#   scripts/observe-egress.sh GhostPepper -- xcodebuild test-without-building ...
+#   scripts/observe-egress.sh AFFlow -- xcodebuild test-without-building ...
 
 set -uo pipefail
 
@@ -63,7 +63,7 @@ REPORT="$OUT_DIR/egress-$STAMP.md"
 #
 # Stage 2 is the one with teeth. `lsof` run from a sandboxed shell CANNOT see
 # the socket table of a sandboxed application: measured 2026-07-20, five model
-# downloads totalling over 3 GB, across which GhostPepper never appeared once in
+# downloads totalling over 3 GB, across which AFFlow never appeared once in
 # the full ESTABLISHED table while Chrome, Claude and Wispr Flow all did. So the
 # script now refuses to run unless it can prove it can see the target itself.
 CANARY_SEEN=0
@@ -104,7 +104,7 @@ echo
 # Sample in the background. 0.3s is fast enough to catch a TCP handshake that
 # completes quickly, without the sampler itself becoming the load.
 # `+c 0` is load-bearing, not a flourish. lsof truncates the COMMAND column to
-# NINE characters by default, so "GhostPepper" is rendered "GhostPepp" and a
+# NINE characters by default, so "AFFlow" is rendered "GhostPepp" and a
 # grep for the real process name silently matches nothing. The first version of
 # this script omitted it and reported "no outbound connections observed" while
 # 954 MB of model was demonstrably coming down the wire. A monitor that cannot

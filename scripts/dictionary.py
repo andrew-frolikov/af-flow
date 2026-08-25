@@ -36,7 +36,7 @@ PLIST = Path.home() / "Library/Containers" / DOMAIN / "Data/Library/Preferences"
 
 def app_is_running() -> bool:
     result = subprocess.run(
-        ["pgrep", "-f", "GhostPepper.app/Contents/MacOS/GhostPepper"],
+        ["pgrep", "-f", "AF Flow.app/Contents/MacOS/AF Flow"],
         capture_output=True,
     )
     return result.returncode == 0

@@ -24,7 +24,7 @@ from collections import Counter
 
 BUNDLE_ID = "com.frolikov.afflow"
 LOG = os.path.expanduser(
-    "~/Library/Containers/%s/Data/Library/Application Support/GhostPepper/debug-log.jsonl"
+    "~/Library/Containers/%s/Data/Library/Application Support/AFFlow/debug-log.jsonl"
     % BUNDLE_ID
 )
 PREFIX = "RAW detectLanguage "

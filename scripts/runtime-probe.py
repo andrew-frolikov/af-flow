@@ -31,7 +31,7 @@ import sys
 from collections import Counter, defaultdict
 
 CONTAINER = os.path.expanduser(
-    "~/Library/Containers/com.frolikov.afflow/Data/Library/Application Support/GhostPepper"
+    "~/Library/Containers/com.frolikov.afflow/Data/Library/Application Support/AFFlow"
 )
 LOG = os.path.join(CONTAINER, "debug-log.jsonl")
 # Read from before the 2026-08-02 format change if the app has not launched
@@ -372,19 +372,19 @@ def probe_bundles():
         # this path matches too, including the one running this probe. That is a
         # false alarm generator, and a check that cries wolf gets ignored, so
         # each pid is resolved to its actual executable with `ps -o comm=` and
-        # only real GhostPepper binaries are counted.
+        # only real AFFlow binaries are counted.
         found = subprocess.run(
-            ["pgrep", "-f", "GhostPepper.app/Contents/MacOS/GhostPepper"],
+            ["pgrep", "-f", "AF Flow.app/Contents/MacOS/AF Flow"],
             capture_output=True, text=True, timeout=20).stdout.split()
         lines = []
         for pid in found:
             executable = subprocess.run(
                 ["ps", "-p", pid, "-o", "comm="],
                 capture_output=True, text=True, timeout=10).stdout.strip()
-            if executable.endswith("GhostPepper.app/Contents/MacOS/GhostPepper"):
+            if executable.endswith("AF Flow.app/Contents/MacOS/AF Flow"):
                 lines.append("%s  %s" % (pid, executable))
         if len(lines) > 1:
-            print("  %d GhostPepper PROCESSES are running  <== they compete for the microphone"
+            print("  %d AFFlow PROCESSES are running  <== they compete for the microphone"
                   % len(lines))
             for line in lines:
                 print("    %s" % line.strip()[:160])

@@ -15,7 +15,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 let brand = "/Users/andriifrolikov/Claude/Projects/personal-website/brand"
-let outDir = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "GhostPepper/Assets.xcassets/AppIcon.appiconset"
+let outDir = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "AFFlow/Assets.xcassets/AppIcon.appiconset"
 let cgFont = CGFont(CGDataProvider(url: URL(fileURLWithPath: "\(brand)/Fraunces-opsz9-wght500.ttf") as CFURL)!)!
 
 func render(canvas: Int, report: Bool) -> CGImage {

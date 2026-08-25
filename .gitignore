@@ -7,7 +7,7 @@ xcuserdata/
 
 # Models (large binary files)
 Resources/models/
-GhostPepper/Resources/models/
+AFFlow/Resources/models/
 
 # Secrets
 .env
@@ -31,7 +31,7 @@ Config/LocalSigning.xcconfig
 *.log
 
 # Local user data / generated private artifacts
-**/Ghost Pepper Meetings/
+**/AF Flow Meetings/
 /.indexes/
 /wikis/
 /Reads/
@@ -52,7 +52,7 @@ cache-v6.json.enc
 *.mp4
 # ...except the shipped hero clip, which is a bundle resource: without it a
 # clean checkout fails the resource copy phase and the app has no fog.
-!GhostPepper/Resources/hero-fog-960-graded.mp4
+!AFFlow/Resources/hero-fog-960-graded.mp4
 *.webm
 screenshots/
 Screenshots/
@@ -70,9 +70,9 @@ docs/*
 inspo/
 
 # Local-only experiments that require an unsandboxed dev build
-GhostPepper/GhostPepper-Dev.entitlements
-GhostPepper/Meeting/GranolaSessionAuth.swift
-GhostPepper/Meeting/GranolaSessionSync.swift
+AFFlow/AFFlow-Dev.entitlements
+AFFlow/Meeting/GranolaSessionAuth.swift
+AFFlow/Meeting/GranolaSessionSync.swift
 
 # AF Flow session handoffs
 .handoff/

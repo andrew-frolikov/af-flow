@@ -15,8 +15,8 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-SWIFT_PATHS=(GhostPepper CleanupModelProbe CleanupModelProbeSupport GhostPepperTests)
-CONFIG_PATHS=(project.yml GhostPepper/Info.plist GhostPepper/GhostPepper.entitlements GhostPepper.xcodeproj/project.pbxproj)
+SWIFT_PATHS=(AFFlow CleanupModelProbe CleanupModelProbeSupport AFFlowTests)
+CONFIG_PATHS=(project.yml AFFlow/Info.plist AFFlow/AFFlow.entitlements AFFlow.xcodeproj/project.pbxproj)
 
 # Inert-by-decision allowlist. These files still contain upstream credential
 # plumbing. Andrew decided on 2026-07-18 (see PROGRESS.md decision log and
@@ -28,7 +28,7 @@ CONFIG_PATHS=(project.yml GhostPepper/Info.plist GhostPepper/GhostPepper.entitle
 # This list is a committed, reviewable decision, NOT an exclusion invented at
 # run time. Removing an entry here is how C6 closes the deferral. Adding one
 # requires Andrew's approval.
-INERT_BY_DECISION='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter)\.swift'
+INERT_BY_DECISION='AFFlow/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter)\.swift'
 
 # The same deferral, expressed as the full set of cloud-integration SOURCE files
 # named in CLAUDE.md de-risk item 3 (Anthropic, Google Calendar, Zo, Trello,
@@ -45,15 +45,15 @@ INERT_BY_DECISION='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableI
 # allowlisted the live ReaderCaptureSheet.swift UI file too. Neither Reader file
 # constructs a cloud client, so the entry is deleted rather than narrowed. Every
 # entry below names one file, never a directory shape.
-INERT_CLOUD_SOURCES='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider|Reader/ReaderCapture|Reader/ReaderCaptureSheet)\.swift'
+INERT_CLOUD_SOURCES='AFFlow/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider|Reader/ReaderCapture|Reader/ReaderCaptureSheet)\.swift'
 # The keychain helper defines the migration function and names the upstream
 # service in a comment explaining why AF Flow does not use it. Test fixtures and
 # the dev-only probe tool carry the upstream bundle id as literal strings.
-DEFINITION_AND_FIXTURES='GhostPepper/QA/KeychainHelper\.swift|GhostPepperTests/[^:]*\.swift|CleanupModelProbe/main\.swift|GhostPepper/Meeting/MeetingTranscriptSettings\.swift'
+DEFINITION_AND_FIXTURES='AFFlow/QA/KeychainHelper\.swift|AFFlowTests/[^:]*\.swift|CleanupModelProbe/main\.swift|AFFlow/Meeting/MeetingTranscriptSettings\.swift'
 
 # Same inert set as INERT_CLOUD_SOURCES, in the plain path form code-grep.py
 # expects (no grep -n colon anchoring).
-INERT_CLOUD_SOURCES_PATHS='GhostPepper/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider|Reader/ReaderCapture|Reader/ReaderCaptureSheet)\.swift'
+INERT_CLOUD_SOURCES_PATHS='AFFlow/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider|Reader/ReaderCapture|Reader/ReaderCaptureSheet)\.swift'
 
 # Documented single-symbol exception, added 2026-07-19 and flagged to Andrew.
 # GranolaImporter.extractTranscript is a `nonisolated static func` that parses a
@@ -77,12 +77,12 @@ check() {
   # Anchor the allowlist to the start of the line, which is the FILE PATH.
   # Codex round 7, HIGH: filtering the whole grep hit meant a live file could
   # suppress itself by mentioning an allowlisted path anywhere in its content,
-  # e.g. TrelloBackend(...) // see GhostPepper/PepperChat/TrelloBackend.swift.
+  # e.g. TrelloBackend(...) // see AFFlow/PepperChat/TrelloBackend.swift.
   # The allowlist must match the WHOLE path, which in grep -n output ends at
   # the first colon. Codex round 7 caught that filtering the whole line let a
   # file suppress itself via a trailing comment; round 8 caught that anchoring
   # with ^($allow) alone was still prefix-only, so
-  # GhostPepper/PepperChat/TrelloBackend.swift.evil/Live.swift would pass as
+  # AFFlow/PepperChat/TrelloBackend.swift.evil/Live.swift would pass as
   # allowlisted. Requiring the colon closes both.
   if [ -n "$allow" ] && [ -n "$hits" ]; then
     hits=$(printf '%s\n' "$hits" | grep -vE "^($allow):" || true)
@@ -128,7 +128,7 @@ check "no Sparkle feed keys in config" 'SUFeedURL|SUPublicEDKey|sparkle-project'
 
 # Layer 2 and 4: secrets. Keys and secrets do not exist in this project.
 check "no Secrets.swift references" 'Secrets\.(google|anthropic|api)|import Secrets' swift
-check "no upstream keychain namespace in live code" 'com\.github\.matthartman\.ghostpepper' swift \
+check "no upstream keychain namespace in live code" 'com\.github\.matthartman\.afflow' swift \
   "$INERT_BY_DECISION|$DEFINITION_AND_FIXTURES"
 check "no credential migration in live code" 'migrateUserDefaultsString' swift \
   "$INERT_BY_DECISION|$DEFINITION_AND_FIXTURES"
@@ -374,9 +374,9 @@ else
   echo "ok    no em dash in helper scripts"
 fi
 
-BIN="build/run-derived/Build/Products/Debug/GhostPepper.app/Contents/MacOS"
+BIN="build/run-derived/Build/Products/Debug/AF Flow.app/Contents/MacOS"
 if [ -d "$BIN" ]; then
-  linked=$( { otool -L "$BIN/GhostPepper" 2>/dev/null; otool -L "$BIN/GhostPepper.debug.dylib" 2>/dev/null; } | grep -i "screencapture" || true)
+  linked=$( { otool -L "$BIN/AFFlow" 2>/dev/null; otool -L "$BIN/AFFlow.debug.dylib" 2>/dev/null; } | grep -i "screencapture" || true)
   if [ -n "$linked" ]; then
     echo "FAIL  built binary does not link ScreenCaptureKit"
     echo "$linked" | sed 's/^/        /'

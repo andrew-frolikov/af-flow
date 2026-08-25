@@ -39,52 +39,52 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # (id, relative path, exact source to find, replacement, what bug this imitates)
 MUTATIONS = [
-    ("lang-both-boundary", "GhostPepper/Transcription/ModelManager.swift",
+    ("lang-both-boundary", "AFFlow/Transcription/ModelManager.swift",
      'return english * englishPrior >= russian * russianPrior ? "en" : "ru"',
      'return english * englishPrior > russian * russianPrior ? "en" : "ru"',
      "a tie between the two priors now resolves to Russian instead of English"),
 
-    ("lang-one-scored-unreachable", "GhostPepper/Transcription/ModelManager.swift",
+    ("lang-one-scored-unreachable", "AFFlow/Transcription/ModelManager.swift",
      "if english != nil || russian != nil {",
      "if english != nil && russian != nil {",
      "the one-scored path stops running, which is the ORIGINAL 2026-08-02 bug"),
 
-    ("lang-ignore-the-winner", "GhostPepper/Transcription/ModelManager.swift",
+    ("lang-ignore-the-winner", "AFFlow/Transcription/ModelManager.swift",
      'return english != nil ? "en" : "ru"',
      'return "en"',
      "his Russian is always decoded as English"),
 
-    ("silence-gate-100x", "GhostPepper/Transcription/ModelManager.swift",
+    ("silence-gate-100x", "AFFlow/Transcription/ModelManager.swift",
      "nonisolated static let silenceRMSThreshold: Float = 0.001",
      "nonisolated static let silenceRMSThreshold: Float = 0.1",
      "quiet but real speech is discarded as silence"),
 
-    ("silence-gate-inverted", "GhostPepper/Transcription/ModelManager.swift",
+    ("silence-gate-inverted", "AFFlow/Transcription/ModelManager.swift",
      "return (sumOfSquares / Float(samples.count)).squareRoot() < silenceRMSThreshold",
      "return (sumOfSquares / Float(samples.count)).squareRoot() > silenceRMSThreshold",
      "only silence is transcribed, and speech is dropped"),
 
-    ("repeat-guard-inverted", "GhostPepper/Cleanup/TextCleaner.swift",
+    ("repeat-guard-inverted", "AFFlow/Cleanup/TextCleaner.swift",
      "guard text.count >= repetitionCheckMinimumCharacters else { return output }",
      "guard text.count <= repetitionCheckMinimumCharacters else { return output }",
      "the duplicate-answer guard runs only on short text, so the 2026-08-02 double paste returns"),
 
-    ("comma-restore-inverted", "GhostPepper/Cleanup/TextCleaner.swift",
+    ("comma-restore-inverted", "AFFlow/Cleanup/TextCleaner.swift",
      'guard cleaned.filter({ $0 == "," }).count < spoken.filter({ $0 == "," }).count else {',
      'guard cleaned.filter({ $0 == "," }).count > spoken.filter({ $0 == "," }).count else {',
      "commas are restored only when the cleanup ADDED them, so his stripped commas stay stripped"),
 
-    ("census-positive-count", "GhostPepper/Transcription/ModelManager.swift",
+    ("census-positive-count", "AFFlow/Transcription/ModelManager.swift",
      "let positive = probabilities.values.filter { $0 > 0 }.count",
      "let positive = 0",
      "the census always reports log probabilities, hiding a change in the model's output"),
 
-    ("meeting-name-app-first", "GhostPepper/Meeting/MeetingDetector.swift",
+    ("meeting-name-app-first", "AFFlow/Meeting/MeetingDetector.swift",
      'return "\\(formatter.string(from: date)) \\(appName)"',
      'return "\\(appName) \\(formatter.string(from: date))"',
      "meeting files go back to sorting by app name instead of time"),
 
-    ("lab-wipe-on-decode-error", "GhostPepper/Lab/TranscriptionLabStore.swift",
+    ("lab-wipe-on-decode-error", "AFFlow/Lab/TranscriptionLabStore.swift",
      "            quarantineUnreadableFile(at: indexURL)\n            return []",
      "            resetStoredArchive()\n            return []",
      "a corrupt index deletes his whole dictation archive again"),
@@ -112,7 +112,7 @@ def tree_is_clean():
 # direction for this tool, so they are excluded from the evidence entirely rather
 # than merely noted.
 KNOWN_UNSTABLE = {
-    "GhostPepperTests.WindowFoldabilityTests.testMainStyleWindowCanMiniaturize",
+    "AFFlowTests.WindowFoldabilityTests.testMainStyleWindowCanMiniaturize",
 }
 
 

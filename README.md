@@ -2,7 +2,7 @@
 
 A personal, fully local macOS dictation app for Andrew Frolikov. Hold a key, speak (English, Russian, Ukrainian, including mixed EN/RU), release, and cleaned-up text lands at the cursor in whatever app is frontmost.
 
-Forked from [Ghost Pepper](https://github.com/matthartman/ghost-pepper) (MIT license). This fork is personal use only and is never distributed. There is no download link and no prebuilt binary. Build it yourself from this source.
+Built on a fork of an MIT licensed Swift project. The upstream author's copyright travels with the code: see [LICENSE](LICENSE) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). There is no download link and no prebuilt binary. Build it yourself from this source.
 
 ## What runs locally
 
@@ -18,16 +18,16 @@ Forked from [Ghost Pepper](https://github.com/matthartman/ghost-pepper) (MIT lic
 
 ## Build from source
 
-This repo ships a checked-in `GhostPepper.xcodeproj` (the app's internal name; branding to "AF Flow" is tracked as a later chunk). To build and run:
+This repo ships a checked-in `AFFlow.xcodeproj` (the app's internal name; branding to "AF Flow" is tracked as a later chunk). To build and run:
 
 ```
-open GhostPepper.xcodeproj
+open AFFlow.xcodeproj
 ```
 
 Then press Cmd+R in Xcode, or from the terminal:
 
 ```
-xcodebuild -project GhostPepper.xcodeproj -scheme GhostPepper build
+xcodebuild -project AFFlow.xcodeproj -scheme AFFlow build
 ```
 
 On first launch, macOS will ask for Microphone and Accessibility permissions (needed for the hotkey and for pasting text). Grant both.
@@ -40,4 +40,4 @@ On first launch, macOS will ask for Microphone and Accessibility permissions (ne
 
 ## License
 
-Upstream Ghost Pepper is MIT licensed. This fork is a private, non-distributed derivative for personal use.
+MIT. AF Flow began as a fork, and the upstream author's copyright is retained in [LICENSE](LICENSE), which is a condition of that licence, not a leftover.

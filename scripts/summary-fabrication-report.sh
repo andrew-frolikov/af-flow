@@ -1,6 +1,6 @@
 #!/bin/bash
 # Measures fabrication in meeting summaries, using the SAME checker the test suite
-# uses. Compiles GhostPepperTests/SummaryFabrication.swift directly, so no Xcode
+# uses. Compiles AFFlowTests/SummaryFabrication.swift directly, so no Xcode
 # build and no model load is needed: this reads summaries that already exist.
 #
 # Usage:  ./scripts/summary-fabrication-report.sh <dir-of-meeting-notes> [more dirs]
@@ -18,6 +18,6 @@ trap 'rm -rf "$WORK"' EXIT
 # has to live in scripts/ under its own name to be findable. Copy, do not rename.
 cp "$REPO/scripts/summary-fabrication-main.swift" "$WORK/main.swift"
 
-swiftc -O "$REPO/GhostPepperTests/SummaryFabrication.swift" "$WORK/main.swift" -o "$WORK/report"
+swiftc -O "$REPO/AFFlowTests/SummaryFabrication.swift" "$WORK/main.swift" -o "$WORK/report"
 
 "$WORK/report" "$@"

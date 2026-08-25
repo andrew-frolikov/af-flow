@@ -1,7 +1,7 @@
 import Foundation
 
 // Driver for `scripts/summary-fabrication-report.sh`. Compiled together with
-// GhostPepperTests/SummaryFabrication.swift, so the numbers this prints come from
+// AFFlowTests/SummaryFabrication.swift, so the numbers this prints come from
 // the SAME checker the test suite runs. Two implementations would drift, and the
 // one that drifts is always the one nobody is watching.
 //

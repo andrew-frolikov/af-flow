@@ -1,6 +1,6 @@
 # Privacy audit
 
-AF Flow is a personal, fully local fork of Ghost Pepper. This file states the current privacy posture in plain terms. It does not repeat the upstream Ghost Pepper audit, which described a different app (cloud features, system audio capture, an auto-updater) that AF Flow does not have.
+AF Flow is a personal, fully local macOS dictation app. This file states the current privacy posture in plain terms. It does not repeat the audit inherited from the upstream project it was forked from, which described a different app (cloud features, system audio capture, an auto-updater) that AF Flow does not have.
 
 ## Current posture
 

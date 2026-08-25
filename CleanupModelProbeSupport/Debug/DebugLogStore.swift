@@ -1,1 +1,1 @@
-../../GhostPepper/Debug/DebugLogStore.swift
+../../AFFlow/Debug/DebugLogStore.swift

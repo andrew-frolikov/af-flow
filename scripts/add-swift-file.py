@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register a new Swift file in GhostPepper.xcodeproj/project.pbxproj.
+"""Register a new Swift file in AFFlow.xcodeproj/project.pbxproj.
 
 There is no xcodegen on this machine, so the pbxproj is hand-maintained. A
 Swift file that exists on disk but is not in a Sources build phase compiles
@@ -19,7 +19,7 @@ correctly, rather than by parsing the pbxproj grammar. A sibling in the same
 directory is registered in the same four places, so its four line positions are
 the right four positions.
 
-    python3 scripts/add-swift-file.py GhostPepper/Foo.swift --like PermissionCensus.swift
+    python3 scripts/add-swift-file.py AFFlow/Foo.swift --like PermissionCensus.swift
 
 Ids are derived from the file name, so a rerun is a no-op rather than a
 duplicate.
@@ -32,7 +32,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PBXPROJ = os.path.join(ROOT, "GhostPepper.xcodeproj", "project.pbxproj")
+PBXPROJ = os.path.join(ROOT, "AFFlow.xcodeproj", "project.pbxproj")
 
 BUILD_FILE_PATTERN = re.compile(
     r"^\s*([0-9A-F]{24}) /\* (?P<name>.+?) in Sources \*/ = \{isa = PBXBuildFile; "

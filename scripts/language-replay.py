@@ -40,7 +40,7 @@ SUPPORTED = ("en", "ru")
 
 DEFAULT = os.path.expanduser(
     "~/Library/Containers/com.frolikov.afflow.testhost/Data/Library/"
-    "Application Support/GhostPepper/replay/detections.jsonl"
+    "Application Support/AFFlow/replay/detections.jsonl"
 )
 
 
@@ -78,7 +78,7 @@ def main():
         print("stage the inputs and run the replay first:")
         print("  ./scripts/stage-language-replay.sh")
         print("  AF_FLOW_LANGUAGE_REPLAY=1 ./scripts/run-tests.sh \\")
-        print("      -only-testing:GhostPepperTests/LanguageReplayTests")
+        print("      -only-testing:AFFlowTests/LanguageReplayTests")
         return 0
 
     rows = []

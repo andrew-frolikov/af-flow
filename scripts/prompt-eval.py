@@ -42,7 +42,7 @@ from pathlib import Path
 LAB_INDEX = (
     Path.home()
     / "Library/Containers/com.frolikov.afflow/Data/Library/Application Support"
-    / "GhostPepper/transcription-lab/transcription-lab-index.json"
+    / "AFFlow/transcription-lab/transcription-lab-index.json"
 )
 PROBE = Path(__file__).resolve().parent / "cleanup-model-probe.sh"
 
@@ -236,7 +236,7 @@ def main():
     # guard, so a missing model here would be fetched over the wire. The project's
     # premise is that nothing leaves this Mac, and a measurement tool is not an
     # exception to that.
-    models_dir = Path.home() / "Library/Application Support/GhostPepper/models"
+    models_dir = Path.home() / "Library/Application Support/AFFlow/models"
     expected = {
         "qwen35_0_8b_q4_k_m": "Qwen3.5-0.8B-Q4_K_M.gguf",
         "qwen35_2b_q4_k_m": "Qwen3.5-2B-Q4_K_M.gguf",

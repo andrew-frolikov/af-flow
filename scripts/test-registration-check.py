@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Every test file in GhostPepperTests must be registered in the Xcode project.
+"""Every test file in AFFlowTests must be registered in the Xcode project.
 
 WHY THIS EXISTS. On 2026-08-02 a new test file, `MeetingNamingTests.swift`, was
 written, saved, and run. The runner printed:
@@ -16,7 +16,7 @@ result asserting something that never executed. The suite cannot notice this on
 its own, because from its point of view nothing is wrong: a test that does not
 exist cannot fail. So it needs a check outside the suite.
 
-`project.yml` globs the whole `GhostPepperTests` directory, so anyone
+`project.yml` globs the whole `AFFlowTests` directory, so anyone
 regenerating with XcodeGen picks new files up automatically. But xcodegen is not
 installed on this machine and `project.pbxproj` is committed and hand-edited,
 which is exactly the gap this closes.
@@ -29,8 +29,8 @@ import re
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PBXPROJ = os.path.join(REPO, "GhostPepper.xcodeproj", "project.pbxproj")
-TEST_DIRS = ["GhostPepperTests"]
+PBXPROJ = os.path.join(REPO, "AFFlow.xcodeproj", "project.pbxproj")
+TEST_DIRS = ["AFFlowTests"]
 
 
 def main():

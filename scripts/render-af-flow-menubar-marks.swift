@@ -1,6 +1,6 @@
 // The menu bar marks: the Fraunces AF monogram with a status dot.
 //
-// Four states, a deliberate decision recorded in GhostPepperApp.swift: the mark
+// Four states, a deliberate decision recorded in AFFlowApp.swift: the mark
 // stays his at exactly the moments he is most likely to be looking at it, which
 // is why stock SF symbols were removed. This renderer keeps that structure and
 // puts the colours on the brand.
@@ -16,7 +16,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 let brand = "/Users/andriifrolikov/Claude/Projects/personal-website/brand"
-let outRoot = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "GhostPepper/Assets.xcassets"
+let outRoot = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "AFFlow/Assets.xcassets"
 let cgFont = CGFont(CGDataProvider(url: URL(fileURLWithPath: "\(brand)/Fraunces-opsz9-wght500.ttf") as CFURL)!)!
 
 // Canon geometry, 64-unit box: glyph ink 13.0 to 46.8, dot at cx 52 r 3.4.

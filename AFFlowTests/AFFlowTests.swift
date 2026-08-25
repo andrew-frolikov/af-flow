@@ -1,0 +1,3660 @@
+import XCTest
+import SwiftUI
+import Combine
+@testable import AFFlow
+
+/// Shared with `OneWindowTests` since 2026-08-24, hence not `private`: building
+/// an `AppState` needs it, and a second copy in another file is how two fakes of
+/// the same protocol drift apart.
+final class FakeHotkeyMonitor: HotkeyMonitoring {
+    var onRecordingStart: (() -> Void)?
+    var onRecordingStop: (() -> Void)?
+    var onPushToTalkStart: (() -> Void)?
+    var onPushToTalkStop: (() -> Void)?
+    var onToggleToTalkStart: (() -> Void)?
+    var onToggleToTalkStop: (() -> Void)?
+    var onPepperChatStart: (() -> Void)?
+    var onPepperChatStop: (() -> Void)?
+    var onRecordingRestart: (() -> Void)?
+
+    var updatedBindings: [ChordAction: KeyChord] = [:]
+    var startResult = true
+    var startCallCount = 0
+    var suspendedStates: [Bool] = []
+
+    func start() -> Bool {
+        startCallCount += 1
+        return startResult
+    }
+
+    func stop() {}
+
+    func updateBindings(_ bindings: [ChordAction: KeyChord]) {
+        updatedBindings = bindings
+    }
+
+    func setSuspended(_ suspended: Bool) {
+        suspendedStates.append(suspended)
+    }
+}
+
+private final class FakeAppRelauncher: AppRelaunching {
+    var relaunchCallCount = 0
+    var error: Error?
+
+    func relaunch() throws {
+        relaunchCallCount += 1
+        if let error {
+            throw error
+        }
+    }
+}
+
+private final class FakeRecordingTranscriptionSession: RecordingTranscriptionSession {
+    private(set) var appendedChunks: [[Float]] = []
+    private(set) var finishCallCount = 0
+    private(set) var cancelCallCount = 0
+    var finalTranscript: String?
+    let allowsBatchFallback: Bool
+    let supportsConcurrentFinalization = false
+
+    init(finalTranscript: String?, allowsBatchFallback: Bool = false) {
+        self.finalTranscript = finalTranscript
+        self.allowsBatchFallback = allowsBatchFallback
+    }
+
+    func appendAudioChunk(_ samples: [Float]) {
+        appendedChunks.append(samples)
+    }
+
+    func finishTranscription() async -> String? {
+        finishCallCount += 1
+        return finalTranscript
+    }
+
+    func cancel() {
+        cancelCallCount += 1
+    }
+}
+
+@MainActor
+private final class AppStateSpeechAnalyzerStub: SpeechAnalyzerTranscribing {
+    func transcribe(audioBuffer: [Float]) async throws -> String? {
+        nil
+    }
+}
+
+@MainActor
+private final class MeetingSpeechAnalyzerStub: SpeechAnalyzerTranscribing {
+    func transcribe(audioBuffer: [Float]) async throws -> String? {
+        "late audio"
+    }
+}
+
+private final class FakeMeetingAudioCapture: MeetingAudioCapturing {
+    var onAudioChunk: ((TaggedAudioChunk) -> Void)?
+    var onCaptureDegraded: ((String) -> Void)?
+    var onStop: (() -> Void)?
+
+    func start() async throws {}
+
+    func stop() async -> (micBuffer: [Float], systemBuffer: [Float]) {
+        onStop?()
+        return ([], [])
+    }
+
+    var elapsed: TimeInterval { 0 }
+}
+
+/// Counts the replies the termination delegate makes, so "exactly once" is testable.
+@MainActor
+private final class ReplyCounter {
+    private(set) var count = 0
+    func record() { count += 1 }
+}
+
+@MainActor
+private final class AsyncTestGate {
+    private var isReleased = false
+
+    func wait() async {
+        for _ in 0..<200 {
+            guard !isReleased else { return }
+            do {
+                try await Task.sleep(nanoseconds: 10_000_000)
+            } catch {
+                return
+            }
+        }
+    }
+
+    func release() {
+        isReleased = true
+    }
+}
+
+@MainActor
+final class AFFlowTests: XCTestCase {
+    private static let usageStatsBackfillKey = "usageStats.backfill.v2"
+    private static var previousUsageStatsBackfillValue: Any?
+
+    private let pepperChatAppStorageKeys = [
+        "pepperChatEnabled",
+        "pepperChatApiKey"
+    ]
+    private let pepperChatKeychainKeys = [
+        "pepperChatApiKey"
+    ]
+
+    override class func setUp() {
+        super.setUp()
+        let defaults = UserDefaults.standard
+        previousUsageStatsBackfillValue = defaults.object(forKey: usageStatsBackfillKey)
+        // AppState startup backfill scans the user's Documents directory. The
+        // app-state tests use temporary fixtures, so skip that disk scan here
+        // to keep XCTest from prompting for TCC access to Documents.
+        defaults.set(true, forKey: usageStatsBackfillKey)
+    }
+
+    override class func tearDown() {
+        let defaults = UserDefaults.standard
+        if let previousUsageStatsBackfillValue {
+            defaults.set(previousUsageStatsBackfillValue, forKey: usageStatsBackfillKey)
+        } else {
+            defaults.removeObject(forKey: usageStatsBackfillKey)
+        }
+        super.tearDown()
+    }
+
+    private func makeDebugLogStore() -> DebugLogStore {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent("debug-log.json")
+        return DebugLogStore(storageURL: fileURL)
+    }
+
+    private func waitForCondition(
+        timeoutNanoseconds: UInt64 = 1_000_000_000,
+        condition: () -> Bool
+    ) async {
+        let pollIntervalNanoseconds: UInt64 = 10_000_000
+        var elapsedNanoseconds: UInt64 = 0
+        while !condition() && elapsedNanoseconds < timeoutNanoseconds {
+            do {
+                try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+            } catch {
+                return
+            }
+            elapsedNanoseconds += pollIntervalNanoseconds
+        }
+
+        if !condition() {
+            XCTFail("Timed out waiting for test condition")
+        }
+    }
+
+    private func withClearedPepperChatAppStorage<T>(
+        _ body: () throws -> T
+    ) rethrows -> T {
+        let defaults = UserDefaults.standard
+        let originalValues = pepperChatAppStorageKeys.map { key in
+            (key, defaults.object(forKey: key))
+        }
+        let originalKeychainValues = pepperChatKeychainKeys.map { key in
+            (key, KeychainHelper.get(key))
+        }
+
+        for key in pepperChatAppStorageKeys {
+            defaults.removeObject(forKey: key)
+        }
+        for key in pepperChatKeychainKeys {
+            KeychainHelper.delete(key)
+        }
+
+        defer {
+            for (key, value) in originalValues {
+                if let value {
+                    defaults.set(value, forKey: key)
+                } else {
+                    defaults.removeObject(forKey: key)
+                }
+            }
+            for (key, value) in originalKeychainValues {
+                if let value {
+                    _ = KeychainHelper.set(value, for: key)
+                } else {
+                    KeychainHelper.delete(key)
+                }
+            }
+        }
+
+        return try body()
+    }
+
+    private func withClearedPepperChatAppStorage<T>(
+        _ body: () async throws -> T
+    ) async rethrows -> T {
+        let defaults = UserDefaults.standard
+        let originalValues = pepperChatAppStorageKeys.map { key in
+            (key, defaults.object(forKey: key))
+        }
+        let originalKeychainValues = pepperChatKeychainKeys.map { key in
+            (key, KeychainHelper.get(key))
+        }
+
+        for key in pepperChatAppStorageKeys {
+            defaults.removeObject(forKey: key)
+        }
+        for key in pepperChatKeychainKeys {
+            KeychainHelper.delete(key)
+        }
+
+        defer {
+            for (key, value) in originalValues {
+                if let value {
+                    defaults.set(value, forKey: key)
+                } else {
+                    defaults.removeObject(forKey: key)
+                }
+            }
+            for (key, value) in originalKeychainValues {
+                if let value {
+                    _ = KeychainHelper.set(value, for: key)
+                } else {
+                    KeychainHelper.delete(key)
+                }
+            }
+        }
+
+        return try await body()
+    }
+
+    override func tearDown() {
+        PermissionChecker.current = PermissionChecker.defaultClient
+        super.tearDown()
+    }
+
+    func testAppStateInitialStatus() {
+        // AppState is @MainActor so we test basic enum
+        XCTAssertEqual(AppStatus.ready.rawValue, "Ready")
+        XCTAssertEqual(AppStatus.recording.rawValue, "Recording...")
+        XCTAssertEqual(AppStatus.transcribing.rawValue, "Transcribing...")
+        XCTAssertEqual(AppStatus.error.rawValue, "Error")
+    }
+
+    func testAppStatePassesPreferredLanguageWhenLoadingSpeechAnalyzer() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var requestedLanguages: [String?] = []
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { language in
+                requestedLanguages.append(language)
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let previousLanguage = UserDefaults.standard.object(forKey: "preferredLanguage")
+        defer {
+            if let previousLanguage {
+                UserDefaults.standard.set(previousLanguage, forKey: "preferredLanguage")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "preferredLanguage")
+            }
+        }
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+
+        appState.preferredLanguage = "es"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.preferredLanguage = "auto"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+
+        XCTAssertEqual(requestedLanguages.count, 2)
+        XCTAssertEqual(requestedLanguages[0], "es")
+        XCTAssertNil(requestedLanguages[1])
+    }
+
+    func testAppStateRepreparesForLanguageChangesOnlyWhenSpeechAnalyzerIsSelected() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var requestedLanguages: [String?] = []
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { language in
+                requestedLanguages.append(language)
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let previousLanguage = UserDefaults.standard.object(forKey: "preferredLanguage")
+        let previousModel = UserDefaults.standard.object(forKey: "speechModel")
+        defer {
+            if let previousLanguage {
+                UserDefaults.standard.set(previousLanguage, forKey: "preferredLanguage")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "preferredLanguage")
+            }
+            if let previousModel {
+                UserDefaults.standard.set(previousModel, forKey: "speechModel")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "speechModel")
+            }
+        }
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.preferredLanguage = "fr"
+
+        appState.speechModel = SpeechModelCatalog.whisperSmallEnglish.id
+        await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded()
+        XCTAssertTrue(requestedLanguages.isEmpty)
+
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded()
+        XCTAssertEqual(requestedLanguages.count, 1)
+        XCTAssertEqual(requestedLanguages[0], "fr")
+    }
+
+    func testAppStateRepreparesSpeechAnalyzerAfterAnInFlightLoadFinishes() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var requestedLanguages: [String?] = []
+        let initialLoadGate = AsyncTestGate()
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { language in
+                requestedLanguages.append(language)
+                if requestedLanguages.count == 1 {
+                    await initialLoadGate.wait()
+                }
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        defer { initialLoadGate.release() }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let previousLanguage = UserDefaults.standard.object(forKey: "preferredLanguage")
+        let previousModel = UserDefaults.standard.object(forKey: "speechModel")
+        defer {
+            if let previousLanguage {
+                UserDefaults.standard.set(previousLanguage, forKey: "preferredLanguage")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "preferredLanguage")
+            }
+            if let previousModel {
+                UserDefaults.standard.set(previousModel, forKey: "speechModel")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "speechModel")
+            }
+        }
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.preferredLanguage = "en"
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+
+        let initialLoad = Task { await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id) }
+        await waitForCondition { !requestedLanguages.isEmpty }
+
+        appState.preferredLanguage = "fr"
+        let reload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        await Task.yield()
+        initialLoadGate.release()
+
+        await initialLoad.value
+        await reload.value
+
+        XCTAssertEqual(requestedLanguages, ["en", "fr"])
+    }
+
+    func testAppStateWaitsForQueuedModelSelectionToFinish() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        let firstLoadGate = AsyncTestGate()
+        var loadedNames: [String] = []
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.whisperSmallEnglish.id,
+            modelLoadOverride: { descriptor in
+                loadedNames.append(descriptor.name)
+                if loadedNames.count == 1 {
+                    await firstLoadGate.wait()
+                }
+            }
+        )
+        defer { firstLoadGate.release() }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.whisperSmallEnglish.id
+
+        let initialLoad = Task { await appState.loadSpeechModel(name: SpeechModelCatalog.whisperSmallEnglish.id) }
+        await waitForCondition { manager.state == .loading }
+
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        let queuedLoad = Task { await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id) }
+        for _ in 0..<20 {
+            await Task.yield()
+        }
+        firstLoadGate.release()
+
+        await queuedLoad.value
+        XCTAssertEqual(manager.modelName, SpeechModelCatalog.speechAnalyzer.id)
+        XCTAssertTrue(manager.isReady)
+        XCTAssertEqual(appState.status, .ready)
+
+        await initialLoad.value
+    }
+
+    func testMeetingStopDrainsAudioDeliveredWhileCaptureStops() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { _ in MeetingSpeechAnalyzerStub() }
+        )
+        await manager.loadModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        let capture = FakeMeetingAudioCapture()
+        let session = MeetingSession(
+            meetingName: "Late audio",
+            transcriber: SpeechTranscriber(modelManager: manager),
+            saveDirectory: FileManager.default.temporaryDirectory,
+            capture: capture
+        )
+        capture.onStop = { [weak capture] in
+            capture?.onAudioChunk?(
+                TaggedAudioChunk(source: .mic, samples: [0.25], timestamp: 0)
+            )
+        }
+
+        try await session.start()
+        await session.stop()
+
+        await waitForCondition { session.transcript.segments.count == 1 }
+        XCTAssertEqual(session.transcript.segments.first?.text, "late audio")
+    }
+
+    func testAppStateGatesRecordingWhileSpeechAnalyzerReloads() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var factoryCallCount = 0
+        let reloadGate = AsyncTestGate()
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { _ in
+                factoryCallCount += 1
+                if factoryCallCount == 2 {
+                    await reloadGate.wait()
+                }
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        defer { reloadGate.release() }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        appState.preferredLanguage = "en"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.status = .ready
+
+        appState.preferredLanguage = "fr"
+        let reload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        await waitForCondition { factoryCallCount >= 2 }
+
+        XCTAssertEqual(appState.status, .loading)
+
+        reloadGate.release()
+        await reload.value
+        XCTAssertEqual(appState.status, .ready)
+    }
+
+    func testAppStateDoesNotStartPepperChatDuringSpeechAnalyzerReload() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+
+        try await withClearedPepperChatAppStorage {
+            var factoryCallCount = 0
+            let reloadGate = AsyncTestGate()
+            let manager = ModelManager(
+                modelName: SpeechModelCatalog.speechAnalyzer.id,
+                speechAnalyzerBackendFactory: { _ in
+                    factoryCallCount += 1
+                    if factoryCallCount == 2 {
+                        await reloadGate.wait()
+                    }
+                    return AppStateSpeechAnalyzerStub()
+                }
+            )
+            defer { reloadGate.release() }
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+            defaults.removePersistentDomain(forName: #function)
+            let appState = AppState(
+                hotkeyMonitor: FakeHotkeyMonitor(),
+                chordBindingStore: ChordBindingStore(defaults: defaults),
+                cleanupSettingsDefaults: defaults,
+                modelManager: manager
+            )
+            appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+            appState.preferredLanguage = "en"
+            await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+            appState.status = .ready
+
+            appState.preferredLanguage = "fr"
+            let reload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+            await waitForCondition { factoryCallCount >= 2 }
+
+            appState.beginPepperChatRecording()
+
+            XCTAssertFalse(appState.pepperChatSession.isRecording)
+
+            reloadGate.release()
+            await reload.value
+        }
+    }
+
+    func testAppStatePreservesUnrelatedErrorWhileReloadingSpeechAnalyzer() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { _ in AppStateSpeechAnalyzerStub() }
+        )
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        appState.preferredLanguage = "en"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.status = .error
+        appState.errorMessage = "Accessibility access required"
+        appState.preferredLanguage = "fr"
+
+        await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded()
+
+        XCTAssertEqual(appState.status, .error)
+        XCTAssertEqual(appState.errorMessage, "Accessibility access required")
+    }
+
+    func testAppStateDoesNotStartRecordingWhenModelManagerIsNotReady() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let monitor = FakeHotkeyMonitor()
+        let appState = AppState(
+            hotkeyMonitor: monitor,
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: ModelManager(modelName: SpeechModelCatalog.speechAnalyzer.id)
+        )
+        appState.status = .ready
+
+        await appState.startHotkeyMonitor()
+        monitor.onRecordingStart?()
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(appState.status, .ready)
+        XCTAssertFalse(appState.isRecording)
+    }
+
+    func testAppStateOverlappingSpeechAnalyzerReloadsKeepRecordingGatedUntilNewestLoadFinishes() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var requestedLanguages: [String?] = []
+        let firstGate = AsyncTestGate()
+        let secondGate = AsyncTestGate()
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { language in
+                requestedLanguages.append(language)
+                switch requestedLanguages.count {
+                case 2:
+                    await firstGate.wait()
+                case 3:
+                    await secondGate.wait()
+                default:
+                    break
+                }
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        defer {
+            firstGate.release()
+            secondGate.release()
+        }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let monitor = FakeHotkeyMonitor()
+        let appState = AppState(
+            hotkeyMonitor: monitor,
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        appState.preferredLanguage = "en"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.status = .ready
+
+        appState.preferredLanguage = "fr"
+        let firstReload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        await waitForCondition { requestedLanguages.count >= 2 }
+
+        appState.preferredLanguage = "de"
+        let secondReload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+
+        firstGate.release()
+        await waitForCondition { requestedLanguages.count >= 3 }
+
+        XCTAssertEqual(requestedLanguages, ["en", "fr", "de"])
+        XCTAssertEqual(appState.status, .loading)
+
+        await appState.startHotkeyMonitor()
+        appState.status = .loading
+        monitor.onRecordingStart?()
+        await Task.yield()
+        XCTAssertEqual(appState.status, .loading)
+        XCTAssertFalse(appState.isRecording)
+
+        secondGate.release()
+        await firstReload.value
+        await secondReload.value
+        XCTAssertEqual(appState.status, .ready)
+    }
+
+    func testAppStateRestoresReadyWhenNewestSpeechAnalyzerReloadIsCancelled() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var requestedLanguages: [String?] = []
+        let firstGate = AsyncTestGate()
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { language in
+                requestedLanguages.append(language)
+                if requestedLanguages.count == 2 {
+                    await firstGate.wait()
+                }
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        defer { firstGate.release() }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        appState.preferredLanguage = "en"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.status = .ready
+
+        appState.preferredLanguage = "fr"
+        let firstReload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        await waitForCondition { requestedLanguages.count >= 2 }
+
+        appState.preferredLanguage = "de"
+        let newestReload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        await waitForCondition { appState.status == .loading }
+        newestReload.cancel()
+
+        firstGate.release()
+        await firstReload.value
+        await newestReload.value
+
+        XCTAssertEqual(requestedLanguages, ["en", "fr"])
+        XCTAssertEqual(appState.status, .ready)
+    }
+
+    func testAppStateWaitsForActiveRecordingBeforeReloadingSpeechAnalyzer() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var factoryCallCount = 0
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { _ in
+                factoryCallCount += 1
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        appState.preferredLanguage = "en"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.status = .recording
+        appState.isRecording = true
+        appState.preferredLanguage = "fr"
+
+        let reload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(factoryCallCount, 1)
+        XCTAssertEqual(appState.status, .recording)
+
+        appState.isRecording = false
+        appState.status = .ready
+        await reload.value
+
+        XCTAssertEqual(factoryCallCount, 2)
+        XCTAssertEqual(appState.status, .ready)
+    }
+
+    func testAppStateWaitsForActiveMeetingSessionBeforeReloadingSpeechAnalyzer() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var factoryCallCount = 0
+        let reloadGate = AsyncTestGate()
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { _ in
+                factoryCallCount += 1
+                if factoryCallCount == 2 {
+                    await reloadGate.wait()
+                }
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        defer { reloadGate.release() }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        appState.preferredLanguage = "en"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.status = .ready
+
+        let meetingSession = MeetingSession(
+            meetingName: "Test meeting",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+        )
+        meetingSession.isActive = true
+        appState.activeMeetingSession = meetingSession
+        appState.preferredLanguage = "fr"
+
+        let reload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(factoryCallCount, 1)
+        XCTAssertEqual(appState.status, .ready)
+
+        meetingSession.isActive = false
+        await waitForCondition { factoryCallCount >= 2 }
+        XCTAssertEqual(appState.status, .loading)
+
+        reloadGate.release()
+        await reload.value
+        XCTAssertEqual(appState.status, .ready)
+    }
+
+    func testAppStateWaitsForMeetingSessionStartupBeforeReloadingSpeechAnalyzer() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var factoryCallCount = 0
+        let reloadGate = AsyncTestGate()
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { _ in
+                factoryCallCount += 1
+                if factoryCallCount == 2 {
+                    await reloadGate.wait()
+                }
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        defer { reloadGate.release() }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        appState.preferredLanguage = "en"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.status = .ready
+
+        let startGate = AsyncTestGate()
+        let meetingSession = MeetingSession(
+            meetingName: "Starting meeting",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory,
+            captureStartOverride: {
+                await startGate.wait()
+            }
+        )
+        appState.activeMeetingSession = meetingSession
+        let startTask = Task {
+            try? await meetingSession.start()
+        }
+        await waitForCondition { meetingSession.isStarting }
+        appState.preferredLanguage = "fr"
+
+        let reload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(factoryCallCount, 1)
+        XCTAssertEqual(appState.status, .ready)
+
+        startGate.release()
+        await startTask.value
+        appState.activeMeetingSession = nil
+        await waitForCondition { factoryCallCount >= 2 }
+        XCTAssertEqual(appState.status, .loading)
+
+        reloadGate.release()
+        await reload.value
+        XCTAssertEqual(appState.status, .ready)
+    }
+
+    /// Starting a meeting used to overwrite `activeMeetingSession` with no check
+    /// at all, so a second recording could run its own capture over the first
+    /// while the first became unreachable: still capturing, still holding the
+    /// microphone, with nothing left pointing at it to stop it.
+    ///
+    /// This is the best explanation for what Andrew reported on 2026-07-29 as "I
+    /// started it a few times". His log shows three starts that morning.
+    func testStartingASecondMeetingIsRefusedWhileOneIsRecording() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        let first = MeetingSession(
+            meetingName: "The call he is actually on",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+        )
+        first.isActive = true
+        appState.activeMeetingSession = first
+
+        XCTAssertThrowsError(try appState.createMeetingSession(name: "A second one")) { error in
+            guard case MeetingRecordingStartError.alreadyRecording = error else {
+                return XCTFail("expected alreadyRecording, got \(error)")
+            }
+        }
+        XCTAssertTrue(
+            appState.activeMeetingSession === first,
+            "the running meeting must still be the one the app is holding, or nothing can stop it"
+        )
+        XCTAssertTrue(first.isActive)
+    }
+
+    /// The window that actually matters, which the test above does not reach.
+    ///
+    /// `createMeetingSession` returns before its start Task has run, so for a
+    /// moment the session it just installed has none of its three flags set and
+    /// looks idle. Two clicks in that moment is the real double-start, and the
+    /// first version of the guard let it straight through. Codex found the hole.
+    func testASecondStartInTheSameMomentAsTheFirstIsRefused() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        // Pinned so the unrelated SpeechAnalyzer readiness guard cannot decide this
+        // test: `speechModel` lives in the shared defaults domain, and a suite that
+        // leaves a SpeechAnalyzer model behind would make the start refuse for a
+        // reason this test is not about.
+        appState.speechModel = SpeechModelCatalog.defaultModelID
+
+        // No await between these two calls, so the first session's start Task has
+        // not run and none of its flags are set yet.
+        let first = try appState.createMeetingSession(name: "First click")
+        XCTAssertThrowsError(try appState.createMeetingSession(name: "Second click")) { error in
+            guard case MeetingRecordingStartError.alreadyRecording = error else {
+                return XCTFail("expected alreadyRecording, got \(error)")
+            }
+        }
+        XCTAssertTrue(appState.activeMeetingSession === first)
+        await first.stop()
+    }
+
+    /// QUITTING MUST NOT DESTROY THE END OF A MEETING.
+    ///
+    /// `prepareForTermination` fired `Task { await session.stop() }` from
+    /// `willTerminateNotification` and returned, so the process exited while that
+    /// Task was still on its first await: the final buffer, the pending
+    /// transcriptions, the end date and the summary could all be lost. Bug 4 of
+    /// sixteen. The finalisation now runs where termination can be deferred, and it
+    /// must actually finish the meeting.
+    func testFinishingBeforeTerminationStopsTheMeetingAndStampsItsEnd() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        let session = MeetingSession(
+            meetingName: "Interrupted by a quit",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("AFFlowTests-\(UUID().uuidString)"),
+            captureStartOverride: {}
+        )
+        try await session.start()
+        appState.activeMeetingSession = session
+
+        XCTAssertTrue(appState.hasMeetingToFinishBeforeQuitting, "a running meeting must hold up the quit")
+
+        await appState.finishActiveMeetingBeforeTermination()
+
+        XCTAssertFalse(session.isActive, "the meeting must be stopped, not left running into termination")
+        XCTAssertNotNil(session.transcript.endDate, "the end date is written by the stop, and losing it loses the meeting's duration")
+        XCTAssertNil(appState.activeMeetingSession, "and the app must no longer be holding it")
+        XCTAssertFalse(appState.hasMeetingToFinishBeforeQuitting, "so a second quit does not wait on nothing")
+    }
+
+    /// THE SUMMARY RAN TWICE, and his log proves it: "Meeting summary generated for
+    /// Zoom - 10:21 AM" at 11:12:59 and again at 11:13:08, with six cleanup-model
+    /// calls between them. Two finalisation paths both ran for the same stop, which
+    /// is also why "auto-stopped" and "stopped" were both logged at 11:12:51.
+    ///
+    /// Deduplicating at the finalisation rather than at the summary is deliberate: it
+    /// also stops the duplicate log line, the duplicate stopped-notification and the
+    /// duplicate index update. Bug 12 of sixteen.
+    func testFinalisingAMeetingTwiceOnlySummarisesItOnce() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        let session = MeetingSession(
+            meetingName: "Summarised twice",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("AFFlowTests-\(UUID().uuidString)"),
+            captureStartOverride: {}
+        )
+        try await session.start()
+        session.transcript.appendSegment(
+            TranscriptSegment(id: UUID(), speaker: .me, startTime: 0, endTime: 1, text: "something worth summarising")
+        )
+        appState.activeMeetingSession = session
+
+        XCTAssertFalse(session.isFinalised)
+
+        // BOTH PATHS AT ONCE, which is what happened: the auto-stop and the manual stop
+        // arrived in the same second. Driven through the real entry point rather than by
+        // calling the flag directly, because Codex pointed out that asserting on the flag
+        // proves nothing about whether the finalisation itself runs twice.
+        async let first: Void = appState.finishActiveMeetingBeforeTermination()
+        async let second: Void = appState.finishActiveMeetingBeforeTermination()
+        _ = await (first, second)
+
+        XCTAssertTrue(session.isFinalised)
+        XCTAssertNil(appState.activeMeetingSession)
+        XCTAssertNotNil(session.transcript.endDate)
+
+        // And a third attempt afterwards must still be refused.
+        XCTAssertFalse(
+            session.markFinalised(),
+            "a later finalisation was allowed, which is how the summary ran twice"
+        )
+        // The transcript must have been written exactly once per finalisation, so the
+        // file exists and the session is not still holding a save failure.
+        XCTAssertNil(session.saveFailureMessage)
+    }
+
+    /// And a quit arriving while a finalisation is already running must WAIT for it.
+    ///
+    /// Returning early was not enough. Once the first finalisation is past `stop()` and
+    /// into the summary, the session reports itself neither active nor draining, so a
+    /// Quit arriving then was told it could terminate immediately and could kill the
+    /// write. That is bug 4 coming back through bug 12's fix.
+    func testAQuitDuringAFinalisationStillHasSomethingToWaitFor() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        let session = MeetingSession(
+            meetingName: "Quit mid-finalisation",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("AFFlowTests-\(UUID().uuidString)"),
+            captureStartOverride: {}
+        )
+        try await session.start()
+        session.transcript.appendSegment(
+            TranscriptSegment(id: UUID(), speaker: .me, startTime: 0, endTime: 1, text: "the ending of the meeting")
+        )
+        appState.activeMeetingSession = session
+
+        await appState.finishActiveMeetingBeforeTermination()
+
+        // Once everything has genuinely finished, and only then, there is nothing left
+        // to hold up a quit.
+        XCTAssertFalse(
+            appState.hasMeetingToFinishBeforeQuitting,
+            "a quit would still be waiting on work that has already finished"
+        )
+        XCTAssertNotNil(session.transcript.endDate)
+    }
+
+    /// The delegate itself, which is where the two defects the review found lived.
+    ///
+    /// The first version raced the finalisation against a timeout with
+    /// `withTaskGroup` plus `cancelAll()`, which bounds nothing because a task group
+    /// waits for every child including cancelled ones. And nothing made the reply
+    /// single-flight, so a second Quit could start a second finalisation and the app
+    /// could be told twice that it may terminate.
+    @MainActor
+    func testTheQuitDeadlineRepliesWithoutWaitingForAMeetingThatWillNotFinish() async {
+        let delegate = AppReopenDelegate()
+        let replies = ReplyCounter()
+        let neverFinishes = AsyncTestGate()
+        delegate.hasMeetingToFinish = { true }
+        delegate.finishMeeting = { await neverFinishes.wait() }
+        delegate.replyToTermination = { _ in replies.record() }
+        delegate.waitForQuitGrace = { try? await Task.sleep(nanoseconds: 50_000_000) }
+
+        let reply = delegate.applicationShouldTerminate(NSApplication.shared)
+        XCTAssertEqual(reply, .terminateLater)
+
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertEqual(
+            replies.count,
+            1,
+            "the deadline must reply even though the finalisation is still stuck, and exactly once"
+        )
+
+        // A second Quit while the first is in flight must not start another one.
+        let second = delegate.applicationShouldTerminate(NSApplication.shared)
+        XCTAssertEqual(second, .terminateLater)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(replies.count, 1, "the app must never be told twice that it may terminate")
+
+        neverFinishes.release()
+    }
+
+    @MainActor
+    func testQuittingWithNoMeetingTerminatesImmediately() {
+        let delegate = AppReopenDelegate()
+        delegate.hasMeetingToFinish = { false }
+        delegate.finishMeeting = { }
+        XCTAssertEqual(delegate.applicationShouldTerminate(NSApplication.shared), .terminateNow)
+    }
+
+    /// And quitting with no meeting running must not be delayed at all.
+    func testThereIsNothingToFinishWhenNoMeetingIsRunning() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        XCTAssertFalse(appState.hasMeetingToFinishBeforeQuitting)
+    }
+
+    /// And it must not refuse forever: once the previous meeting has finished,
+    /// starting the next one has to work, or the guard is worse than the bug.
+    func testAMeetingCanStartOnceTheLastOneHasFinished() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        appState.speechModel = SpeechModelCatalog.defaultModelID
+
+        let finished = MeetingSession(
+            meetingName: "Yesterday's call",
+            transcriber: appState.transcriber,
+            saveDirectory: FileManager.default.temporaryDirectory
+        )
+        finished.isActive = false
+        appState.activeMeetingSession = finished
+
+        let next = try appState.createMeetingSession(name: "Today's call")
+        XCTAssertTrue(appState.activeMeetingSession === next)
+        await next.stop()
+    }
+
+    func testMeetingSessionStopWaitsForStartupToFinish() async throws {
+        let startGate = AsyncTestGate()
+        let session = MeetingSession(
+            meetingName: "Starting meeting",
+            transcriber: SpeechTranscriber(modelManager: ModelManager()),
+            saveDirectory: FileManager.default.temporaryDirectory,
+            captureStartOverride: {
+                await startGate.wait()
+            }
+        )
+
+        let startTask = Task {
+            try? await session.start()
+        }
+        await waitForCondition { session.isStarting }
+
+        let stopTask = Task { await session.stop() }
+        for _ in 0..<20 {
+            await Task.yield()
+        }
+        XCTAssertTrue(session.isStarting)
+
+        startGate.release()
+        await startTask.value
+        await stopTask.value
+
+        XCTAssertFalse(session.isActive)
+        XCTAssertFalse(session.isStarting)
+        XCTAssertFalse(session.isDraining)
+    }
+
+    func testMeetingSessionStopBeforeStartupCancelsNextStart() async throws {
+        var captureStartCallCount = 0
+        let session = MeetingSession(
+            meetingName: "Cancelled meeting",
+            transcriber: SpeechTranscriber(modelManager: ModelManager()),
+            saveDirectory: FileManager.default.temporaryDirectory,
+            captureStartOverride: {
+                captureStartCallCount += 1
+            }
+        )
+
+        await session.stop()
+        try await session.start()
+
+        XCTAssertEqual(captureStartCallCount, 0)
+        XCTAssertFalse(session.isActive)
+        XCTAssertFalse(session.isStarting)
+        XCTAssertFalse(session.isDraining)
+    }
+
+    func testMeetingSessionStopCleansUpAfterStartupFailure() async throws {
+        struct StartupFailure: Error {}
+        let session = MeetingSession(
+            meetingName: "Failed meeting",
+            transcriber: SpeechTranscriber(modelManager: ModelManager()),
+            saveDirectory: FileManager.default.temporaryDirectory,
+            captureStartOverride: {
+                throw StartupFailure()
+            }
+        )
+
+        do {
+            try await session.start()
+            XCTFail("Expected meeting startup to fail")
+        } catch is StartupFailure {
+            // Expected failure from the injected capture startup.
+        }
+
+        await session.stop()
+
+        XCTAssertFalse(session.isActive)
+        XCTAssertFalse(session.isStarting)
+        XCTAssertFalse(session.isDraining)
+        XCTAssertNotNil(session.fileURL)
+        XCTAssertNotNil(session.transcript.endDate)
+    }
+
+    func testAppStateWaitsForPepperChatTranscriptionBeforeReloadingSpeechAnalyzer() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var factoryCallCount = 0
+        let reloadGate = AsyncTestGate()
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { _ in
+                factoryCallCount += 1
+                if factoryCallCount == 2 {
+                    await reloadGate.wait()
+                }
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        defer { reloadGate.release() }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        appState.preferredLanguage = "en"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.status = .ready
+
+        appState.pepperChatSession.isTranscribing = true
+        appState.preferredLanguage = "fr"
+
+        let reload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(factoryCallCount, 1)
+        XCTAssertEqual(appState.status, .ready)
+
+        appState.pepperChatSession.isTranscribing = false
+        await waitForCondition { factoryCallCount >= 2 }
+        XCTAssertEqual(appState.status, .loading)
+
+        reloadGate.release()
+        await reload.value
+        XCTAssertEqual(appState.status, .ready)
+    }
+
+    func testAppStateWaitsForTranscriptionLabPipelineBeforeReloadingSpeechAnalyzer() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var factoryCallCount = 0
+        let reloadGate = AsyncTestGate()
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { _ in
+                factoryCallCount += 1
+                if factoryCallCount == 2 {
+                    await reloadGate.wait()
+                }
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        defer { reloadGate.release() }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        appState.preferredLanguage = "en"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.status = .ready
+        XCTAssertTrue(appState.acquirePipeline(for: .transcriptionLab))
+        defer { appState.releasePipeline(owner: .transcriptionLab) }
+
+        appState.preferredLanguage = "fr"
+        let reload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(factoryCallCount, 1)
+        XCTAssertEqual(appState.status, .ready)
+
+        appState.releasePipeline(owner: .transcriptionLab)
+        await waitForCondition { factoryCallCount >= 2 }
+        XCTAssertEqual(appState.status, .loading)
+
+        reloadGate.release()
+        await reload.value
+        XCTAssertEqual(appState.status, .ready)
+    }
+
+    func testAppStateCancellingSpeechAnalyzerReloadWhileRecordingDoesNotLoadOrChangeStatus() async throws {
+        guard #available(macOS 26, *) else {
+            throw XCTSkip("SpeechAnalyzer requires macOS 26 or later.")
+        }
+        var factoryCallCount = 0
+        let manager = ModelManager(
+            modelName: SpeechModelCatalog.speechAnalyzer.id,
+            speechAnalyzerBackendFactory: { _ in
+                factoryCallCount += 1
+                return AppStateSpeechAnalyzerStub()
+            }
+        )
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            modelManager: manager
+        )
+        appState.speechModel = SpeechModelCatalog.speechAnalyzer.id
+        appState.preferredLanguage = "en"
+        await appState.loadSpeechModel(name: SpeechModelCatalog.speechAnalyzer.id)
+        appState.status = .recording
+        appState.isRecording = true
+        appState.preferredLanguage = "fr"
+
+        let reload = Task { await appState.reloadSpeechAnalyzerForPreferredLanguageIfNeeded() }
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+        reload.cancel()
+        await reload.value
+
+        XCTAssertEqual(factoryCallCount, 1)
+        XCTAssertEqual(appState.status, .recording)
+    }
+
+    func testEmptyTranscriptionDispositionCancelsSubThresholdRecordings() {
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 7_999),
+            .cancel
+        )
+    }
+
+    // THE 2026-08-09 OUTAGE, AS A TEST.
+    //
+    // He held the key for 103 seconds, the tap delivered nothing because the
+    // audio engine's input path had been invalidated by a sleep/wake, and the
+    // app dismissed the overlay and said nothing at all. Six times in a row.
+    // A sub-threshold buffer is only innocent when the hold was short enough to
+    // be a mis-press; a long hold that produced no audio is a capture failure
+    // and he has to be told.
+    func testEmptyTranscriptionDispositionReportsFailureWhenALongHoldCapturedNothing() {
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 0, holdDuration: 103.0),
+            .showNoSoundDetected
+        )
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 7_999, holdDuration: 2.01),
+            .showNoSoundDetected
+        )
+    }
+
+    func testPushToTalkHoldDurationIsTheKeyDownToKeyUpInterval() {
+        var trace = PerformanceTrace(sessionID: "hold", startedAt: Date(timeIntervalSince1970: 0))
+        trace.hotkeyDetectedAt = Date(timeIntervalSince1970: 100)
+        trace.hotkeyLiftedAt = Date(timeIntervalSince1970: 203)
+
+        XCTAssertEqual(AppState.pushToTalkHoldDuration(from: trace) ?? -1, 103, accuracy: 0.001)
+    }
+
+    func testPushToTalkHoldDurationIsUnknownWithoutBothEndsOfTheHold() {
+        var trace = PerformanceTrace(sessionID: "hold", startedAt: Date(timeIntervalSince1970: 0))
+        trace.hotkeyDetectedAt = Date(timeIntervalSince1970: 100)
+
+        XCTAssertNil(AppState.pushToTalkHoldDuration(from: trace))
+        XCTAssertNil(AppState.pushToTalkHoldDuration(from: nil))
+    }
+
+    func testEmptyTranscriptionDispositionStillCancelsShortMisPresses() {
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 0, holdDuration: 0.4),
+            .cancel
+        )
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 7_999, holdDuration: 1.99),
+            .cancel
+        )
+    }
+
+    func testEmptyTranscriptionDispositionShowsNoSoundDetectedAtThresholdAndAbove() {
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 8_000),
+            .showNoSoundDetected
+        )
+        XCTAssertEqual(
+            AppState.emptyTranscriptionDisposition(forAudioSampleCount: 9_600),
+            .showNoSoundDetected
+        )
+    }
+
+    func testNoSoundDetectedOverlayMessageUsesExpectedCopy() {
+        XCTAssertEqual(OverlayMessage.noSoundDetected.primaryText, "No sound detected")
+        XCTAssertEqual(
+            OverlayMessage.noSoundDetected.secondaryText,
+            "Check your mic in Settings → Recording"
+        )
+    }
+
+    func testClipboardFallbackOverlayMessageUsesExpectedCopy() {
+        XCTAssertEqual(OverlayMessage.clipboardFallback.primaryText, "Copied to clipboard")
+        XCTAssertEqual(OverlayMessage.clipboardFallback.secondaryText, "⌘V to paste")
+    }
+
+    func testOverlayHostingViewDoesNotManageWindowSizingConstraints() {
+        let overlay = RecordingOverlayController()
+        overlay.show(message: .recording)
+        defer { overlay.dismiss() }
+
+        let panel: NSPanel? = unwrapPrivateOptional(named: "panel", from: overlay)
+        let hostingView: NSHostingView<OverlayPillView>? = unwrapPrivateOptional(
+            named: "hostingView",
+            from: overlay
+        )
+
+        XCTAssertNotNil(panel)
+        XCTAssertNotNil(hostingView)
+        XCTAssertEqual(hostingView?.sizingOptions, [])
+        XCTAssertFalse(panel?.contentView is NSHostingView<OverlayPillView>)
+    }
+
+    private func unwrapPrivateOptional<T>(named name: String, from object: Any) -> T? {
+        let mirror = Mirror(reflecting: object)
+        guard let child = mirror.children.first(where: { $0.label == name }) else {
+            return nil
+        }
+
+        let optionalMirror = Mirror(reflecting: child.value)
+        guard optionalMirror.displayStyle == .optional else {
+            return child.value as? T
+        }
+
+        return optionalMirror.children.first?.value as? T
+    }
+
+    func testAppStateLoadsDefaultShortcutBindingsIntoHotkeyMonitor() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let monitor = FakeHotkeyMonitor()
+        let appState = AppState(hotkeyMonitor: monitor, chordBindingStore: ChordBindingStore(defaults: defaults))
+
+        await appState.startHotkeyMonitor()
+
+        XCTAssertEqual(monitor.updatedBindings[.pushToTalk], AppState.defaultPushToTalkChord)
+        XCTAssertEqual(monitor.updatedBindings[.toggleToTalk], AppState.defaultToggleToTalkChord)
+    }
+
+    func testAppStateWiresPushAndToggleCallbacksIntoHotkeyMonitor() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let monitor = FakeHotkeyMonitor()
+        let appState = AppState(hotkeyMonitor: monitor, chordBindingStore: ChordBindingStore(defaults: defaults))
+
+        await appState.startHotkeyMonitor()
+
+        XCTAssertNotNil(monitor.onPushToTalkStart)
+        XCTAssertNotNil(monitor.onPushToTalkStop)
+        XCTAssertNotNil(monitor.onToggleToTalkStart)
+        XCTAssertNotNil(monitor.onToggleToTalkStop)
+    }
+
+    func testAppStateStartHotkeyMonitorSkipsRepeatedStartAfterSuccess() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let monitor = FakeHotkeyMonitor()
+        let appState = AppState(
+            hotkeyMonitor: monitor,
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            inputMonitoringChecker: { true }
+        )
+
+        await appState.startHotkeyMonitor()
+        await appState.startHotkeyMonitor()
+
+        XCTAssertEqual(monitor.startCallCount, 1)
+    }
+
+    func testAppStateStartHotkeyMonitorPromptsForInputMonitoringButStillStartsWhenMonitorCanRun() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let monitor = FakeHotkeyMonitor()
+        var requestCount = 0
+        let appState = AppState(
+            hotkeyMonitor: monitor,
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            inputMonitoringChecker: { false },
+            inputMonitoringPrompter: { requestCount += 1 }
+        )
+
+        await appState.startHotkeyMonitor()
+
+        XCTAssertEqual(monitor.startCallCount, 1)
+        XCTAssertEqual(requestCount, 1)
+        XCTAssertEqual(appState.status, .ready)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    func testAppStateUpdateShortcutRefreshesHotkeyMonitorBindings() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let monitor = FakeHotkeyMonitor()
+        let appState = AppState(hotkeyMonitor: monitor, chordBindingStore: ChordBindingStore(defaults: defaults))
+        let newChord = try XCTUnwrap(KeyChord(keys: Set([
+            PhysicalKey(keyCode: 54),
+            PhysicalKey(keyCode: 61),
+            PhysicalKey(keyCode: 53)
+        ])))
+
+        appState.updateShortcut(newChord, for: .pushToTalk)
+
+        XCTAssertEqual(appState.pushToTalkChord, newChord)
+        XCTAssertEqual(monitor.updatedBindings[.pushToTalk], newChord)
+    }
+
+    func testAppStateUpdateShortcutRejectsDuplicateBindings() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let monitor = FakeHotkeyMonitor()
+        let appState = AppState(hotkeyMonitor: monitor, chordBindingStore: ChordBindingStore(defaults: defaults))
+        let originalToggleChord = appState.toggleToTalkChord
+
+        appState.updateShortcut(AppState.defaultPushToTalkChord, for: .toggleToTalk)
+
+        XCTAssertEqual(appState.toggleToTalkChord, originalToggleChord)
+        XCTAssertEqual(monitor.updatedBindings[.toggleToTalk], originalToggleChord)
+        XCTAssertEqual(appState.shortcutErrorMessage, "That shortcut is already in use.")
+    }
+
+    func testAppStateLoadsPersistedCleanupBackendSelection() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        defaults.set("foundationModels", forKey: "cleanupBackend")
+
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        XCTAssertEqual(appState.cleanupBackend, .localModels)
+    }
+
+    /// AF Flow inverts the upstream behaviour this test used to assert. Upstream
+    /// enabled Context Bundler when a Zo token was already stored. AF Flow must
+    /// never enable it, because there is no way to enter a key and no working
+    /// backend, so a token persisted from an earlier install must not revive the
+    /// feature. Hard rule 1.
+    func testAppStateNeverEnablesPepperChatEvenWhenZoTokenAlreadyStored() throws {
+        try withClearedPepperChatAppStorage {
+            UserDefaults.standard.set("zo_sk_existing", forKey: "pepperChatApiKey")
+
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+            defaults.removePersistentDomain(forName: #function)
+            let appState = AppState(
+                hotkeyMonitor: FakeHotkeyMonitor(),
+                chordBindingStore: ChordBindingStore(defaults: defaults),
+                cleanupSettingsDefaults: defaults
+            )
+
+            XCTAssertFalse(appState.pepperChatEnabled)
+            XCTAssertTrue(appState.pepperChatApiKey.isEmpty)
+        }
+    }
+
+    func testAppStateDefaultsPepperChatToDisabledWithoutZoToken() throws {
+        try withClearedPepperChatAppStorage {
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+            defaults.removePersistentDomain(forName: #function)
+            let appState = AppState(
+                hotkeyMonitor: FakeHotkeyMonitor(),
+                chordBindingStore: ChordBindingStore(defaults: defaults),
+                cleanupSettingsDefaults: defaults
+            )
+
+            XCTAssertFalse(appState.pepperChatEnabled)
+        }
+    }
+
+    func testAppStateUsesStoredPepperChatToggleOverZoTokenBackCompatDefault() throws {
+        try withClearedPepperChatAppStorage {
+            UserDefaults.standard.set("zo_sk_existing", forKey: "pepperChatApiKey")
+            UserDefaults.standard.set(false, forKey: "pepperChatEnabled")
+
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+            defaults.removePersistentDomain(forName: #function)
+            let appState = AppState(
+                hotkeyMonitor: FakeHotkeyMonitor(),
+                chordBindingStore: ChordBindingStore(defaults: defaults),
+                cleanupSettingsDefaults: defaults
+            )
+
+            XCTAssertFalse(appState.pepperChatEnabled)
+        }
+    }
+
+    func testAppStateStartHotkeyMonitorOmitsPepperChatBindingWhenDisabled() async throws {
+        try await withClearedPepperChatAppStorage {
+            UserDefaults.standard.set(false, forKey: "pepperChatEnabled")
+
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+            defaults.removePersistentDomain(forName: #function)
+            let monitor = FakeHotkeyMonitor()
+            let appState = AppState(
+                hotkeyMonitor: monitor,
+                chordBindingStore: ChordBindingStore(defaults: defaults)
+            )
+
+            await appState.startHotkeyMonitor()
+
+            XCTAssertNil(monitor.updatedBindings[.pepperChat])
+        }
+    }
+
+    func testAppStateDoesNotStartPepperChatRecordingWhenDisabled() throws {
+        try withClearedPepperChatAppStorage {
+            UserDefaults.standard.set(false, forKey: "pepperChatEnabled")
+            UserDefaults.standard.set("zo_sk_existing", forKey: "pepperChatApiKey")
+
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+            defaults.removePersistentDomain(forName: #function)
+            let appState = AppState(
+                hotkeyMonitor: FakeHotkeyMonitor(),
+                chordBindingStore: ChordBindingStore(defaults: defaults),
+                cleanupSettingsDefaults: defaults
+            )
+
+            appState.beginPepperChatRecording()
+
+            XCTAssertFalse(appState.pepperChatSession.isRecording)
+        }
+    }
+
+    func testSpeechModelPresentationDoesNotExposeManagerLoadFailureInMenuErrorMessage() {
+        let loadError = NSError(
+            domain: NSURLErrorDomain,
+            code: -1001,
+            userInfo: [NSLocalizedDescriptionKey: "The request timed out."]
+        )
+
+        let next = AppState.nextSpeechModelPresentation(
+            managerState: .error,
+            managerError: loadError,
+            currentStatus: .ready,
+            currentErrorMessage: nil
+        )
+
+        XCTAssertEqual(next.status, .error)
+        XCTAssertNil(next.errorMessage)
+    }
+
+    func testSpeechModelPresentationClearsStaleSpeechModelErrorAfterSuccessfulLoad() {
+        let next = AppState.nextSpeechModelPresentation(
+            managerState: .ready,
+            managerError: nil,
+            currentStatus: .error,
+            currentErrorMessage: "Failed to load speech model: The request timed out."
+        )
+
+        XCTAssertEqual(next.status, .ready)
+        XCTAssertNil(next.errorMessage)
+    }
+
+    func testSpeechModelPresentationPreservesUnrelatedErrorAfterSuccessfulLoad() {
+        let next = AppState.nextSpeechModelPresentation(
+            managerState: .ready,
+            managerError: nil,
+            currentStatus: .error,
+            currentErrorMessage: "Accessibility access required: grant permission then click Retry"
+        )
+
+        XCTAssertEqual(next.status, .error)
+        XCTAssertEqual(
+            next.errorMessage,
+            "Accessibility access required: grant permission then click Retry"
+        )
+    }
+
+    func testAppStateUpdateCleanupBackendPersistsAndUpdatesTextCleaner() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        appState.updateCleanupBackend(.localModels)
+
+        XCTAssertEqual(appState.cleanupBackend, .localModels)
+        XCTAssertEqual(
+            defaults.string(forKey: "cleanupBackend"),
+            CleanupBackendOption.localModels.rawValue
+        )
+    }
+
+    func testAppStatePersistsIgnoreOtherSpeakersPreference() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        defaults.set(true, forKey: "ignoreOtherSpeakers")
+
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        XCTAssertTrue(appState.ignoreOtherSpeakers)
+
+        appState.ignoreOtherSpeakers = false
+
+        XCTAssertEqual(defaults.object(forKey: "ignoreOtherSpeakers") as? Bool, false)
+    }
+
+    func testAppStateDefaultsPostPasteLearningToEnabled() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        XCTAssertTrue(appState.postPasteLearningEnabled)
+        XCTAssertTrue(appState.postPasteLearningCoordinator.learningEnabled)
+    }
+
+    func testRecordingSettingsDisablesIgnoreOtherSpeakersForWhisperModels() {
+        let parakeetState = RecordingSpeakerFilteringToggleState(
+            speechModel: SpeechModelCatalog.parakeetV3
+        )
+        let whisperState = RecordingSpeakerFilteringToggleState(
+            speechModel: SpeechModelCatalog.whisperSmallEnglish
+        )
+
+        XCTAssertTrue(parakeetState.isVisible)
+        XCTAssertTrue(parakeetState.isEnabled)
+        XCTAssertTrue(whisperState.isVisible)
+        XCTAssertFalse(whisperState.isEnabled)
+    }
+
+    func testAppStateUpdatePostPasteLearningPersistsAndUpdatesCoordinator() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        appState.postPasteLearningEnabled = false
+
+        XCTAssertFalse(appState.postPasteLearningEnabled)
+        XCTAssertFalse(appState.postPasteLearningCoordinator.learningEnabled)
+        XCTAssertEqual(defaults.object(forKey: "postPasteLearningEnabled") as? Bool, false)
+    }
+
+    func testAppStateDefaultsSoundsEnabled() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        XCTAssertTrue(appState.playSounds)
+    }
+
+    func testAppStatePersistsSoundPreference() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        appState.playSounds = false
+
+        XCTAssertFalse(appState.playSounds)
+        XCTAssertEqual(defaults.object(forKey: "playSounds") as? Bool, false)
+
+        let reloadedAppState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        XCTAssertFalse(reloadedAppState.playSounds)
+    }
+
+    func testPrepareRecordingSessionStreamsChunksToDiarizationAndTranscriptionSessions() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let transcriptionSession = FakeRecordingTranscriptionSession(finalTranscript: "streamed transcript")
+        var diarizationChunks: [[Float]] = []
+
+        appState.speechModel = SpeechModelCatalog.parakeetV3.id
+        appState.ignoreOtherSpeakers = true
+        appState.recordingTranscriptionSessionFactory = { descriptor in
+            XCTAssertEqual(descriptor, SpeechModelCatalog.parakeetV3)
+            return transcriptionSession
+        }
+        appState.recordingSessionCoordinatorFactory = {
+            RecordingSessionCoordinator(
+                appendAudioChunk: { samples in
+                    diarizationChunks.append(samples)
+                },
+                finish: {
+                    (nil, Self.makeDiarizationSummary(usedFallback: true))
+                }
+            )
+        }
+
+        await appState.prepareRecordingSessionIfNeeded()
+        appState.audioRecorder.onConvertedAudioChunk?([1, 2, 3, 4])
+
+        XCTAssertNotNil(appState.activeRecordingSessionCoordinator)
+        XCTAssertEqual(diarizationChunks, [[1, 2, 3, 4]])
+        XCTAssertEqual(transcriptionSession.appendedChunks, [[1, 2, 3, 4]])
+    }
+
+    func testAppStateUsesRecordingTranscriptionSessionBeforeBatchFallback() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let transcriptionSession = FakeRecordingTranscriptionSession(finalTranscript: "streamed transcript")
+        let cleanedInputs = LockedValue<[String]>([])
+        var batchTranscriptionCallCount = 0
+
+        appState.speechModel = SpeechModelCatalog.parakeetV3.id
+        appState.recordingTranscriptionSessionFactory = { descriptor in
+            XCTAssertEqual(descriptor, SpeechModelCatalog.parakeetV3)
+            return transcriptionSession
+        }
+        appState.transcribeAudioBufferOverride = { _ in
+            batchTranscriptionCallCount += 1
+            return "batch transcript"
+        }
+        appState.cleanedTranscriptionResultOverride = { text, _ in
+            await cleanedInputs.append(text)
+            return (text: text, prompt: "", attemptedCleanup: false, cleanupUsedFallback: false)
+        }
+
+        await appState.prepareRecordingSessionIfNeeded()
+        appState.audioRecorder.onConvertedAudioChunk?([1, 2, 3])
+        appState.audioRecorder.onConvertedAudioChunk?([4, 5, 6])
+
+        await appState.finishRecordingForTesting(
+            audioBuffer: [1, 2, 3, 4, 5, 6],
+            recordingSessionCoordinator: nil,
+            recordingTranscriptionSession: appState.activeRecordingTranscriptionSession,
+            archivedWindowContext: nil
+        )
+
+        XCTAssertEqual(transcriptionSession.appendedChunks, [[1, 2, 3], [4, 5, 6]])
+        XCTAssertEqual(transcriptionSession.finishCallCount, 1)
+        XCTAssertEqual(batchTranscriptionCallCount, 0)
+        let recordedCleanupInputs = await cleanedInputs.get()
+        XCTAssertEqual(recordedCleanupInputs, ["streamed transcript"])
+    }
+
+    func testAppStateSkipsBatchFallbackWhenRecordingSessionDisallowsIt() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let transcriptionSession = FakeRecordingTranscriptionSession(finalTranscript: nil)
+        var batchTranscriptionCallCount = 0
+
+        appState.speechModel = SpeechModelCatalog.parakeetV3.id
+        appState.recordingTranscriptionSessionFactory = { descriptor in
+            XCTAssertEqual(descriptor, SpeechModelCatalog.parakeetV3)
+            return transcriptionSession
+        }
+        appState.transcribeAudioBufferOverride = { _ in
+            batchTranscriptionCallCount += 1
+            return "batch transcript"
+        }
+
+        await appState.prepareRecordingSessionIfNeeded()
+        appState.audioRecorder.onConvertedAudioChunk?([1, 2, 3])
+        appState.audioRecorder.onConvertedAudioChunk?([4, 5, 6])
+
+        await appState.finishRecordingForTesting(
+            audioBuffer: [1, 2, 3, 4, 5, 6],
+            recordingSessionCoordinator: nil,
+            recordingTranscriptionSession: appState.activeRecordingTranscriptionSession,
+            archivedWindowContext: nil
+        )
+
+        XCTAssertEqual(transcriptionSession.finishCallCount, 1)
+        XCTAssertEqual(batchTranscriptionCallCount, 0)
+    }
+
+    func testAppStateFallsBackToBatchTranscriptionWhenRecordingSessionAllowsIt() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let transcriptionSession = FakeRecordingTranscriptionSession(
+            finalTranscript: nil,
+            allowsBatchFallback: true
+        )
+        let cleanedInputs = LockedValue<[String]>([])
+        var batchTranscriptionCallCount = 0
+
+        appState.speechModel = SpeechModelCatalog.parakeetV3.id
+        appState.recordingTranscriptionSessionFactory = { descriptor in
+            XCTAssertEqual(descriptor, SpeechModelCatalog.parakeetV3)
+            return transcriptionSession
+        }
+        appState.transcribeAudioBufferOverride = { _ in
+            batchTranscriptionCallCount += 1
+            return "batch transcript"
+        }
+        appState.cleanedTranscriptionResultOverride = { text, _ in
+            await cleanedInputs.append(text)
+            return (text: text, prompt: "", attemptedCleanup: false, cleanupUsedFallback: false)
+        }
+
+        await appState.prepareRecordingSessionIfNeeded()
+        appState.audioRecorder.onConvertedAudioChunk?([1, 2, 3])
+        appState.audioRecorder.onConvertedAudioChunk?([4, 5, 6])
+
+        await appState.finishRecordingForTesting(
+            audioBuffer: [1, 2, 3, 4, 5, 6],
+            recordingSessionCoordinator: nil,
+            recordingTranscriptionSession: appState.activeRecordingTranscriptionSession,
+            archivedWindowContext: nil
+        )
+
+        XCTAssertEqual(transcriptionSession.finishCallCount, 1)
+        XCTAssertEqual(batchTranscriptionCallCount, 1)
+        let recordedCleanupInputs = await cleanedInputs.get()
+        XCTAssertEqual(recordedCleanupInputs, ["batch transcript"])
+    }
+
+    func testAppStateFallsBackToBatchTranscriptionWhenSlidingWindowStreamReturnsNothing() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let streamedChunks = LockedValue<[[Float]]>([])
+        let streamingEvents = LockedValue<[String]>([])
+        let cleanedInputs = LockedValue<[String]>([])
+        var batchTranscriptionCallCount = 0
+
+        appState.speechModel = SpeechModelCatalog.parakeetV3.id
+        appState.recordingTranscriptionSessionFactory = { descriptor in
+            XCTAssertEqual(descriptor, SpeechModelCatalog.parakeetV3)
+            return SlidingWindowRecordingTranscriptionSession {
+                StreamingRecordingHandle(
+                    appendAudioChunk: { samples in
+                        await streamedChunks.append(samples)
+                    },
+                    finishTranscription: {
+                        await streamingEvents.append("finish")
+                        return ""
+                    },
+                    cancel: {
+                        await streamingEvents.append("cancel")
+                    },
+                    cleanup: {
+                        await streamingEvents.append("cleanup")
+                    }
+                )
+            }
+        }
+        appState.transcribeAudioBufferOverride = { _ in
+            batchTranscriptionCallCount += 1
+            return "batch transcript"
+        }
+        appState.cleanedTranscriptionResultOverride = { text, _ in
+            await cleanedInputs.append(text)
+            return (text: text, prompt: "", attemptedCleanup: false, cleanupUsedFallback: false)
+        }
+
+        await appState.prepareRecordingSessionIfNeeded()
+        appState.audioRecorder.onConvertedAudioChunk?([1, 2, 3])
+        appState.audioRecorder.onConvertedAudioChunk?([4, 5, 6])
+
+        await appState.finishRecordingForTesting(
+            audioBuffer: [1, 2, 3, 4, 5, 6],
+            recordingSessionCoordinator: nil,
+            recordingTranscriptionSession: appState.activeRecordingTranscriptionSession,
+            archivedWindowContext: nil
+        )
+
+        XCTAssertEqual(batchTranscriptionCallCount, 1)
+        let recordedChunks = await streamedChunks.get()
+        XCTAssertEqual(recordedChunks, [[1, 2, 3], [4, 5, 6]])
+        let recordedEvents = await streamingEvents.get()
+        XCTAssertEqual(recordedEvents, ["finish", "cleanup"])
+        let recordedCleanupInputs = await cleanedInputs.get()
+        XCTAssertEqual(recordedCleanupInputs, ["batch transcript"])
+    }
+
+    func testAppStateDoesNotRunExternalBatchFallbackWhenSlidingWindowSessionOwnsFinalBatchTranscription() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let streamedChunks = LockedValue<[[Float]]>([])
+        let streamingEvents = LockedValue<[String]>([])
+        var batchTranscriptionCallCount = 0
+
+        appState.speechModel = SpeechModelCatalog.parakeetV3.id
+        appState.recordingTranscriptionSessionFactory = { descriptor in
+            XCTAssertEqual(descriptor, SpeechModelCatalog.parakeetV3)
+            return SlidingWindowRecordingTranscriptionSession(
+                fullBufferTranscription: { _ in nil },
+                handleFactory: {
+                    StreamingRecordingHandle(
+                        appendAudioChunk: { samples in
+                            await streamedChunks.append(samples)
+                        },
+                        finishTranscription: {
+                            await streamingEvents.append("finish")
+                            return "streamed transcript"
+                        },
+                        cancel: {
+                            await streamingEvents.append("cancel")
+                        },
+                        cleanup: {
+                            await streamingEvents.append("cleanup")
+                        }
+                    )
+                }
+            )
+        }
+        appState.transcribeAudioBufferOverride = { _ in
+            batchTranscriptionCallCount += 1
+            return "batch transcript"
+        }
+
+        await appState.prepareRecordingSessionIfNeeded()
+        appState.audioRecorder.onConvertedAudioChunk?([1, 2, 3])
+        appState.audioRecorder.onConvertedAudioChunk?([4, 5, 6])
+
+        await appState.finishRecordingForTesting(
+            audioBuffer: [1, 2, 3, 4, 5, 6],
+            recordingSessionCoordinator: nil,
+            recordingTranscriptionSession: appState.activeRecordingTranscriptionSession,
+            archivedWindowContext: nil
+        )
+
+        XCTAssertEqual(batchTranscriptionCallCount, 0)
+        let recordedChunks = await streamedChunks.get()
+        XCTAssertEqual(recordedChunks, [[1, 2, 3], [4, 5, 6]])
+        let recordedEvents = await streamingEvents.get()
+        XCTAssertEqual(recordedEvents, ["finish", "cleanup"])
+    }
+
+    func testFinishRecordingForTestingSkipsWindowContextProviderWhenTranscriptIsMissing() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let providerCallCount = LockedValue(0)
+
+        appState.transcribeAudioBufferOverride = { _ in
+            nil
+        }
+
+        await appState.finishRecordingForTesting(
+            audioBuffer: [1, 2, 3, 4],
+            recordingSessionCoordinator: nil,
+            recordingTranscriptionSession: nil,
+            archivedWindowContext: nil,
+            windowContextProvider: {
+                await providerCallCount.set(1)
+                return RecordingOCRPrefetchResult(
+                    context: OCRContext(windowContents: "captured"),
+                    elapsed: 0.25
+                )
+            }
+        )
+
+        let callCount = await providerCallCount.get()
+        XCTAssertEqual(callCount, 0)
+    }
+
+    func testAppStatePrefersFilteredSpeakerTranscriptOverStreamedTranscript() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let transcriptionSession = FakeRecordingTranscriptionSession(finalTranscript: "streamed transcript")
+        let cleanedInputs = LockedValue<[String]>([])
+        var batchTranscriptionCallCount = 0
+        let coordinator = RecordingSessionCoordinator(
+            appendAudioChunk: { _ in },
+            finish: {
+                ("speaker filtered transcript", Self.makeDiarizationSummary(usedFallback: false))
+            }
+        )
+
+        appState.transcribeAudioBufferOverride = { _ in
+            batchTranscriptionCallCount += 1
+            return "batch transcript"
+        }
+        appState.cleanedTranscriptionResultOverride = { text, _ in
+            await cleanedInputs.append(text)
+            return (text: text, prompt: "", attemptedCleanup: false, cleanupUsedFallback: false)
+        }
+
+        await appState.finishRecordingForTesting(
+            audioBuffer: [1, 2, 3, 4],
+            recordingSessionCoordinator: coordinator,
+            recordingTranscriptionSession: transcriptionSession,
+            archivedWindowContext: nil
+        )
+
+        let recordedCleanupInputs = await cleanedInputs.get()
+        XCTAssertEqual(recordedCleanupInputs, ["speaker filtered transcript"])
+        XCTAssertEqual(transcriptionSession.cancelCallCount, 1)
+        XCTAssertEqual(transcriptionSession.finishCallCount, 0)
+        XCTAssertEqual(batchTranscriptionCallCount, 0)
+    }
+
+    func testAppStatePipelineOwnershipAllowsSingleOwnerAtATime() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        XCTAssertTrue(appState.acquirePipeline(for: .transcriptionLab))
+        XCTAssertFalse(appState.acquirePipeline(for: .liveRecording))
+
+        appState.releasePipeline(owner: .transcriptionLab)
+
+        XCTAssertTrue(appState.acquirePipeline(for: .liveRecording))
+    }
+
+    func testAppStatePipelineReleaseIgnoresWrongOwner() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        XCTAssertTrue(appState.acquirePipeline(for: .transcriptionLab))
+
+        appState.releasePipeline(owner: .liveRecording)
+
+        XCTAssertFalse(appState.acquirePipeline(for: .liveRecording))
+        appState.releasePipeline(owner: .transcriptionLab)
+        XCTAssertTrue(appState.acquirePipeline(for: .liveRecording))
+    }
+
+    func testSoundEffectsSkipPlaybackWhenDisabled() {
+        var startPlayCount = 0
+        var stopPlayCount = 0
+        let soundEffects = SoundEffects(
+            isEnabled: { false },
+            startPlayer: { startPlayCount += 1 },
+            stopPlayer: { stopPlayCount += 1 }
+        )
+
+        soundEffects.playStart()
+        soundEffects.playStop()
+
+        XCTAssertEqual(startPlayCount, 0)
+        XCTAssertEqual(stopPlayCount, 0)
+    }
+
+    func testAppStateRelaunchAppUsesConfiguredRelauncher() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let relauncher = FakeAppRelauncher()
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            appRelauncher: relauncher
+        )
+
+        appState.relaunchApp()
+
+        XCTAssertEqual(relauncher.relaunchCallCount, 1)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    func testAppStateRelaunchAppSurfacesRelaunchFailures() throws {
+        struct RelaunchError: LocalizedError {
+            var errorDescription: String? { "open failed" }
+        }
+
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let relauncher = FakeAppRelauncher()
+        relauncher.error = RelaunchError()
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            appRelauncher: relauncher
+        )
+
+        appState.relaunchApp()
+
+        XCTAssertEqual(relauncher.relaunchCallCount, 1)
+        XCTAssertEqual(appState.errorMessage, "Failed to relaunch AF Flow: open failed")
+    }
+
+    func testSettingsWindowHostsSwiftUIViaContentViewController() throws {
+        closeWindows(titled: "AF Flow")
+        defer { closeWindows(titled: "AF Flow") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let controller = HomeWindowController()
+
+        controller.show(appState: appState)
+
+        let window = try XCTUnwrap(NSApp.windows.first(where: { $0.title == "AF Flow" }))
+        defer { window.close() }
+
+        XCTAssertNotNil(window.contentViewController)
+    }
+
+    func testTheOneWindowSurvivesItsCloseButtonAndReopensAsTheSameWindow() throws {
+        closeWindows(titled: "AF Flow")
+        defer { closeWindows(titled: "AF Flow") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let controller = HomeWindowController()
+
+        controller.show(appState: appState)
+        let window = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "AF Flow" && $0.isVisible })
+        )
+
+        let shouldClose = window.delegate?.windowShouldClose?(window)
+
+        XCTAssertEqual(shouldClose, false)
+        XCTAssertFalse(window.isVisible)
+
+        controller.show(appState: appState)
+        let reopenedWindow = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "AF Flow" && $0.isVisible })
+        )
+
+        XCTAssertTrue(window === reopenedWindow)
+    }
+
+    func testSettingsWindowUsesLargeRoomyFrame() throws {
+        closeWindows(titled: "AF Flow")
+        defer { closeWindows(titled: "AF Flow") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let controller = HomeWindowController()
+
+        controller.show(appState: appState)
+
+        let window = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "AF Flow" && $0.isVisible })
+        )
+
+        XCTAssertGreaterThanOrEqual(window.minSize.width, 900)
+        XCTAssertGreaterThanOrEqual(window.minSize.height, 680)
+    }
+
+    func testPromptEditorHostsSwiftUIViaContentViewController() throws {
+        closeWindows(titled: "Edit Cleanup Prompt")
+        defer { closeWindows(titled: "Edit Cleanup Prompt") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let controller = PromptEditorController()
+
+        controller.show(appState: appState)
+
+        let window = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "Edit Cleanup Prompt" && $0.isVisible })
+        )
+        defer { window.close() }
+
+        XCTAssertNotNil(window.contentViewController)
+    }
+
+    func testPromptEditorControllerReusesExistingWindow() throws {
+        closeWindows(titled: "Edit Cleanup Prompt")
+        defer { closeWindows(titled: "Edit Cleanup Prompt") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let controller = PromptEditorController()
+
+        controller.show(appState: appState)
+        let firstWindow = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "Edit Cleanup Prompt" && $0.isVisible })
+        )
+
+        controller.show(appState: appState)
+        let secondWindow = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "Edit Cleanup Prompt" && $0.isVisible })
+        )
+        defer { secondWindow.close() }
+
+        XCTAssertTrue(firstWindow === secondWindow)
+    }
+
+    func testPromptEditorControllerDismissKeepsWindowReusable() throws {
+        closeWindows(titled: "Edit Cleanup Prompt")
+        defer { closeWindows(titled: "Edit Cleanup Prompt") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let controller = PromptEditorController()
+
+        controller.show(appState: appState)
+        let firstWindow = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "Edit Cleanup Prompt" && $0.isVisible })
+        )
+
+        controller.dismiss()
+        XCTAssertFalse(firstWindow.isVisible)
+
+        controller.show(appState: appState)
+        let secondWindow = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "Edit Cleanup Prompt" && $0.isVisible })
+        )
+        defer { secondWindow.close() }
+
+        XCTAssertTrue(firstWindow === secondWindow)
+    }
+
+    func testPromptEditorControllerCloseButtonOrdersWindowOutWithoutClosing() throws {
+        closeWindows(titled: "Edit Cleanup Prompt")
+        defer { closeWindows(titled: "Edit Cleanup Prompt") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let controller = PromptEditorController()
+
+        controller.show(appState: appState)
+        let window = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "Edit Cleanup Prompt" && $0.isVisible })
+        )
+
+        let shouldClose = controller.windowShouldClose(window)
+
+        XCTAssertFalse(shouldClose)
+        XCTAssertFalse(window.isVisible)
+    }
+
+    func testPromptEditorControllerDismissResignsFirstResponder() throws {
+        closeWindows(titled: "Edit Cleanup Prompt")
+        defer { closeWindows(titled: "Edit Cleanup Prompt") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let controller = PromptEditorController()
+
+        controller.show(appState: appState)
+        let window = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "Edit Cleanup Prompt" && $0.isVisible })
+        )
+        let textView = NSTextView(frame: .zero)
+        window.contentView?.addSubview(textView)
+        XCTAssertTrue(window.makeFirstResponder(textView))
+
+        controller.dismiss()
+
+        XCTAssertFalse(window.firstResponder === textView)
+    }
+
+    func testAppStateShowPromptEditorReusesSingleWindow() throws {
+        closeWindows(titled: "Edit Cleanup Prompt")
+        defer { closeWindows(titled: "Edit Cleanup Prompt") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        appState.showPromptEditor()
+        appState.showPromptEditor()
+
+        let windows = NSApp.windows.filter { $0.title == "Edit Cleanup Prompt" && $0.isVisible }
+        defer { windows.forEach { $0.close() } }
+
+        XCTAssertEqual(windows.count, 1)
+    }
+
+    func testAppStateShowSettingsReusesSingleWindow() throws {
+        closeWindows(titled: "AF Flow")
+        defer { closeWindows(titled: "AF Flow") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        // Counted as "windows this test opened", not "windows with this title".
+        // Since 2026-08-24 Home, Settings and the debug log are one window with
+        // one title, so a global count measures every other test's residue.
+        func visibleAFFlow() -> Set<ObjectIdentifier> {
+            Set(NSApp.windows.filter { $0.title == "AF Flow" && $0.isVisible }.map(ObjectIdentifier.init))
+        }
+        let before = visibleAFFlow()
+
+        appState.showSettings()
+        appState.showSettings()
+
+        let opened = visibleAFFlow().subtracting(before)
+        defer { NSApp.windows.filter { opened.contains(ObjectIdentifier($0)) }.forEach { $0.close() } }
+
+        XCTAssertEqual(opened.count, 1)
+    }
+
+    func testSettingsSectionUsesHistoryTitleForSavedRecordings() {
+        XCTAssertEqual(AFFlowSection.transcriptionLab.title, "History")
+    }
+
+    func testSettingsSectionsUseGeneralAndFoldCorrectionsIntoCleanup() {
+        // Home leads since 2026-08-24, because the sections became the whole
+        // window rather than the settings inside one. General leads the SETTINGS,
+        // which is what this test was always about.
+        XCTAssertEqual(AFFlowSection.allCases.first, .home)
+        XCTAssertEqual(AFFlowSection.visible.dropFirst().first, .general)
+        XCTAssertEqual(AFFlowSection.general.title, "General")
+        XCTAssertFalse(AFFlowSection.allCases.contains { $0.title == "Corrections" })
+        XCTAssertEqual(AFFlowSection.cleanup.subtitle, "Prompt cleanup, correction hints, OCR context, and learning behavior.")
+    }
+
+    func testTranscriptionLabWorkshopUsesCollapsiblePipelineSections() throws {
+        let source = try settingsWindowSource()
+
+        XCTAssertTrue(source.contains("TranscriptionLabWorkshopSummary"))
+        XCTAssertTrue(source.contains("TranscriptionLabSourceRecordingSummary"))
+        XCTAssertTrue(source.contains("TranscriptionLabStageDisclosure"))
+        XCTAssertTrue(source.contains("Rerun transcription"))
+        XCTAssertTrue(source.contains("Rerun speaker tagging"))
+        XCTAssertTrue(source.contains("Rerun cleanup"))
+        XCTAssertFalse(source.contains("TranscriptionLabStageCard(\"Recording\")"))
+    }
+
+    func testTranscriptionLabWorkshopUsesSharedOutputComparisonViews() throws {
+        let source = try settingsWindowSource()
+
+        XCTAssertGreaterThanOrEqual(source.components(separatedBy: "TranscriptionLabOutputComparison").count - 1, 3)
+        XCTAssertTrue(source.contains("Original timeline"))
+        XCTAssertTrue(source.contains("New timeline"))
+        XCTAssertTrue(source.contains("Matched to"))
+    }
+
+    func testTranscriptionLabWorkshopKeepsSummaryMetadataReadable() throws {
+        let source = try settingsWindowSource()
+
+        XCTAssertTrue(source.contains("TranscriptionLabMetadataLine"))
+        XCTAssertTrue(source.contains("TranscriptionLabMetadataItem"))
+        XCTAssertTrue(source.contains(".lineLimit(1)"))
+        XCTAssertTrue(source.contains(".fixedSize(horizontal: true, vertical: false)"))
+    }
+
+    func testTranscriptionLabStageHeadersUseFullWidthButtons() throws {
+        let source = try settingsWindowSource()
+
+        XCTAssertTrue(source.contains("TranscriptionLabStageHeaderButton"))
+        XCTAssertTrue(source.contains("isExpanded.toggle()"))
+        XCTAssertTrue(source.contains(".buttonStyle(.plain)"))
+        XCTAssertFalse(source.contains("DisclosureGroup(isExpanded: $isExpanded)"))
+    }
+
+    func testAppStateShowDebugLogHostsSwiftUIViaContentViewController() throws {
+        closeWindows(titled: "AF Flow")
+        defer { closeWindows(titled: "AF Flow") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        appState.showDebugLog()
+
+        let window = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "AF Flow" && $0.isVisible })
+        )
+        defer { window.close() }
+
+        XCTAssertNotNil(window.contentViewController)
+    }
+
+    private func settingsWindowSource() throws -> String {
+        let testFileURL = URL(fileURLWithPath: #filePath)
+        let repositoryURL = testFileURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = repositoryURL
+            .appendingPathComponent("AFFlow")
+            .appendingPathComponent("UI")
+            .appendingPathComponent("SettingsWindow.swift")
+        return try String(contentsOf: sourceURL, encoding: .utf8)
+    }
+
+    func testTheOneWindowCloseButtonOrdersItOutWithoutClosing() throws {
+        closeWindows(titled: "AF Flow")
+        defer { closeWindows(titled: "AF Flow") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let controller = HomeWindowController()
+
+        controller.show(appState: appState, section: .debugLog)
+        let window = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "AF Flow" && $0.isVisible })
+        )
+
+        let shouldClose = window.delegate?.windowShouldClose?(window)
+
+        XCTAssertEqual(shouldClose, false)
+        XCTAssertFalse(window.isVisible)
+
+        controller.show(appState: appState, section: .debugLog)
+        let reopenedWindow = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "AF Flow" && $0.isVisible })
+        )
+
+        XCTAssertTrue(window === reopenedWindow)
+    }
+
+    func testAppStateShowDebugLogReusesSingleWindow() throws {
+        closeWindows(titled: "AF Flow")
+        defer { closeWindows(titled: "AF Flow") }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        appState.showDebugLog()
+        let firstWindow = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "AF Flow" && $0.isVisible })
+        )
+        appState.showDebugLog()
+
+        let secondWindow = try XCTUnwrap(
+            NSApp.windows.first(where: { $0.title == "AF Flow" && $0.isVisible })
+        )
+        defer { secondWindow.close() }
+
+        XCTAssertTrue(firstWindow === secondWindow)
+    }
+
+    func testAppStateShortcutCaptureSuspendsHotkeyMonitor() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let monitor = FakeHotkeyMonitor()
+        let appState = AppState(
+            hotkeyMonitor: monitor,
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        appState.setShortcutCaptureActive(true)
+        appState.setShortcutCaptureActive(false)
+
+        XCTAssertEqual(monitor.suspendedStates, [true, false])
+    }
+
+    func testRecordingOverlayHostsSwiftUIViaContentViewController() throws {
+        let overlay = RecordingOverlayController()
+        let existingWindowNumbers = Set(NSApp.windows.map(\.windowNumber))
+
+        overlay.show()
+
+        let panel = try XCTUnwrap(
+            NSApp.windows
+                .filter { !existingWindowNumbers.contains($0.windowNumber) }
+                .compactMap { $0 as? NSPanel }
+                .first
+        )
+        defer {
+            overlay.dismiss()
+            panel.close()
+        }
+
+        XCTAssertNotNil(panel.contentViewController)
+    }
+
+    func testAppStateLoadsPersistedCorrectionSettingsIntoStore() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let seededStore = CorrectionStore(defaults: defaults)
+        seededStore.preferredTranscriptionsText = "AF Flow\nJesse"
+        seededStore.commonlyMisheardText = "just see -> Jesse"
+
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        XCTAssertEqual(appState.correctionStore.preferredTranscriptions, ["AF Flow", "Jesse"])
+        XCTAssertEqual(
+            appState.correctionStore.commonlyMisheard,
+            [MisheardReplacement(wrong: "just see", right: "Jesse")]
+        )
+    }
+
+    func testAppStateUsesPreferredTranscriptionsAsOCRCustomWords() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        appState.correctionStore.preferredTranscriptionsText = "AF Flow\nJesse"
+
+        XCTAssertEqual(appState.ocrCustomWords, ["AF Flow", "Jesse"])
+    }
+
+    func testAppStateLoadsLocalCleanupModelsWhenCleanupIsEnabled() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        appState.cleanupEnabled = true
+
+        XCTAssertTrue(appState.shouldLoadLocalCleanupModels)
+    }
+
+    func testAppStateRecordsCleanupDebugSnapshotOnlyWhileDebugViewerIsOpen() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let debugLogStore = makeDebugLogStore()
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            debugLogStore: debugLogStore
+        )
+
+        appState.recordCleanupDebugSnapshot(
+            rawTranscription: "raw text",
+            windowContext: OCRContext(windowContents: "window text"),
+            cleanedOutput: "cleaned text",
+            attemptedCleanup: true
+        )
+        XCTAssertTrue(debugLogStore.formattedText.isEmpty)
+
+        debugLogStore.beginLiveViewing()
+        appState.recordCleanupDebugSnapshot(
+            rawTranscription: "raw text",
+            windowContext: OCRContext(windowContents: "window text"),
+            cleanedOutput: "cleaned text",
+            attemptedCleanup: true
+        )
+        debugLogStore.endLiveViewing()
+
+        let formattedText = debugLogStore.formattedText
+        XCTAssertTrue(formattedText.contains("raw text"))
+        XCTAssertTrue(formattedText.contains("windowContext=captured"))
+        XCTAssertTrue(formattedText.contains("cleaned text"))
+    }
+
+    /// RETARGETED 2026-07-21, twin of the TextCleaner fallback test. See the
+    /// reasoning there: CLAUDE.md's dictionary spec asks for a deterministic
+    /// post-ASR layer as well as the prompt glossary, and the fallback path is
+    /// where it matters most, because that text goes straight to his cursor.
+    func testAppStateFallbackTranscriptionCarriesDictionaryCorrections() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let correctionStore = CorrectionStore(defaults: defaults)
+        correctionStore.commonlyMisheardText = "just see -> Jesse"
+        let cleanupManager = TextCleanupManager(
+            defaults: defaults,
+            cleanupModelAvailabilityOverrides: Dictionary(
+                uniqueKeysWithValues: LocalCleanupModelKind.allCases.map { ($0, false) }
+            )
+        )
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            textCleanupManager: cleanupManager,
+            correctionStore: correctionStore
+        )
+        appState.cleanupEnabled = true
+
+        let result = await appState.cleanedTranscription("just see approved it")
+
+        XCTAssertEqual(
+            result,
+            "Jesse approved it",
+            "the dictionary must survive an unavailable cleanup model"
+        )
+    }
+
+    func testAppStatePrepareForTerminationShutsDownCleanupBackend() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        var shutdownCount = 0
+        let cleanupManager = TextCleanupManager(
+            defaults: defaults,
+            backendShutdownOverride: {
+                shutdownCount += 1
+            }
+        )
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            textCleanupManager: cleanupManager
+        )
+
+        appState.prepareForTermination()
+
+        XCTAssertEqual(shutdownCount, 1)
+    }
+
+    func testAppStateArchivesCompletedRecordingWithOCRAndOutputs() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = true
+        defer {
+            try? FileManager.default.removeItem(at: storeDirectory)
+        }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: OCRContext(windowContents: "Qwen 3.5 4B"),
+            rawTranscription: "The default should be Quen three point five four b.",
+            correctedTranscription: "The default should be Qwen 3.5 4B.",
+            cleanupUsedFallback: false
+        )
+
+        let entries = try labStore.loadEntries()
+
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(URL(fileURLWithPath: entries[0].audioFileName).pathExtension, "wav")
+        XCTAssertEqual(entries[0].windowContext, OCRContext(windowContents: "Qwen 3.5 4B"))
+        XCTAssertEqual(entries[0].rawTranscription, "The default should be Quen three point five four b.")
+        XCTAssertEqual(entries[0].correctedTranscription, "The default should be Qwen 3.5 4B.")
+        XCTAssertEqual(entries[0].speechModelID, appState.speechModel)
+        XCTAssertFalse(entries[0].cleanupUsedFallback)
+    }
+
+    // 2026-08-24. His voice-to-text history stopped on 2026-08-08 and he never
+    // touched the setting. One guard governed BOTH the audio and the text, while
+    // the toggle read "Save voice-to-text recordings to history" and the screen
+    // said "Audio from dictation is not saved to disk" — so switching off what
+    // looked like audio storage silently threw away every transcript too.
+    //
+    // The store was always built for this: 365-day transcripts, 7-day audio,
+    // pruned independently. Only the caller conflated them.
+    //
+    // The TEXT IS NOT OPTIONAL. It is what he goes to the history tab to copy
+    // back when something is lost.
+    // HIS META-RULE: when something goes wrong, build the mechanism that was
+    // missing rather than resolving to be careful. His history stopped on
+    // 2026-08-08, he never touched the setting, and NOTHING IN THE LOG SAID SO —
+    // which is why it cannot be explained now. A line at every launch makes the
+    // next change visible as a step in the log.
+    // CODEX, 2026-08-24. With audio off and transcription failed, the relaxed
+    // guard would store an entry holding neither text nor audio: nothing to
+    // copy, play or rerun, sitting in a one-year history. Repeated failures
+    // would fill it with rows that can never be acted on.
+    func testARecordingWithNeitherTextNorAudioIsNotKept() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = false
+        defer { try? FileManager.default.removeItem(at: storeDirectory) }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: nil,
+            rawTranscription: nil,
+            correctedTranscription: nil,
+            cleanupUsedFallback: false
+        )
+
+        XCTAssertEqual(
+            try labStore.loadEntries().count,
+            0,
+            "An entry with no text and no audio can never be acted on. It is clutter for a year."
+        )
+    }
+
+    /// With audio ON, a failed transcription is still worth keeping: the WAV is
+    /// the evidence for diagnosing why it failed. That is the whole reason he
+    /// agreed to keep three days of audio.
+    func testAFailedTranscriptionIsStillKeptWhenTheAudioIsThere() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = true
+        defer { try? FileManager.default.removeItem(at: storeDirectory) }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: nil,
+            rawTranscription: nil,
+            correctedTranscription: nil,
+            cleanupUsedFallback: false
+        )
+
+        XCTAssertEqual(try labStore.loadEntries().count, 1)
+    }
+
+    // The old check read the filename's extension, which is always ".wav", so
+    // playback and rerun were offered for entries whose audio was never written
+    // OR had been pruned. The retention design has outlived the audio on purpose
+    // since 2026-07-29, so this has been wrong for a while.
+    func testPlaybackIsOfferedOnlyWhenTheAudioIsActuallyOnDisk() throws {
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: storeDirectory) }
+        let store = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+
+        let entry = TranscriptionLabEntry(
+            id: UUID(),
+            createdAt: Date(),
+            audioFileName: "\(UUID().uuidString).wav",
+            audioDuration: 3,
+            windowContext: nil,
+            rawTranscription: "text only",
+            correctedTranscription: "Text only.",
+            speechModelID: "whatever",
+            cleanupModelName: "none",
+            cleanupUsedFallback: false
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: store.audioURL(for: entry.audioFileName).path),
+            "precondition: no audio was written"
+        )
+        XCTAssertEqual(
+            store.audioURL(for: entry.audioFileName).pathExtension.lowercased(),
+            "wav",
+            "and the old check would still have said yes, because the NAME ends in .wav"
+        )
+    }
+
+    func testTheHistorySettingIsStatedAtLaunch() {
+        XCTAssertEqual(
+            AppState.historyStateLine(audioEnabled: false, transcriptRetentionDays: 365, audioRetentionDays: 3),
+            "History: transcripts kept 365d, dictation audio NOT kept"
+        )
+        XCTAssertEqual(
+            AppState.historyStateLine(audioEnabled: true, transcriptRetentionDays: 365, audioRetentionDays: 3),
+            "History: transcripts kept 365d, dictation audio kept 3d"
+        )
+    }
+
+    func testTheTranscriptIsKeptEvenWhenAudioSavingIsOff() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = false
+        defer { try? FileManager.default.removeItem(at: storeDirectory) }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: nil,
+            rawTranscription: "the words he would go looking for",
+            correctedTranscription: "The words he would go looking for.",
+            cleanupUsedFallback: false
+        )
+
+        let entries = try labStore.loadEntries()
+        XCTAssertEqual(entries.count, 1, "The transcript must be kept whether or not the audio is.")
+        XCTAssertEqual(entries[0].correctedTranscription, "The words he would go looking for.")
+    }
+
+    func testNoAudioFileIsWrittenWhenAudioSavingIsOff() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = false
+        defer { try? FileManager.default.removeItem(at: storeDirectory) }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: nil,
+            rawTranscription: "raw",
+            correctedTranscription: "Corrected.",
+            cleanupUsedFallback: false
+        )
+
+        let audioDirectory = storeDirectory.appendingPathComponent("audio", isDirectory: true)
+        let wavs = (try? FileManager.default.contentsOfDirectory(atPath: audioDirectory.path)) ?? []
+        XCTAssertTrue(
+            wavs.isEmpty,
+            "He asked for no wasted disk on dictation WAVs. Got: \(wavs)"
+        )
+    }
+
+    func testAppStateArchivesNonEmptyAudioEvenWhenLiveTranscriptionFailed() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = true
+        defer {
+            try? FileManager.default.removeItem(at: storeDirectory)
+        }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: nil,
+            rawTranscription: nil,
+            correctedTranscription: nil,
+            cleanupUsedFallback: false
+        )
+
+        let entries = try labStore.loadEntries()
+
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(URL(fileURLWithPath: entries[0].audioFileName).pathExtension, "wav")
+        XCTAssertNil(entries[0].rawTranscription)
+        XCTAssertNil(entries[0].correctedTranscription)
+    }
+
+    func testAppStateSkipsHistoryForRecordingsThatDisplayAsZeroSeconds() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let debugLogStore = makeDebugLogStore()
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            debugLogStore: debugLogStore,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = true
+        defer {
+            try? FileManager.default.removeItem(at: storeDirectory)
+        }
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Array(repeating: 0.1, count: 799),
+            windowContext: OCRContext(windowContents: "too short"),
+            rawTranscription: "ignored",
+            correctedTranscription: "ignored",
+            cleanupUsedFallback: false
+        )
+
+        XCTAssertTrue(try labStore.loadEntries().isEmpty)
+        XCTAssertTrue(debugLogStore.entries.isEmpty)
+    }
+
+    func testAppStateArchivesRecordingWithDiarizationSummary() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = true
+        defer {
+            try? FileManager.default.removeItem(at: storeDirectory)
+        }
+
+        let diarizationSummary = DiarizationSummary(
+            spans: [
+                DiarizationSummary.Span(speakerID: "speaker-a", startTime: 0.0, endTime: 0.8, isKept: true),
+                DiarizationSummary.Span(speakerID: "speaker-b", startTime: 0.9, endTime: 1.2, isKept: false)
+            ],
+            mergedKeptSpans: [
+                DiarizationSummary.MergedSpan(startTime: 0.0, endTime: 0.8)
+            ],
+            targetSpeakerID: "speaker-a",
+            targetSpeakerDuration: 0.8,
+            keptAudioDuration: 0.8,
+            usedFallback: true,
+            fallbackReason: .emptyFilteredTranscription
+        )
+
+        await appState.archiveRecordingForLab(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            windowContext: OCRContext(windowContents: "AF Flow"),
+            rawTranscription: "raw diarized transcription",
+            correctedTranscription: "clean diarized transcription",
+            cleanupUsedFallback: false,
+            speakerFilteringEnabled: true,
+            speakerFilteringRan: true,
+            diarizationSummary: diarizationSummary
+        )
+
+        let entries = try labStore.loadEntries()
+
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].diarizationSummary, diarizationSummary)
+        XCTAssertTrue(entries[0].speakerFilteringEnabled)
+        XCTAssertTrue(entries[0].speakerFilteringRan)
+        XCTAssertTrue(entries[0].speakerFilteringUsedFallback)
+    }
+
+    func testWhisperRecordingIgnoresSpeakerFilteringSetting() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        appState.speechModel = SpeechModelCatalog.whisperSmallEnglish.id
+        appState.ignoreOtherSpeakers = true
+
+        var factoryCallCount = 0
+        appState.recordingSessionCoordinatorFactory = {
+            factoryCallCount += 1
+            return RecordingSessionCoordinator(
+                appendAudioChunk: { _ in },
+                finish: {
+                    (filteredTranscript: "unused", summary: Self.makeDiarizationSummary(usedFallback: false))
+                }
+            )
+        }
+
+        await appState.prepareRecordingSessionIfNeeded()
+
+        XCTAssertEqual(factoryCallCount, 0)
+        XCTAssertNil(appState.audioRecorder.onConvertedAudioChunk)
+    }
+
+    func testFluidAudioRecordingUsesSpeakerFilteringSession() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        defer {
+            try? FileManager.default.removeItem(at: storeDirectory)
+        }
+
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = true
+        appState.speechModel = SpeechModelCatalog.parakeetV3.id
+        appState.ignoreOtherSpeakers = true
+
+        let receivedChunks = LockedValue<[[Float]]>([])
+        let diarizationSummary = Self.makeDiarizationSummary(usedFallback: false)
+        appState.recordingSessionCoordinatorFactory = {
+            RecordingSessionCoordinator(
+                appendAudioChunk: { samples in
+                    Task {
+                        await receivedChunks.append(samples)
+                    }
+                },
+                finish: {
+                    (filteredTranscript: "filtered speaker transcript", summary: diarizationSummary)
+                }
+            )
+        }
+
+        var fullTranscriptionCalls = 0
+        appState.transcribeAudioBufferOverride = { _ in
+            fullTranscriptionCalls += 1
+            return "full transcript"
+        }
+
+        let cleanupInputs = LockedValue<[String]>([])
+        appState.cleanedTranscriptionResultOverride = { text, _ in
+            await cleanupInputs.append(text)
+            return (
+                text: "cleaned \(text)",
+                prompt: "prompt",
+                attemptedCleanup: true,
+                cleanupUsedFallback: false
+            )
+        }
+
+        await appState.prepareRecordingSessionIfNeeded()
+        appState.audioRecorder.onConvertedAudioChunk?([0.1, 0.2, 0.3])
+        await appState.finishRecordingForTesting(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            recordingSessionCoordinator: appState.activeRecordingSessionCoordinator,
+            archivedWindowContext: OCRContext(windowContents: "context")
+        )
+
+        let entries = try labStore.loadEntries()
+        let recordedChunks = await receivedChunks.get()
+        let cleanupTexts = await cleanupInputs.get()
+        XCTAssertEqual(recordedChunks, [[0.1, 0.2, 0.3]])
+        XCTAssertEqual(fullTranscriptionCalls, 0)
+        XCTAssertEqual(cleanupTexts, ["filtered speaker transcript"])
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].diarizationSummary, diarizationSummary)
+        XCTAssertTrue(entries[0].speakerFilteringEnabled)
+        XCTAssertTrue(entries[0].speakerFilteringRan)
+        XCTAssertFalse(entries[0].speakerFilteringUsedFallback)
+    }
+
+    func testQwenRecordingUsesSpeakerFilteringSession() async throws {
+        guard #available(macOS 15, iOS 18, *) else {
+            throw XCTSkip("Qwen3-ASR requires macOS 15 or later.")
+        }
+
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+        let transcriptionSession = FakeRecordingTranscriptionSession(finalTranscript: "streamed transcript")
+        var diarizationChunks: [[Float]] = []
+        var factoryCallCount = 0
+
+        appState.speechModel = SpeechModelCatalog.qwen3AsrInt8.id
+        appState.ignoreOtherSpeakers = true
+        appState.recordingTranscriptionSessionFactory = { descriptor in
+            XCTAssertEqual(descriptor, SpeechModelCatalog.qwen3AsrInt8)
+            return transcriptionSession
+        }
+        appState.recordingSessionCoordinatorFactory = {
+            factoryCallCount += 1
+            return RecordingSessionCoordinator(
+                appendAudioChunk: { samples in
+                    diarizationChunks.append(samples)
+                },
+                finish: {
+                    (nil, Self.makeDiarizationSummary(usedFallback: true))
+                }
+            )
+        }
+
+        await appState.prepareRecordingSessionIfNeeded()
+        appState.audioRecorder.onConvertedAudioChunk?([1, 2, 3, 4])
+
+        XCTAssertEqual(factoryCallCount, 1)
+        XCTAssertNotNil(appState.activeRecordingSessionCoordinator)
+        XCTAssertEqual(diarizationChunks, [[1, 2, 3, 4]])
+        XCTAssertEqual(transcriptionSession.appendedChunks, [[1, 2, 3, 4]])
+    }
+
+    func testAppStateArchivesDiarizationFallbackState() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let storeDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let labStore = TranscriptionLabStore(directoryURL: storeDirectory, maxEntries: 50)
+        defer {
+            try? FileManager.default.removeItem(at: storeDirectory)
+        }
+
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults,
+            transcriptionLabStore: labStore
+        )
+        appState.transcriptionLabEnabled = true
+        appState.speechModel = SpeechModelCatalog.parakeetV3.id
+        appState.ignoreOtherSpeakers = true
+
+        let diarizationSummary = Self.makeDiarizationSummary(usedFallback: true)
+        let coordinator = RecordingSessionCoordinator(
+            appendAudioChunk: { _ in },
+            finish: {
+                (filteredTranscript: nil, summary: diarizationSummary)
+            }
+        )
+
+        var fullTranscriptionCalls = 0
+        appState.transcribeAudioBufferOverride = { _ in
+            fullTranscriptionCalls += 1
+            return "fallback full transcript"
+        }
+
+        let cleanupInputs = LockedValue<[String]>([])
+        appState.cleanedTranscriptionResultOverride = { text, _ in
+            await cleanupInputs.append(text)
+            return (
+                text: "cleaned \(text)",
+                prompt: "prompt",
+                attemptedCleanup: true,
+                cleanupUsedFallback: false
+            )
+        }
+
+        await appState.finishRecordingForTesting(
+            audioBuffer: Self.makeArchiveableAudioBuffer(),
+            recordingSessionCoordinator: coordinator,
+            archivedWindowContext: OCRContext(windowContents: "context")
+        )
+
+        let entries = try labStore.loadEntries()
+        let cleanupTexts = await cleanupInputs.get()
+        XCTAssertEqual(fullTranscriptionCalls, 1)
+        XCTAssertEqual(cleanupTexts, ["fallback full transcript"])
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].diarizationSummary, diarizationSummary)
+        XCTAssertTrue(entries[0].speakerFilteringEnabled)
+        XCTAssertTrue(entries[0].speakerFilteringRan)
+        XCTAssertTrue(entries[0].speakerFilteringUsedFallback)
+    }
+
+    func testAppStateForwardsModelManagerChanges() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(chordBindingStore: ChordBindingStore(defaults: defaults))
+        let expectation = expectation(description: "app state forwards speech model changes")
+        var cancellable: AnyCancellable? = appState.objectWillChange.sink {
+            expectation.fulfill()
+        }
+
+        appState.modelManager.objectWillChange.send()
+
+        await fulfillment(of: [expectation], timeout: 1.0)
+        withExtendedLifetime(cancellable) {}
+        cancellable = nil
+    }
+
+    func testAppStateForwardsCleanupManagerChanges() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(chordBindingStore: ChordBindingStore(defaults: defaults))
+        let expectation = expectation(description: "app state forwards cleanup model changes")
+        var cancellable: AnyCancellable? = appState.objectWillChange.sink {
+            expectation.fulfill()
+        }
+
+        appState.textCleanupManager.objectWillChange.send()
+
+        await fulfillment(of: [expectation], timeout: 1.0)
+        withExtendedLifetime(cancellable) {}
+        cancellable = nil
+    }
+
+    private func closeWindows(titled title: String) {
+        NSApp.windows
+            .filter { $0.title == title }
+            .forEach { window in
+                window.delegate = nil
+                window.orderOut(nil)
+                window.close()
+            }
+    }
+
+    func testCheckMicrophoneUsesInjectedClientWithoutSystemPrompt() async {
+        var requestCount = 0
+        PermissionChecker.current = PermissionChecker.Client(
+            checkAccessibility: { false },
+            promptAccessibility: {},
+            microphoneStatus: { .notDetermined },
+            requestMicrophoneAccess: {
+                requestCount += 1
+                return true
+            },
+            openAccessibilitySettings: {},
+            openMicrophoneSettings: {}
+        )
+
+        let granted = await PermissionChecker.checkMicrophone()
+
+        XCTAssertTrue(granted)
+        XCTAssertEqual(requestCount, 1)
+    }
+
+    func testDefaultClientIsNonInteractiveDuringTests() async {
+        PermissionChecker.current = PermissionChecker.defaultClient
+
+        let granted = await PermissionChecker.checkMicrophone()
+
+        XCTAssertFalse(granted)
+        XCTAssertEqual(PermissionChecker.microphoneStatus(), .denied)
+    }
+
+    func testAudioDeviceManagerPersistsSelectedDeviceUID() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        defer { defaults.removePersistentDomain(forName: #function) }
+
+        AudioDeviceManager.setSelectedInputDevice(157, defaults: defaults) { deviceID in
+            XCTAssertEqual(deviceID, 157)
+            return "studio-display"
+        }
+
+        XCTAssertEqual(defaults.string(forKey: "selectedInputDeviceUID"), "studio-display")
+    }
+
+    func testAudioDeviceManagerMigratesLegacyDeviceIDToUIDAndResolvesCurrentDeviceID() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        defer { defaults.removePersistentDomain(forName: #function) }
+
+        defaults.set(157, forKey: "selectedInputDeviceID")
+
+        let migratedID = AudioDeviceManager.selectedInputDeviceID(
+            defaults: defaults,
+            inputDevices: {
+                [AudioInputDevice(id: 157, uid: "studio-display", name: "Studio Display Microphone")]
+            }
+        )
+        let resolvedID = AudioDeviceManager.selectedInputDeviceID(
+            defaults: defaults,
+            inputDevices: {
+                [AudioInputDevice(id: 142, uid: "studio-display", name: "Studio Display Microphone")]
+            }
+        )
+
+        XCTAssertEqual(migratedID, 157)
+        XCTAssertEqual(resolvedID, 142)
+        XCTAssertEqual(defaults.string(forKey: "selectedInputDeviceUID"), "studio-display")
+    }
+
+    func testAudioDeviceManagerIgnoresStaleLegacyDeviceIDThatIsNotCurrentlyAvailable() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        defer { defaults.removePersistentDomain(forName: #function) }
+
+        defaults.set(157, forKey: "selectedInputDeviceID")
+
+        let resolvedID = AudioDeviceManager.selectedInputDeviceID(
+            defaults: defaults,
+            inputDevices: {
+                [AudioInputDevice(id: 142, uid: "studio-display", name: "Studio Display Microphone")]
+            }
+        )
+
+        XCTAssertNil(resolvedID)
+        XCTAssertNil(defaults.string(forKey: "selectedInputDeviceUID"))
+    }
+
+    func testAudioDeviceManagerResolvesCurrentDeviceIDFromSavedUID() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        defer { defaults.removePersistentDomain(forName: #function) }
+
+        defaults.set("studio-display", forKey: "selectedInputDeviceUID")
+
+        let resolvedID = AudioDeviceManager.selectedInputDeviceID(
+            defaults: defaults,
+            inputDevices: {
+                [AudioInputDevice(id: 142, uid: "studio-display", name: "Studio Display Microphone")]
+            }
+        )
+
+        XCTAssertEqual(resolvedID, 142)
+    }
+
+    func testAudioDeviceManagerReturnsNilWhenSavedUIDDoesNotResolve() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        defer { defaults.removePersistentDomain(forName: #function) }
+
+        defaults.set("missing-device", forKey: "selectedInputDeviceUID")
+
+        let resolvedID = AudioDeviceManager.selectedInputDeviceID(
+            defaults: defaults,
+            inputDevices: { [] }
+        )
+
+        XCTAssertNil(resolvedID)
+    }
+
+    func testResetAudioEngineClearsLiveRecordingNoInputErrorWhenIdle() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        defer { defaults.removePersistentDomain(forName: #function) }
+
+        var resetCallCount = 0
+        let appState = AppState(
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            selectedInputDeviceIDProvider: { 142 },
+            resetAudioRecorder: {
+                resetCallCount += 1
+            }
+        )
+        appState.status = .error
+        appState.errorMessage = AppState.liveRecordingNoInputErrorMessage
+
+        appState.resetAudioEngine()
+
+        XCTAssertEqual(appState.audioRecorder.targetDeviceID, 142)
+        XCTAssertEqual(resetCallCount, 1)
+        XCTAssertEqual(appState.status, .ready)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    func testResetAudioEngineKeepsUnrelatedErrorState() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        defer { defaults.removePersistentDomain(forName: #function) }
+
+        var resetCallCount = 0
+        let appState = AppState(
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            selectedInputDeviceIDProvider: { nil },
+            resetAudioRecorder: {
+                resetCallCount += 1
+            }
+        )
+        appState.status = .error
+        appState.errorMessage = "Microphone access required"
+
+        appState.resetAudioEngine()
+
+        XCTAssertEqual(resetCallCount, 1)
+        XCTAssertEqual(appState.status, .error)
+        XCTAssertEqual(appState.errorMessage, "Microphone access required")
+    }
+
+    private static func makeArchiveableAudioBuffer(sampleCount: Int = 1_600) -> [Float] {
+        Array(repeating: 0.1, count: sampleCount)
+    }
+
+    private static func makeDiarizationSummary(usedFallback: Bool) -> DiarizationSummary {
+        DiarizationSummary(
+            spans: [
+                DiarizationSummary.Span(speakerID: "speaker-a", startTime: 0.0, endTime: 0.8, isKept: true),
+                DiarizationSummary.Span(speakerID: "speaker-b", startTime: 0.9, endTime: 1.2, isKept: false)
+            ],
+            mergedKeptSpans: [
+                DiarizationSummary.MergedSpan(startTime: 0.0, endTime: 0.8)
+            ],
+            targetSpeakerID: "speaker-a",
+            targetSpeakerDuration: 0.8,
+            keptAudioDuration: 0.8,
+            usedFallback: usedFallback,
+            fallbackReason: usedFallback ? .emptyFilteredTranscription : nil
+        )
+    }
+}
+
+private actor LockedValue<Value> {
+    private var value: Value
+
+    init(_ value: Value) {
+        self.value = value
+    }
+
+    func get() -> Value {
+        value
+    }
+
+    func set(_ value: Value) {
+        self.value = value
+    }
+
+    func append<Element>(_ newElement: Element) where Value == [Element] {
+        value.append(newElement)
+    }
+}

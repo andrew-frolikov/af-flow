@@ -4,10 +4,10 @@
 # Written 2026-07-20 after the test suite broke his dictation.
 #
 # WHAT WENT WRONG, because the mechanism is not obvious. The tests run inside
-# the GhostPepper app host, so they share its bundle identifier, its sandbox
+# the AFFlow app host, so they share its bundle identifier, its sandbox
 # container, and therefore its UserDefaults domain. Many of them write real
 # settings: `appState.preferredLanguage = "fr"` appears eight times in
-# GhostPepperTests.swift alone, and several write `speechModel` directly.
+# AFFlowTests.swift alone, and several write `speechModel` directly.
 #
 # Most of those tests save the previous value and restore it in a defer. That
 # is correct and it is not enough, because **a test that fails partway through
@@ -38,7 +38,7 @@ DOMAIN="com.frolikov.afflow"
 # THE TEST HOST GETS ITS OWN IDENTITY. Andrew's decision, 2026-07-26, taken at
 # the Codex round cap over the alternative of accepting the residual risk.
 #
-# `xcodebuild test` launches its own copy of GhostPepper.app as the test host.
+# `xcodebuild test` launches its own copy of AF Flow.app as the test host.
 # Until now that copy carried Andrew's bundle identifier, so every suite run
 # registered a second and third claimant on `com.frolikov.afflow` with
 # LaunchServices, and his Input Monitoring permission could attach to one of
@@ -112,7 +112,7 @@ if [ ! -e "$DERIVED_SENTINEL" ]; then
         cat > "$DERIVED_SENTINEL" <<'SENTINEL'
 Created by scripts/run-tests.sh. This marks the directory as a scratch
 derived-data root that the script is allowed to delete build products from,
-specifically the GhostPepper.app test host, which otherwise competes with
+specifically the AF Flow.app test host, which otherwise competes with
 Andrew's real app for its Input Monitoring permission.
 
 Delete this file and the script will refuse to clean the directory.
@@ -238,8 +238,8 @@ validate_output_directory
 
 build_for_testing() {
     xcodebuild build-for-testing \
-        -project GhostPepper.xcodeproj \
-        -scheme GhostPepper \
+        -project AFFlow.xcodeproj \
+        -scheme AFFlow \
         -configuration Debug \
         -derivedDataPath "$DERIVED" \
         -skipMacroValidation \
@@ -304,8 +304,8 @@ if [ "${AF_FLOW_APP_BUILD:-}" = "1" ]; then
     echo "Bundle identifier: $DOMAIN (NOT the test host)."
     echo
     xcodebuild build \
-        -project GhostPepper.xcodeproj \
-        -scheme GhostPepper \
+        -project AFFlow.xcodeproj \
+        -scheme AFFlow \
         -configuration Debug \
         -derivedDataPath "$APP_DERIVED" \
         -skipMacroValidation \
@@ -315,7 +315,7 @@ if [ "${AF_FLOW_APP_BUILD:-}" = "1" ]; then
         "$@" \
         2>&1 | grep -E "error:|warning: .*never be executed|BUILD SUCCEEDED|BUILD FAILED"
     APP_BUILD_STATUS=${PIPESTATUS[0]}
-    APP_PATH="$APP_DERIVED/Build/Products/Debug/GhostPepper.app"
+    APP_PATH="$APP_DERIVED/Build/Products/Debug/AF Flow.app"
     if [ "$APP_BUILD_STATUS" -ne 0 ] || [ ! -d "$APP_PATH" ]; then
         echo "APP BUILD FAILED (exit $APP_BUILD_STATUS)." >&2
         exit "${APP_BUILD_STATUS:-1}"
@@ -359,7 +359,7 @@ if [ "${AF_FLOW_BUILD_ONLY:-}" = "1" ]; then
     exit 0
 fi
 
-if pgrep -x GhostPepper >/dev/null 2>&1; then
+if pgrep -x AFFlow >/dev/null 2>&1; then
     cat >&2 <<'RUNNING'
 REFUSING TO RUN: AF Flow is currently open.
 
@@ -423,7 +423,7 @@ restore() {
     fi
 }
 
-# `xcodebuild test` launches its own copy of GhostPepper.app as the test host,
+# `xcodebuild test` launches its own copy of AF Flow.app as the test host,
 # and launching an app REGISTERS it with LaunchServices as a claimant on its
 # bundle identifier. So every suite run quietly adds a second and third app
 # claiming to be com.frolikov.afflow, from inside the repo build tree.
@@ -484,7 +484,7 @@ remove_test_hosts() {
     # this script, so it is the one path this invocation can prove it owns.
     while IFS= read -r bundle; do
         id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$bundle/Contents/Info.plist" 2>/dev/null)
-        if [ "$id" != "$DOMAIN" ] || [ ! -x "$bundle/Contents/MacOS/GhostPepper" ]; then
+        if [ "$id" != "$DOMAIN" ] || [ ! -x "$bundle/Contents/MacOS/AF Flow" ]; then
             echo "  left alone, not our app bundle: $bundle" >&2
             continue
         fi
@@ -507,7 +507,7 @@ remove_test_hosts() {
         else
             echo "  removed test host $bundle"
         fi
-    done < <(find "$DERIVED_REAL" -maxdepth 4 -name "GhostPepper.app" -type d 2>/dev/null)
+    done < <(find "$DERIVED_REAL" -maxdepth 4 -name "AF Flow.app" -type d 2>/dev/null)
 
     # The dump is captured and CHECKED before it is parsed. Codex round 2
     # finding 2: inside a process substitution a failing `lsregister -dump` is
@@ -526,7 +526,7 @@ remove_test_hosts() {
     fi
 
     # Audit the survivors by IDENTITY, not by filename. Codex round 1 finding 4:
-    # counting paths ending in GhostPepper.app answers a different question from
+    # counting paths ending in AF Flow.app answers a different question from
     # "how many bundles claim com.frolikov.afflow", and the second is the one
     # that decides whether his hotkey permission lands on the right app.
     #
@@ -665,14 +665,14 @@ echo "running tests"
 # snapshot and the refuse-while-running check are the reason it is safe to
 # offer at all.
 SKIPS=(
-    -skip-testing:GhostPepperTests/CleanupPromptEvalTests
+    -skip-testing:AFFlowTests/CleanupPromptEvalTests
 )
 if [ "${AF_FLOW_SCORING:-}" != "1" ]; then
     SKIPS+=(
-        -skip-testing:GhostPepperTests/TranscriptionScoringTests/testScoreCandidateModelsOnFixtures
-        -skip-testing:GhostPepperTests/TranscriptionScoringTests/testPrefetchNamedModel
-        -skip-testing:GhostPepperTests/TranscriptionScoringTests/testGenerateDraftReferencesForUnreferencedAudio
-        -skip-testing:GhostPepperTests/TranscriptionScoringTests/testCaptureAllCandidateTranscriptsForUnreferencedAudio
+        -skip-testing:AFFlowTests/TranscriptionScoringTests/testScoreCandidateModelsOnFixtures
+        -skip-testing:AFFlowTests/TranscriptionScoringTests/testPrefetchNamedModel
+        -skip-testing:AFFlowTests/TranscriptionScoringTests/testGenerateDraftReferencesForUnreferencedAudio
+        -skip-testing:AFFlowTests/TranscriptionScoringTests/testCaptureAllCandidateTranscriptsForUnreferencedAudio
     )
 else
     echo "SCORING MODE: the fixture tests are enabled for this run."
@@ -730,7 +730,7 @@ fi
 #
 # Deliberately placed AFTER the defaults trap on line 568, so refusing here still
 # restores his settings on the way out.
-if pgrep -x GhostPepper >/dev/null 2>&1; then
+if pgrep -x AFFlow >/dev/null 2>&1; then
     cat >&2 <<'RUNNING_NOW'
 REFUSING TO RUN: AF Flow was opened while this script was building.
 

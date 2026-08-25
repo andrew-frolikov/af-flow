@@ -1,4 +1,4 @@
-name: GhostPepper
+name: AFFlow
 options:
   bundleIdPrefix: com.frolikov
   deploymentTarget:
@@ -17,18 +17,20 @@ packages:
     revision: c2144e1a0e29c280ec6080b7da85e876d51f8509
 
 targets:
-  GhostPepper:
+  AFFlow:
     type: application
     platform: macOS
     configFiles:
       Debug: Config/Signing.xcconfig
       Release: Config/Signing.xcconfig
     sources:
-      - GhostPepper
+      - AFFlow
     settings:
       base:
-        INFOPLIST_FILE: GhostPepper/Info.plist
-        CODE_SIGN_ENTITLEMENTS: GhostPepper/GhostPepper.entitlements
+        INFOPLIST_FILE: AFFlow/Info.plist
+        PRODUCT_NAME: AF Flow
+        PRODUCT_MODULE_NAME: AFFlow
+        CODE_SIGN_ENTITLEMENTS: AFFlow/AFFlow.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: "$(AF_FLOW_BUNDLE_ID:default=com.frolikov.afflow)"
         ENABLE_APP_SANDBOX: YES
@@ -40,23 +42,23 @@ targets:
       - package: LLM.swift
         product: LLM
     entitlements:
-      path: GhostPepper/GhostPepper.entitlements
+      path: AFFlow/AFFlow.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.device.audio-input: true
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.network.client: true
 
-  GhostPepperTests:
+  AFFlowTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - GhostPepperTests
+      - AFFlowTests
     dependencies:
-      - target: GhostPepper
+      - target: AFFlow
     settings:
       base:
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GhostPepper.app/Contents/MacOS/GhostPepper"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AF Flow.app/Contents/MacOS/AF Flow"
         BUNDLE_LOADER: "$(TEST_HOST)"
         GENERATE_INFOPLIST_FILE: YES
 

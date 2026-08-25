@@ -34,7 +34,7 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOURCE_DIR = os.path.join(REPO, "GhostPepper")
+SOURCE_DIR = os.path.join(REPO, "AFFlow")
 BUNDLE_ID = "com.frolikov.afflow"
 PLIST = os.path.expanduser(
     "~/Library/Containers/%s/Data/Library/Preferences/%s.plist" % (BUNDLE_ID, BUNDLE_ID)

@@ -139,7 +139,7 @@ The cover. No icon: the mark's plate is invisible on ink without a hairline, the
 
 ### 7.2 Setup
 
-Title "Setup" (the chili emoji retires with the Ghost Pepper era). Sub-line: "Grant two permissions. AF Flow chooses the local models." Then three dark wells:
+Title "Setup" (the chili emoji retires with the AF Flow era). Sub-line: "Grant two permissions. AF Flow chooses the local models." Then three dark wells:
 
 - **Microphone**, "To hear your voice". States: waiting (small primary **Grant**, which triggers the system prompt); granted (mist check); denied (clay dot, "Denied", small primary **Open Settings** opening the Microphone privacy pane). While granted, below the row: the input-device picker (native, dark appearance, only when more than one device) and the **sound check**: an 8pt meter, track ink at 55% over the well, a recessed groove (decorative, and ink-side per the fill rule), fill mist, turning `#E8836B` above 0.7 (hot), with the caption "Say something" until the first sound arrives. If the audio engine fails to start despite the grant: caption in paper with a clay dot, "The microphone could not start. Check the selected device." The meter runs only on this step while granted and visible, and stops on leaving it.
 - **Input Monitoring**, "To notice your shortcut". States: waiting (**Grant**, opening the Input Monitoring privacy pane, which is the only way macOS grants it); granted (mist check). Returning from the pane without granting is not an error, just still waiting: the row keeps its **Grant** button and gains the caption "Not granted yet. macOS grants this in System Settings." in `#B9C3BE`. This grant is what the shortcut capture (7.3) and the hotkey itself need; the copy never mentions Accessibility.

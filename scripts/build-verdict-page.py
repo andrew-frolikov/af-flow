@@ -27,7 +27,7 @@ from pathlib import Path
 LAB_INDEX = (
     Path.home()
     / "Library/Containers/com.frolikov.afflow/Data/Library/Application Support"
-    / "GhostPepper/transcription-lab/transcription-lab-index.json"
+    / "AFFlow/transcription-lab/transcription-lab-index.json"
 )
 
 

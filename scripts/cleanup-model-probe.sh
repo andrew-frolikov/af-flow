@@ -7,7 +7,7 @@ PRODUCT_PATH="$BUILD_DIR/Build/Products/Debug/CleanupModelProbe"
 
 if [ ! -x "$PRODUCT_PATH" ]; then
   xcodebuild \
-    -project "$ROOT_DIR/GhostPepper.xcodeproj" \
+    -project "$ROOT_DIR/AFFlow.xcodeproj" \
     -scheme CleanupModelProbe \
     -derivedDataPath "$BUILD_DIR" \
     CODE_SIGNING_ALLOWED=NO \

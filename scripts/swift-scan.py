@@ -51,7 +51,7 @@ import os
 import re
 import sys
 
-ENTITY_TABLE_FILE = os.path.join("GhostPepper", "Reader", "ReaderCapture.swift")
+ENTITY_TABLE_FILE = os.path.join("AFFlow", "Reader", "ReaderCapture.swift")
 
 
 def tokenize(src):

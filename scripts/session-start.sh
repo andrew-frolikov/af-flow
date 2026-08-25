@@ -50,7 +50,7 @@ echo "   grep -n '^## ' PROGRESS.md      dated table of contents"
 echo "   sed -n 'START,ENDp' PROGRESS.md read only that section"
 echo ""
 echo " Files never to read whole (see CLAUDE.md hard rule 10):"
-for f in GhostPepper/UI/MeetingTranscriptWindow.swift GhostPepper/UI/SettingsWindow.swift GhostPepper/AppState.swift; do
+for f in AFFlow/UI/MeetingTranscriptWindow.swift AFFlow/UI/SettingsWindow.swift AFFlow/AppState.swift; do
     [ -f "$f" ] && printf "   %-52s %5s KB\n" "$f" "$(( $(wc -c < "$f") / 1024 ))"
 done
 echo "======================================================================"

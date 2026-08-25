@@ -1,7 +1,13 @@
 import Foundation
 
 enum CleanupModelProbeMain {
-    private static let ghostPepperDefaultsDomain = "com.github.matthartman.ghostpepper"
+    /// The app's own defaults domain.
+    ///
+    /// This read the UPSTREAM project's domain, which AF Flow has never written
+    /// to, so the probe silently saw an empty suite and fell back to the code
+    /// defaults every time it ran. Corrected along with the rename: a probe that
+    /// reads settings the app does not use is measuring the wrong thing.
+    private static let appDefaultsDomain = "com.frolikov.afflow"
 
     @MainActor
     static func run() async -> Int32 {
@@ -9,7 +15,7 @@ enum CleanupModelProbeMain {
             let command = try CleanupModelProbeCLI.parse(arguments: Array(CommandLine.arguments.dropFirst()))
             let manager = TextCleanupManager(selectedCleanupModelKind: command.modelKind)
             await manager.loadModel(kind: command.modelKind)
-            let defaults = UserDefaults(suiteName: ghostPepperDefaultsDomain) ?? .standard
+            let defaults = UserDefaults(suiteName: appDefaultsDomain) ?? .standard
 
             let runner = CleanupModelProbeRunner(
                 correctionStore: CorrectionStore(defaults: defaults)

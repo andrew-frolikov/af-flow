@@ -3,7 +3,7 @@
 Extract Granola meeting notes from the local cache into markdown files.
 
 Reads: ~/Library/Application Support/Granola/cache-v6.json
-Writes: ~/Documents/Ghost Pepper Meetings/{date}/{slug}.md
+Writes: ~/Documents/AF Flow Meetings/{date}/{slug}.md
 
 No API key needed. Works entirely from the local cache.
 """
@@ -155,8 +155,8 @@ def main():
         sys.exit(1)
 
     # Determine output directory
-    # Use Ghost Pepper meetings directory if configured, else default
-    output_base = os.path.expanduser('~/Documents/Ghost Pepper Meetings')
+    # Use AF Flow meetings directory if configured, else default
+    output_base = os.path.expanduser('~/Documents/AF Flow Meetings')
     if len(sys.argv) > 1:
         output_base = sys.argv[1]
 

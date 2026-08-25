@@ -17,8 +17,8 @@
 # the test host cannot corrupt each other's view.
 set -euo pipefail
 
-APP="$HOME/Library/Containers/com.frolikov.afflow/Data/Library/Application Support/GhostPepper/models"
-HOST="$HOME/Library/Containers/com.frolikov.afflow.testhost/Data/Library/Application Support/GhostPepper/models"
+APP="$HOME/Library/Containers/com.frolikov.afflow/Data/Library/Application Support/AFFlow/models"
+HOST="$HOME/Library/Containers/com.frolikov.afflow.testhost/Data/Library/Application Support/AFFlow/models"
 
 if [ ! -d "$APP" ]; then
     echo "no models to link: $APP does not exist" >&2
