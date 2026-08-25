@@ -386,21 +386,19 @@ struct SetupStep: View {
                     .padding(.horizontal, 4)
                 }
 
-                SetupRow(
-                    icon: "keyboard.fill",
-                    title: "Accessibility",
-                    subtitle: "For keyboard shortcuts & pasting",
-                    isComplete: accessibilityGranted
-                ) {
-                    if !accessibilityGranted {
-                        Button("Grant") {
-                            PermissionChecker.openAccessibilitySettings()
-                        }
-                        .buttonStyle(AFFlowPrimaryButtonStyle())
-                        .tint(theme.accent)
-                        .controlSize(.small)
-                    }
-                }
+                // **The Accessibility row is gone, 2026-08-25.**
+                //
+                // It asked a brand new user to grant a permission that CANNOT
+                // take effect: proven 2026-08-21, a sandboxed build returns
+                // AXError -25204 on all 28 queries, on every build, after every
+                // grant, and the sandbox stays. Its subtitle promised "keyboard
+                // shortcuts and pasting", both of which work without it; what
+                // the shortcut actually needs is Input Monitoring, which has
+                // its own row above.
+                //
+                // This window is superseded by the walkthrough on Home, so the
+                // row was already unreachable. It is removed rather than left
+                // dormant, because dormant is how it would come back.
 
                 VStack(spacing: 8) {
                     SetupRow(
@@ -659,7 +657,11 @@ class TryItController: ObservableObject {
     @Published var isRecording = false
     @Published var isTranscribing = false
     @Published var transcribedText: String?
-    @Published var statusMessage = "Waiting for you to hold Right Command + Right Option..."
+    /// **No chord literal, ever.** This used to read "Waiting for you to hold
+    /// Right Command + Right Option", which stopped being true the moment
+    /// Andrew rebound it, and told a new user to hold keys that do nothing.
+    /// Home was fixed for this exact defect class on 2026-07-26.
+    @Published var statusMessage = "Waiting for you..."
     @Published var monitorStartFailed = false
 
     private var hotkeyMonitor: HotkeyMonitoring?
@@ -669,6 +671,11 @@ class TryItController: ObservableObject {
     private let maxRetries = 5
     private let transcriber: SpeechTranscriber
     private let hotkeyMonitorFactory: ([ChordAction: KeyChord]) -> HotkeyMonitoring
+
+    /// The chord this step actually listens for. It must be the user's live
+    /// binding, not the factory default: binding the default meant the step
+    /// could ask for one chord and listen for another.
+    var chord: KeyChord = AppState.defaultPushToTalkChord
 
     init(
         transcriber: SpeechTranscriber,
@@ -686,8 +693,10 @@ class TryItController: ObservableObject {
         recorder.prewarm()
         self.audioRecorder = recorder
 
+        // The LIVE binding. Binding the factory default here is how the step
+        // came to instruct one chord and listen for another.
         let monitor = hotkeyMonitorFactory([
-            .pushToTalk: AppState.defaultPushToTalkChord
+            .pushToTalk: chord
         ])
         monitor.onRecordingStart = { [weak self] in
             Task { @MainActor in
@@ -770,13 +779,16 @@ struct TryItStep: View {
                 .font(theme.textFont(size: 24, weight: 700))
                 .padding(.top, 24)
 
-            Text("Hold **Right Command + Right Option** and say something")
+            Text("Hold your shortcut and say something")
                 .font(theme.bodyFont)
                 .foregroundStyle(theme.textSecondary)
 
+            // Renders whatever is actually bound. The two hardcoded caps here
+            // said "right command" and "right option" forever.
             HStack(spacing: 6) {
-                KeyCap(label: "⌘ right", highlighted: true, isActive: controller.isRecording)
-                KeyCap(label: "⌥ right", highlighted: true, isActive: controller.isRecording)
+                KeyCap(label: controller.chord.displayString,
+                       highlighted: true,
+                       isActive: controller.isRecording)
             }
             .padding(.vertical, 8)
 
@@ -819,7 +831,11 @@ struct TryItStep: View {
                         }
                     }
                 } else if controller.monitorStartFailed {
-                    Text("Could not start hotkey monitor.\nPlease verify Accessibility is enabled in System Settings.")
+                    // **Never Accessibility.** It is permanently blocked by the
+                    // App Sandbox, proven 2026-08-21, and Andrew has been sent
+                    // to System Settings three times for nothing. What this
+                    // step actually needs is Input Monitoring.
+                    Text("AF Flow cannot see the keyboard yet.\nGrant Input Monitoring, then come back.")
                         .font(theme.bodyFont)
                         .foregroundStyle(theme.statusLive)
                         .multilineTextAlignment(.center)

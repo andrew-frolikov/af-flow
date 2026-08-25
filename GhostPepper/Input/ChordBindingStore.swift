@@ -2,7 +2,10 @@ import Foundation
 
 final class ChordBindingStore {
     enum StoreError: Error, Equatable {
-        case duplicateBinding
+        /// **Carries the action it collided with**, so the interface can say
+        /// whose shortcut it already is rather than only that something is
+        /// wrong. The onboarding capture field needs to name the owner.
+        case duplicateBinding(owner: ChordAction)
     }
 
     private let defaults: UserDefaults
@@ -22,7 +25,7 @@ final class ChordBindingStore {
         if let chord {
             for otherAction in ChordAction.allCases where otherAction != action {
                 if binding(for: otherAction) == chord {
-                    throw StoreError.duplicateBinding
+                    throw StoreError.duplicateBinding(owner: otherAction)
                 }
             }
 

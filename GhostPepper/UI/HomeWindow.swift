@@ -39,6 +39,10 @@ struct AFFlowHomeView: View {
     /// own grounds: a fog clip under a novelty skin would be neither.
     private var wearsHero: Bool { theme.id == .current }
 
+    /// Set by the walkthrough's last step. The same key the retired onboarding
+    /// window used, so an existing user never sees the walkthrough again.
+    @AppStorage("onboardingCompleted") private var onboardingCompleted = false
+
     private var pushToTalk: String { appState.pushToTalkChord.displayString }
     private var toggleToTalk: String { appState.toggleToTalkChord.displayString }
 
@@ -47,6 +51,14 @@ struct AFFlowHomeView: View {
             Spacer(minLength: 28)
 
             VStack(spacing: 0) {
+            if !onboardingCompleted {
+                // **First run: Home IS the onboarding**, on the same fog and
+                // the same plate, collapsing in place when it finishes. His
+                // words: "I want there to be full onboarding here on this page."
+                HomeWalkthrough(appState: appState, isWindowVisible: true) {
+                    onboardingCompleted = true
+                }
+            } else {
             StatusPill(status: appState.status, onHero: wearsHero)
                 .padding(.bottom, appState.permissionWarning == nil ? 26 : 10)
 
@@ -98,6 +110,7 @@ struct AFFlowHomeView: View {
                 }
                 .padding(.horizontal, 28)
                 .padding(.top, 16)
+            }
             }
 
             }

@@ -17,6 +17,7 @@
 		00B000000000000000000002 /* WikiKindStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000002 /* WikiKindStore.swift */; };
 		00B000000000000000000003 /* QMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000003 /* QMDService.swift */; };
 		00B000000000000000000099 /* HomeWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000099 /* HomeWindow.swift */; };
+		00B000000000000000009B /* HomeWalkthrough.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000009B /* HomeWalkthrough.swift */; };
 		00B000000000000000009A /* HeroFog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000009A /* HeroFog.swift */; };
 		C1B0000000000000000003 /* BrandFonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A0000000000000000003 /* BrandFonts.swift */; };
 		00B000000000000000000101 /* RecordingStartBlockedReasonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000101 /* RecordingStartBlockedReasonTests.swift */; };
@@ -203,6 +204,7 @@
 		B0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */; };
 		B0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift */; };
 		B0B2C3D4E5F607182930A4B5 /* OneWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B2C3D4E5F607182930A4B5 /* OneWindowTests.swift */; };
+		B0B2C3D4E5F607182930A4C8 /* WalkthroughBansTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B2C3D4E5F607182930A4C8 /* WalkthroughBansTests.swift */; };
 		B0B2C3D4E5F607182930A4C7 /* BrandPaletteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0B2C3D4E5F607182930A4C7 /* BrandPaletteTests.swift */; };
 		B0C3D4E5F60718293A4B5C6D /* CasingGuardAdversarialReplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C3D4E5F60718293A4B5C6D /* CasingGuardAdversarialReplay.swift */; };
 		BFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift */; };
@@ -281,6 +283,7 @@
 		00A000000000000000000002 /* WikiKindStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStore.swift; sourceTree = "<group>"; };
 		00A000000000000000000003 /* QMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QMDService.swift; sourceTree = "<group>"; };
 		00A000000000000000000099 /* HomeWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeWindow.swift; sourceTree = "<group>"; };
+		00A000000000000000009B /* HomeWalkthrough.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeWalkthrough.swift; sourceTree = "<group>"; };
 		00A000000000000000009A /* HeroFog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroFog.swift; sourceTree = "<group>"; };
 		C1A0000000000000000003 /* BrandFonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandFonts.swift; sourceTree = "<group>"; };
 		00A000000000000000000101 /* RecordingStartBlockedReasonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStartBlockedReasonTests.swift; sourceTree = "<group>"; };
@@ -333,6 +336,7 @@
 		F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLabStoreCorruptionTests.swift; sourceTree = "<group>"; };
 		F0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLabTimingsAppendOnlyTests.swift; sourceTree = "<group>"; };
 		F0B2C3D4E5F607182930A4B5 /* OneWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneWindowTests.swift; sourceTree = "<group>"; };
+		F0B2C3D4E5F607182930A4C8 /* WalkthroughBansTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkthroughBansTests.swift; sourceTree = "<group>"; };
 		F0B2C3D4E5F607182930A4C7 /* BrandPaletteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandPaletteTests.swift; sourceTree = "<group>"; };
 		F0C3D4E5F60718293A4B5C6D /* CasingGuardAdversarialReplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CasingGuardAdversarialReplay.swift; sourceTree = "<group>"; };
 		FFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeWindowLanguageSummaryTests.swift; sourceTree = "<group>"; };
@@ -769,6 +773,7 @@
 				95281DF90A125CA223FCEE7A /* ContextBubbleView.swift */,
 				2715D9117D8664700616D95A /* DebugLogWindow.swift */,
 				00A000000000000000000099 /* HomeWindow.swift */,
+				00A000000000000000009B /* HomeWalkthrough.swift */,
 				00A000000000000000009A /* HeroFog.swift */,
 				C1A0000000000000000003 /* BrandFonts.swift */,
 				864660499212282B8ADC1AA7 /* HighlightedTextView.swift */,
@@ -978,6 +983,7 @@
 				F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */,
 				F0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift */,
 				F0B2C3D4E5F607182930A4B5 /* OneWindowTests.swift */,
+				F0B2C3D4E5F607182930A4C8 /* WalkthroughBansTests.swift */,
 				F0B2C3D4E5F607182930A4C7 /* BrandPaletteTests.swift */,
 				F0C3D4E5F60718293A4B5C6D /* CasingGuardAdversarialReplay.swift */,
 				FFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift */,
@@ -1238,6 +1244,7 @@
 				3DD297DFB3E56835BBD705EF /* MeetingTranscriptWindow.swift in Sources */,
 				47212FA484A38B3ABB2D679A /* MeetingWindowHeuristics.swift in Sources */,
 				00B000000000000000000099 /* HomeWindow.swift in Sources */,
+				00B000000000000000009B /* HomeWalkthrough.swift in Sources */,
 				00B000000000000000009A /* HeroFog.swift in Sources */,
 				C1B0000000000000000003 /* BrandFonts.swift in Sources */,
 				5589DDF10DE9446993C99B6B /* MenuBarView.swift in Sources */,
@@ -1359,6 +1366,7 @@
 				B0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift in Sources */,
 				B0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift in Sources */,
 				B0B2C3D4E5F607182930A4B5 /* OneWindowTests.swift in Sources */,
+				B0B2C3D4E5F607182930A4C8 /* WalkthroughBansTests.swift in Sources */,
 				B0B2C3D4E5F607182930A4C7 /* BrandPaletteTests.swift in Sources */,
 				B0C3D4E5F60718293A4B5C6D /* CasingGuardAdversarialReplay.swift in Sources */,
 				BFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift in Sources */,

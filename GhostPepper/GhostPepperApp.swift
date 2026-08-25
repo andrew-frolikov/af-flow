@@ -30,13 +30,14 @@ struct GhostPepperApp: App {
     @NSApplicationDelegateAdaptor(AppReopenDelegate.self) private var reopenDelegate
     @AppStorage("onboardingCompleted") private var onboardingCompleted = false
     @State private var hasInitialized = false
-    private let onboardingController = OnboardingWindowController()
-
     var body: some Scene {
         MenuBarExtra {
             if !onboardingCompleted {
-                Button("Show Setup Window") {
-                    onboardingController.bringToFront()
+                // Home IS setup now, so this opens Home rather than a window
+                // that is never created any more. Pointing it at the retired
+                // controller would have made a menu item that does nothing.
+                Button("Finish Setup") {
+                    appState.showHomeWindow()
                 }
                 Divider()
                 Button("Quit") {
@@ -84,24 +85,20 @@ struct GhostPepperApp: App {
                 reopenDelegate.openMainWindow = { appState.showHomeWindow() }
                 reopenDelegate.hasMeetingToFinish = { appState.hasMeetingToFinishBeforeQuitting }
                 reopenDelegate.finishMeeting = { await appState.finishActiveMeetingBeforeTermination() }
+                // **The separate onboarding window has retired.** The
+                // walkthrough lives on Home now, over the fog, and collapses
+                // into the compact Home when it finishes. Andrew: "I want there
+                // to be full onboarding here on this page." So every launch
+                // takes the same path and Home decides what to show, which is
+                // also what makes the first run one window rather than two.
+                //
+                // `OnboardingWindowController` is superseded, not deleted.
                 if Self.forceOnboarding {
                     onboardingCompleted = false
-                    onboardingController.show(appState: appState) {
-                        onboardingCompleted = true
-                        await appState.initialize()
-                        appState.showHomeWindow()
-                    }
-                } else if onboardingCompleted {
-                    Task {
-                        await appState.initialize()
-                        appState.showHomeWindow()
-                    }
-                } else {
-                    onboardingController.show(appState: appState) {
-                        onboardingCompleted = true
-                        await appState.initialize()
-                        appState.showHomeWindow()
-                    }
+                }
+                Task {
+                    await appState.initialize()
+                    appState.showHomeWindow()
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
