@@ -244,7 +244,12 @@ final class BrandPaletteTests: XCTestCase {
             (21, components(t.overlayStatusReady), dark, 3.0, 11.90, "overlay ready dot"),
             (22, components(t.overlayStatusBusy), dark, 3.0, 7.90, "overlay busy dot"),
             (23, components(t.overlayStatusLive), dark, 3.0, 6.26, "overlay live dot"),
-            (24, ink, ground, 3.0, 14.78, "keyboard focus ring")
+            // Pair 24 measured ink on ground and called itself the focus
+            // ring, which is pair 1 under another name. The ring the app
+            // actually draws is the system one, tinted by the accent asset,
+            // so the pair that matters is the ACCENT against the ground and
+            // `testTheAppAccentColourAssetIsThePine` pins the asset itself.
+            (24, accent, ground, 3.0, 6.97, "focus ring, accent on ground")
         ]
         for (n, fg, bg, minimum, expected, what) in pairs {
             let measured = contrast(fg, bg)
@@ -330,23 +335,58 @@ final class BrandPaletteTests: XCTestCase {
                        "the loaded Fraunces is not the cut the mark is built from")
     }
 
-    /// The ladder's floor. Fraunces below 17pt muddies, and anything smaller is
-    /// Inter, so asking for a smaller display size must clamp rather than
-    /// quietly render an illegible serif.
+    /// The ladder's floor. Fraunces below 17pt muddies, so a smaller display
+    /// request must clamp rather than quietly render an illegible serif.
+    ///
+    /// **This test used to be unable to fail.** It compared `String(describing:)`
+    /// of two `Font` values, which reveals only the provider TYPE: by that
+    /// measure `display(24)` equals `display(17)`, and `Font.system(size: 15)`
+    /// equals `size: 13`. Deleting the clamp left it green. It asserts the
+    /// resolved point size now, which is a number and can disagree.
     func testTheFrauncesFloorHolds() {
-        XCTAssertEqual(String(describing: BrandFonts.display(size: 10)),
-                       String(describing: BrandFonts.display(size: 17)),
-                       "a display size below the 17pt floor did not clamp")
+        XCTAssertEqual(BrandFonts.displayPointSize(for: 10), 17, "a size below the floor did not clamp")
+        XCTAssertEqual(BrandFonts.displayPointSize(for: 16.9), 17, "a size just below the floor did not clamp")
+        XCTAssertEqual(BrandFonts.displayPointSize(for: 17), 17, "the floor itself moved")
+        XCTAssertEqual(BrandFonts.displayPointSize(for: 21), 21, "a size above the floor was clamped when it should not be")
+        XCTAssertEqual(BrandFonts.displayPointSize(for: 24), 24, "the display size was clamped when it should not be")
     }
 
     /// The novelty skins must not pick up the brand faces, for the same reason
     /// they must not pick up pine.
+    ///
+    /// What this can actually see is the font PROVIDER, which distinguishes a
+    /// bundled face from a system one but not a size or a weight. That is
+    /// enough for the claim being made and the comparison is written against a
+    /// brand font rather than a system one so the assertion says what it means.
     func testNoveltySkinsKeepTheSystemFace() {
+        let brandBody = String(describing: BrandFonts.text(size: 13))
         for id in AppThemeID.allCases where id != .current {
             let t = AppTheme(id: id)
-            XCTAssertEqual(String(describing: t.bodyFont), String(describing: Font.system(size: 13)),
-                           "\(id.rawValue) is using the brand text face")
+            XCTAssertNotEqual(String(describing: t.bodyFont), brandBody,
+                              "\(id.rawValue) is using the brand text face")
+            XCTAssertNotEqual(String(describing: t.displayFont),
+                              String(describing: BrandFonts.display(size: 24)),
+                              "\(id.rawValue) is using the brand display face")
         }
+        // And the brand skin genuinely does use it, so the test above cannot
+        // pass by everything being the system face.
+        XCTAssertEqual(String(describing: AppTheme(id: .current).bodyFont), brandBody,
+                       "the brand skin is NOT using the brand text face")
+    }
+
+    /// The AppKit focus ring follows the app's accent colour asset, not
+    /// SwiftUI's `.tint`. Without the asset it stays the system blue, which
+    /// would be the only blue in a pine-and-paper app.
+    func testTheAppAccentColourAssetIsThePine() {
+        guard let accent = NSColor(named: "AccentColor")?.usingColorSpace(.sRGB) else {
+            XCTFail("no AccentColor asset, so the system focus ring is still blue")
+            return
+        }
+        let got = (Double(accent.redComponent), Double(accent.greenComponent), Double(accent.blueComponent))
+        let want = rgb(0x1E5C46)
+        XCTAssertEqual(got.0, want.0, accuracy: 1.0 / 255.0, "accent red")
+        XCTAssertEqual(got.1, want.1, accuracy: 1.0 / 255.0, "accent green")
+        XCTAssertEqual(got.2, want.2, accuracy: 1.0 / 255.0, "accent blue")
     }
 
     /// The arithmetic itself is checked against two ratios the canon publishes

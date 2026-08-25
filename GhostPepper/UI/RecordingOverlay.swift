@@ -267,13 +267,7 @@ struct OverlayPillView: View {
                 Circle()
                     .fill(dotColor)
                     .frame(width: 10, height: 10)
-                    .opacity(isPulsing && message.isInProgress ? 0.4 : 1.0)
-                    .animation(
-                        message.isInProgress
-                            ? .easeInOut(duration: 0.6).repeatForever(autoreverses: true)
-                            : .default,
-                        value: isPulsing
-                    )
+                    .brandPulse(active: message.isInProgress, isPulsing: isPulsing)
             }
 
             VStack(alignment: .leading, spacing: 2) {

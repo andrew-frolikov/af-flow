@@ -6,7 +6,6 @@ import SwiftUI
 /// speech managers, usage stats, speech-download wrapper) so the parent owns
 /// the data graph and the children stay focused on rendering.
 struct RightSidebarView: View {
-    @Environment(\.appTheme) private var theme
     @ObservedObject var cleanupManager: TextCleanupManager
     @ObservedObject var modelManager: ModelManager
     @ObservedObject var usageStats: UsageStatsStore
@@ -45,7 +44,7 @@ struct RightSidebarView: View {
             .padding(.top, 12)
             .padding(.bottom, 8)
 
-            Divider().overlay(theme.separator)
+            Divider().overlay(appTheme.separator)
 
             switch selectedTab {
             case .models:

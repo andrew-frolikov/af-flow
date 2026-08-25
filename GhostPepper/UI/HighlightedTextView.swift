@@ -39,10 +39,13 @@ struct HighlightedTextView: NSViewRepresentable {
 
         let ranges = Self.findMatches(in: nsText, query: query)
         let activeIndex = ranges.indices.contains(currentMatchIndex) ? currentMatchIndex : 0
+        // Search highlighting is the brand's signal colour, not the system's
+        // orange. This file was never reached by the colour sweep and it is
+        // instantiated three times from the transcript viewer.
         for (i, range) in ranges.enumerated() {
             let bg = (i == activeIndex)
-                ? NSColor.systemOrange.withAlphaComponent(0.7)
-                : NSColor.systemOrange.withAlphaComponent(0.3)
+                ? NSColor(Brand.accent).withAlphaComponent(0.7)
+                : NSColor(Brand.accent).withAlphaComponent(0.3)
             attr.addAttribute(.backgroundColor, value: bg, range: range)
         }
 
@@ -53,8 +56,8 @@ struct HighlightedTextView: NSViewRepresentable {
             storage.removeAttribute(.backgroundColor, range: fullRange)
             for (i, range) in ranges.enumerated() {
                 let bg = (i == activeIndex)
-                    ? NSColor.systemOrange.withAlphaComponent(0.7)
-                    : NSColor.systemOrange.withAlphaComponent(0.3)
+                    ? NSColor(Brand.accent).withAlphaComponent(0.7)
+                    : NSColor(Brand.accent).withAlphaComponent(0.3)
                 storage.addAttribute(.backgroundColor, value: bg, range: range)
             }
             storage.endEditing()

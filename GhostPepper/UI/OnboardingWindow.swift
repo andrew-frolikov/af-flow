@@ -102,6 +102,7 @@ class OnboardingWindowController {
             window.title = "AF Flow"
             window.contentView = NSHostingView(rootView: AFFlowThemedRoot { onboardingView })
             window.applyAFFlowSkin()
+            window.titlebarAppearsTransparent = true
             window.center()
             window.level = .normal
             window.isReleasedWhenClosed = false
@@ -372,7 +373,7 @@ struct SetupStep: View {
                                     RoundedRectangle(cornerRadius: 3)
                                         .fill(micLevel.level > 0.7 ? theme.statusLive : micLevel.level > 0.3 ? theme.accent : theme.statusReady)
                                         .frame(width: geo.size.width * CGFloat(micLevel.level))
-                                        .animation(.easeOut(duration: 0.08), value: micLevel.level)
+                                        .brandMotion(value: micLevel.level)
                                 }
                             }
                             .frame(height: 8)
@@ -880,7 +881,7 @@ struct KeyCap: View {
                             .stroke(highlighted ? Color.clear : theme.separator, lineWidth: 1)
                     )
             )
-            .animation(.easeInOut(duration: 0.2), value: isActive)
+            .brandMotion(value: isActive)
     }
 }
 

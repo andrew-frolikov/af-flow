@@ -177,6 +177,7 @@ private struct ModelInventoryStatusIndicator: View {
 }
 
 private struct PieProgressIndicator: View {
+     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.appTheme) private var theme
     let progress: Double?
     @State private var rotation = Angle.zero
@@ -194,6 +195,10 @@ private struct PieProgressIndicator: View {
                     .fill(theme.accent)
                     .rotationEffect(rotation)
                     .onAppear {
+                        // A spinner that never stops is the clearest case for
+                        // the reduced-motion rule. The slice still shows
+                        // progress; it just does not rotate.
+                        guard !reduceMotion else { return }
                         withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
                             rotation = .degrees(360)
                         }

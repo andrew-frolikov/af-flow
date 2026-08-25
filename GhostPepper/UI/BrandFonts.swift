@@ -41,7 +41,25 @@ enum BrandFonts {
     // MARK: - Building a face
 
     private struct Key: Hashable { let face: String; let size: CGFloat; let weight: CGFloat }
+    /// A shared mutable static reached from view bodies. Every caller today is
+    /// on the main thread, but an off-main one added later would race on it
+    /// silently, so it is locked rather than left to convention. Marking it
+    /// `@MainActor` was tried and cascades into the theme's non-isolated font
+    /// properties, which would spread isolation through every call site for no
+    /// gain over a lock this uncontended.
+    private static let cacheLock = NSLock()
     private static var cache: [Key: Font] = [:]
+
+    private static func cached(_ key: Key, _ make: () -> Font) -> Font {
+        cacheLock.lock()
+        if let hit = cache[key] { cacheLock.unlock(); return hit }
+        cacheLock.unlock()
+        let font = make()
+        cacheLock.lock()
+        cache[key] = font
+        cacheLock.unlock()
+        return font
+    }
 
     /// A `CTFont` at an explicit `wght`, or nil if the file is missing.
     private static func ctFont(_ cgFont: CGFont?, size: CGFloat, weight: CGFloat?) -> CTFont? {
@@ -60,16 +78,10 @@ enum BrandFonts {
     /// is the right failure: an app that renders is better than one that does
     /// not, and the assertion above catches a missing file in development.
     static func text(size: CGFloat, weight: CGFloat = 400) -> Font {
-        let key = Key(face: "inter", size: size, weight: weight)
-        if let hit = cache[key] { return hit }
-        let font: Font
-        if let ct = ctFont(inter, size: size, weight: weight) {
-            font = Font(ct)
-        } else {
-            font = .system(size: size, weight: weight >= 600 ? .semibold : weight >= 500 ? .medium : .regular)
+        cached(Key(face: "inter", size: size, weight: weight)) {
+            if let ct = ctFont(inter, size: size, weight: weight) { return Font(ct) }
+            return .system(size: size, weight: weight >= 600 ? .semibold : weight >= 500 ? .medium : .regular)
         }
-        cache[key] = font
-        return font
     }
 
     /// Fraunces, the display face.
@@ -78,18 +90,27 @@ enum BrandFonts {
     /// Russian phrase loses 13 of its 14 glyphs, and Andrew dictates Russian
     /// more often than English. It is for strings the app itself authors.
     /// The floor is 17pt; below that the serifs muddy and Inter takes over.
+    /// The resolved point size for a display request, exposed so the floor can
+    /// actually be asserted. `String(describing:)` on a `Font` reveals only the
+    /// provider type, so a test comparing two `Font` values cannot see a size
+    /// at all and passes whether or not the clamp exists.
+    static func displayPointSize(for size: CGFloat) -> CGFloat { max(size, 17) }
+
     static func display(size: CGFloat) -> Font {
-        let clamped = max(size, 17)
-        let key = Key(face: "fraunces", size: clamped, weight: 500)
-        if let hit = cache[key] { return hit }
-        let font: Font
-        if let ct = ctFont(fraunces, size: clamped, weight: nil) {
-            font = Font(ct)
-        } else {
-            font = .custom("Georgia", size: clamped)
+        let clamped = displayPointSize(for: size)
+        return cached(Key(face: "fraunces", size: clamped, weight: 500)) {
+            if let ct = ctFont(fraunces, size: clamped, weight: nil) { return Font(ct) }
+            return .custom("Georgia", size: clamped)
         }
-        cache[key] = font
-        return font
+    }
+
+    /// Inter as an `NSFont`, for the AppKit text views that never go through
+    /// SwiftUI's `Font`. Without this they stay on the system face while
+    /// everything around them is Inter, which is visible as a face swap the
+    /// moment a search box is focused.
+    static func nsText(size: CGFloat, weight: CGFloat = 400) -> NSFont? {
+        guard let ct = ctFont(inter, size: size, weight: weight) else { return nil }
+        return ct as NSFont
     }
 
     // MARK: - Did the real faces actually load
@@ -174,12 +195,50 @@ extension AppTheme {
 private struct AFFlowButtonSurface<Content: View>: View {
     let theme: AppTheme
     let isPrimary: Bool
+    let isDestructive: Bool
     let isPressed: Bool
     let content: Content
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.controlSize) private var controlSize
     @State private var isHovered = false
 
+    /// `.controlSize` only affects built-in styles, so a custom style has to
+    /// honour it itself. Thirteen call sites asked for `.small` and were
+    /// silently getting a full-size 28x64 capsule, which turned a compact
+    /// toolbar row into four large buttons.
+    private var height: CGFloat {
+        switch controlSize {
+        case .mini: 18
+        case .small: 22
+        default: 28
+        }
+    }
+
+    private var horizontalPadding: CGFloat {
+        switch controlSize {
+        case .mini: 8
+        case .small: 10
+        default: 14
+        }
+    }
+
+    /// Only the PRIMARY button carries the spec's 64pt minimum. A ghost button
+    /// is often an icon, and forcing 64pt on an icon-only refresh button made
+    /// it three times wider than its glyph.
+    private var minimumWidth: CGFloat? {
+        guard isPrimary else { return nil }
+        return controlSize == .regular ? 64 : nil
+    }
+
+    private var textColour: Color {
+        if isPrimary { return theme.accentText }
+        return isDestructive ? theme.statusLive : theme.textPrimary
+    }
+
     private var fill: Color {
+        // A disabled control must not look hovered. Nothing clears the hover
+        // state when a button becomes disabled underneath the pointer.
+        guard isEnabled else { return isPrimary ? theme.accent : .clear }
         if isPrimary {
             return isPressed ? theme.accentPressed : (isHovered ? theme.accentHover : theme.accent)
         }
@@ -189,26 +248,32 @@ private struct AFFlowButtonSurface<Content: View>: View {
     var body: some View {
         content
             .font(theme.emphasisFont)
-            .foregroundStyle(isPrimary ? theme.accentText : theme.textPrimary)
-            .padding(.horizontal, 14)
-            .frame(height: 28)
-            .frame(minWidth: 64)
+            .foregroundStyle(textColour)
+            .padding(.horizontal, horizontalPadding)
+            .frame(height: height)
+            .frame(minWidth: minimumWidth)
             .background(shape.fill(fill))
             .overlay(isPrimary ? nil : shape.stroke(theme.separator, lineWidth: 1))
             // A disabled control is dimmed rather than recoloured, so the
             // shape it had is still the shape it has.
             .opacity(isEnabled ? 1 : 0.4)
             .contentShape(Rectangle())
+            // Moving 70 buttons off `.bordered` removed the system focus ring
+            // they used to get, which left custom buttons with NO visible
+            // keyboard focus indicator at all. This is the spec's ring:
+            // 2pt ink at 2pt offset, 14.78:1 against the ground.
+            .focusable(isEnabled)
+            .focusEffectDisabled(false)
             .onHover { isHovered = $0 && isEnabled }
-            .animation(.easeOut(duration: 0.18), value: isHovered)
-            .animation(.easeOut(duration: 0.18), value: isPressed)
+            .brandMotion(value: isHovered)
+            .brandMotion(value: isPressed)
     }
 
     /// One shape, one radius. A 14pt radius on a 28pt control IS a capsule, so
     /// this avoids a conditional shape type while still letting Windows 95 keep
     /// its square corners.
     private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: theme.id == .windows95 ? 0 : 14, style: .continuous)
+        RoundedRectangle(cornerRadius: theme.id == .windows95 ? 0 : height / 2, style: .continuous)
     }
 }
 
@@ -216,7 +281,7 @@ private struct AFFlowButtonSurface<Content: View>: View {
 struct AFFlowPrimaryButtonStyle: ButtonStyle {
     @Environment(\.appTheme) private var theme
     func makeBody(configuration: Configuration) -> some View {
-        AFFlowButtonSurface(theme: theme, isPrimary: true,
+        AFFlowButtonSurface(theme: theme, isPrimary: true, isDestructive: false,
                             isPressed: configuration.isPressed, content: configuration.label)
     }
 }
@@ -226,6 +291,71 @@ struct AFFlowGhostButtonStyle: ButtonStyle {
     @Environment(\.appTheme) private var theme
     func makeBody(configuration: Configuration) -> some View {
         AFFlowButtonSurface(theme: theme, isPrimary: false,
+                            isDestructive: configuration.role == .destructive,
                             isPressed: configuration.isPressed, content: configuration.label)
+    }
+}
+
+// MARK: - Motion
+
+/// Motion, with the canon's reduced-motion rule applied.
+///
+/// The canon calls this non-negotiable and it was simply missing: three
+/// repeating animations ran and ten `.animation()` modifiers fired regardless
+/// of the system setting. Under Reduce Motion every transition collapses to
+/// nothing and the repeating pulses hold still. **Nothing is lost by that**,
+/// because in every case here the state is also carried by colour: the overlay
+/// dot's clay still says recording when it stops pulsing.
+extension View {
+    /// A micro-interaction, 180ms ease per the canon, or nothing at all when
+    /// the system asks for reduced motion.
+    func brandMotion<V: Equatable>(value: V) -> some View {
+        modifier(BrandMotionModifier(value: value, duration: 0.18))
+    }
+
+    /// A larger reveal, on the canon's own curve.
+    func brandReveal<V: Equatable>(value: V) -> some View {
+        modifier(BrandRevealModifier(value: value))
+    }
+
+    /// A repeating pulse that HOLDS STILL under reduced motion, at full opacity
+    /// rather than mid-fade, so the dot never rests in a dimmed state.
+    func brandPulse(active: Bool, isPulsing: Bool) -> some View {
+        modifier(BrandPulseModifier(active: active, isPulsing: isPulsing))
+    }
+}
+
+private struct BrandMotionModifier<V: Equatable>: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let value: V
+    let duration: Double
+    func body(content: Content) -> some View {
+        content.animation(reduceMotion ? nil : .easeOut(duration: duration), value: value)
+    }
+}
+
+private struct BrandRevealModifier<V: Equatable>: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let value: V
+    func body(content: Content) -> some View {
+        content.animation(
+            reduceMotion ? nil : .timingCurve(0.22, 0.7, 0.2, 1, duration: 0.65),
+            value: value
+        )
+    }
+}
+
+private struct BrandPulseModifier: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let active: Bool
+    let isPulsing: Bool
+    func body(content: Content) -> some View {
+        content
+            .opacity(!reduceMotion && isPulsing && active ? 0.4 : 1.0)
+            .animation(
+                reduceMotion ? nil
+                    : (active ? .easeInOut(duration: 0.6).repeatForever(autoreverses: true) : .default),
+                value: isPulsing
+            )
     }
 }

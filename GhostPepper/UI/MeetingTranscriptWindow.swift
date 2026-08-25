@@ -2698,8 +2698,8 @@ struct MeetingRootView: View {
         .frame(minWidth: 500, minHeight: 400)
         .background(theme.windowBackground)
         .tint(theme.accent)
-        .animation(.easeInOut(duration: 0.2), value: state.showSidebar)
-        .animation(.easeInOut(duration: 0.2), value: state.showModelsSidebar)
+        .brandMotion(value: state.showSidebar)
+        .brandMotion(value: state.showModelsSidebar)
         .onAppear { state.loadHistory() }
         // Refresh the list when a recording finishes.
         //
@@ -2931,7 +2931,7 @@ struct MeetingRootView: View {
             // Grip indicator — short horizontal line in the middle so the
             // drag affordance is discoverable.
             Capsule()
-                .fill(theme.hoverFill)
+                .fill(theme.textSecondary.opacity(0.55))
                 .frame(width: 36, height: 3)
         }
         .frame(height: 8)
@@ -5871,7 +5871,7 @@ private struct WikiGenerationConsoleSheet: View {
                 HStack(alignment: .top, spacing: 16) {
                     pepperCharacter(size: run.reviewDraft == nil ? 92 : 58)
                         .scaleEffect(pepperPulse ? 1.035 : 0.965)
-                        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pepperPulse)
+                        .brandMotion(value: pepperPulse)
 
                     VStack(alignment: .leading, spacing: 5) {
                         Text(run.reviewDraft == nil ? "Pre-loading..." : "Approve imported entities")
@@ -6262,7 +6262,7 @@ private struct WikiGenerationConsoleSheet: View {
         return HStack {
             Image(systemName: isActive ? "circle.dotted" : (isComplete ? "checkmark.circle" : "circle"))
                 .font(theme.textFont(size: 11, weight: 600))
-                .foregroundStyle(isActive ? theme.accent : (isComplete ? Color.secondary : theme.hoverFill))
+                .foregroundStyle(isActive ? theme.accent : (isComplete ? theme.statusReady : theme.textSecondary))
             Text(title)
                 .font(theme.textFont(size: 12, weight: 500))
             Spacer()
@@ -7082,8 +7082,10 @@ private struct BlockKeyboardTextEditor: NSViewRepresentable {
         let textView = KeyHandlingTextView()
         textView.delegate = context.coordinator
         textView.string = text
-        textView.font = NSFont.systemFont(ofSize: 14)
-        textView.textColor = NSColor.labelColor
+        // A block editor holding his dictated words. It was the system face
+        // and the system label colour on a paper ground.
+        textView.font = BrandFonts.nsText(size: 14) ?? NSFont.systemFont(ofSize: 14)
+        textView.textColor = NSColor(Brand.textPrimary)
         textView.backgroundColor = .clear
         textView.drawsBackground = false
         textView.isRichText = false
@@ -8049,7 +8051,7 @@ private struct SecondBrainGraphNodeView: View {
                 NSCursor.pop()
             }
         }
-        .animation(.easeOut(duration: 0.12), value: isHovering)
+        .brandMotion(value: isHovering)
         .help("\(node.title) · \(node.folderTitle) · \(node.degree) links")
     }
 
@@ -8781,7 +8783,7 @@ struct MeetingTabContentView: View {
             Text("No audio detected. Check your microphone.").font(theme.captionFont)
             Spacer()
             Button("Open Settings") { state.onOpenSettings?() }
-                .font(theme.textFont(size: 11.5, weight: 500)).buttonStyle(AFFlowPrimaryButtonStyle()).tint(theme.accent).controlSize(.small)
+                .buttonStyle(AFFlowPrimaryButtonStyle()).controlSize(.small)
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(theme.statusBusy.opacity(0.1))
@@ -8853,7 +8855,7 @@ struct MeetingTabContentView: View {
                         text: body,
                         query: searchText,
                         currentMatchIndex: currentMatchIndex,
-                        font: NSFont(name: "Georgia", size: 16) ?? NSFont.systemFont(ofSize: 16),
+                        font: BrandFonts.nsText(size: 16) ?? NSFont.systemFont(ofSize: 16),
                         onMatchCountChange: { matchCount = $0 }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -8879,7 +8881,7 @@ struct MeetingTabContentView: View {
                 text: tab.transcript.notes,
                 query: searchText,
                 currentMatchIndex: currentMatchIndex,
-                font: NSFont(name: "Georgia", size: 15) ?? NSFont.systemFont(ofSize: 15),
+                font: BrandFonts.nsText(size: 15) ?? NSFont.systemFont(ofSize: 15),
                 onMatchCountChange: { matchCount = $0 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -8954,9 +8956,11 @@ struct MeetingTabContentView: View {
             if tab.isRecording && !tab.transcript.segments.isEmpty {
                 HStack(spacing: 8) {
                     HStack(spacing: 4) {
-                        Circle().fill(theme.hoverFill).frame(width: 4, height: 4)
-                        Circle().fill(theme.hoverFill).frame(width: 4, height: 4)
-                        Circle().fill(theme.hoverFill).frame(width: 4, height: 4)
+                        // A trailing fade, and it has to be VISIBLE: these
+                        // three were flattened to one invisible tint at 1.12:1.
+                        Circle().fill(theme.textSecondary).frame(width: 4, height: 4)
+                        Circle().fill(theme.textSecondary.opacity(0.7)).frame(width: 4, height: 4)
+                        Circle().fill(theme.textSecondary.opacity(0.45)).frame(width: 4, height: 4)
                     }
                     Text("Listening...").font(theme.captionFont).foregroundStyle(theme.textSecondary)
                 }.padding(.top, 4)
@@ -9147,7 +9151,7 @@ struct MeetingTabContentView: View {
                     text: tab.transcript.summary ?? "",
                     query: searchText,
                     currentMatchIndex: currentMatchIndex,
-                    font: NSFont(name: "Georgia", size: 15) ?? NSFont.systemFont(ofSize: 15),
+                    font: BrandFonts.nsText(size: 15) ?? NSFont.systemFont(ofSize: 15),
                     onMatchCountChange: { matchCount = $0 }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -9310,8 +9314,15 @@ struct MeetingSidebarView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
-            .background(theme.textBackground.opacity(theme.id == .current ? 0.5 : 0.9))
-            .cornerRadius(theme.id == .windows95 ? 0 : 6)
+            // A well, per monolith rule 2: full strength, 12pt radius, 1px
+            // hairline. At half opacity this measured 1.05:1 against the
+            // ground and had no border, so the search field was invisible.
+            .background(theme.textBackground)
+            .cornerRadius(theme.id == .windows95 ? 0 : 12)
+            .overlay(
+                RoundedRectangle(cornerRadius: theme.id == .windows95 ? 0 : 12)
+                    .stroke(theme.separator, lineWidth: 1)
+            )
             .padding(.horizontal, 12)
             .padding(.bottom, 4)
             .frame(maxWidth: .infinity, alignment: .leading)

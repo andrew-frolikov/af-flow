@@ -375,7 +375,7 @@ struct SettingsView: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
         .onHover { hoveredSection = $0 ? section : (hoveredSection == section ? nil : hoveredSection) }
-        .animation(.easeOut(duration: 0.18), value: isSelected)
+        .brandMotion(value: isSelected)
     }
 
     var body: some View {
@@ -3213,7 +3213,7 @@ private struct DiffReadOnlyTextPane: View {
     }
 
     private var diffText: Text {
-        let font = monospaced ? Font.system(.body, design: .monospaced) : .body
+        let font = monospaced ? theme.monoFont() : theme.bodyFont
 
         guard !segments.isEmpty else {
             return Text(text).font(font)
@@ -3756,15 +3756,22 @@ private struct TranscriptionLabMetadataSummary: View {
 
 private struct TranscriptionLabDiarizationSummaryView: View {
     @Environment(\.appTheme) private var theme
-    private static let speakerPalette: [NSColor] = [
-        .systemBlue,
-        .systemGreen,
-        .systemOrange,
-        .systemPink,
-        .systemTeal,
-        .systemRed,
-        .systemIndigo,
-        .systemBrown,
+    /// **A deliberate exception to "the only saturated colour is pine".**
+    ///
+    /// These identify SPEAKERS, so the colours are data rather than chrome and
+    /// they have to be mutually distinguishable, which two brand hues cannot
+    /// do. The ramp is built from the brand's own families and their
+    /// neighbours rather than from system colours, so it sits on warm paper
+    /// instead of fighting it, and every entry is dark enough to carry a label.
+    private static let speakerPalette: [Color] = [
+        Color(hex: 0x1E5C46),   // pine, the signal
+        Color(hex: 0x7A5414),   // ochre
+        Color(hex: 0x9E3B24),   // clay
+        Color(hex: 0x2F5468),   // slate blue
+        Color(hex: 0x5B4A7A),   // muted violet
+        Color(hex: 0x3F6B33),   // moss
+        Color(hex: 0x8A4A63),   // plum
+        Color(hex: 0x4A4640)    // warm graphite
     ]
 
     let visualization: TranscriptionLabController.DiarizationVisualization
@@ -3918,11 +3925,11 @@ private struct TranscriptionLabDiarizationSummaryView: View {
     private func speakerColor(for speakerID: String) -> Color {
         let speakerIDs = visualization.speakerIDsInDisplayOrder
         guard let speakerIndex = speakerIDs.firstIndex(of: speakerID) else {
-            return Color.accentColor
+            return theme.textSecondary
         }
 
         let paletteIndex = speakerIndex % Self.speakerPalette.count
-        return Color(nsColor: Self.speakerPalette[paletteIndex])
+        return Self.speakerPalette[paletteIndex]
     }
 
     private func formattedSpeakerCount(_ count: Int) -> String {

@@ -412,7 +412,9 @@ private struct LocalModelRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Circle()
-                .fill(isDownloaded ? theme.statusReady : theme.hoverFill)
+                // "Not downloaded" has to be a visible dot, not the absence
+                // of one. The hover tint measures 1.12:1 on the ground.
+                .fill(isDownloaded ? theme.statusReady : theme.textSecondary)
                 .frame(width: 6, height: 6)
                 .padding(.top, 5)
             VStack(alignment: .leading, spacing: 1) {
@@ -442,7 +444,7 @@ private struct LocalModelRow: View {
                     .truncationMode(.middle)
                 Text(capabilities.joined(separator: " · "))
                     .font(theme.textFont(size: 10, weight: 500))
-                    .foregroundColor(.secondary.opacity(0.85))
+                    .foregroundColor(theme.textSecondary)
                 if let progress {
                     progressView(progress)
                         .padding(.top, 2)
