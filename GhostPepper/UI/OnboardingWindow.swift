@@ -100,7 +100,7 @@ class OnboardingWindowController {
                 defer: false
             )
             window.title = "AF Flow"
-            window.contentView = NSHostingView(rootView: onboardingView)
+            window.contentView = NSHostingView(rootView: AFFlowThemedRoot { onboardingView })
             window.center()
             window.level = .normal
             window.isReleasedWhenClosed = false
@@ -158,6 +158,7 @@ struct OnboardingView: View {
 // MARK: - Step 1: Welcome
 
 struct WelcomeStep: View {
+    @Environment(\.appTheme) private var theme
     let onContinue: () -> Void
 
     var body: some View {
@@ -174,31 +175,31 @@ struct WelcomeStep: View {
 
             Text("Sovereign personal intelligence\nfor your Mac")
                 .font(.title3)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .multilineTextAlignment(.center)
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "lock.shield.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(theme.accent)
                     Text("All open-source models. Voice-to-text, meeting transcription, your second brain, and Q&A run under your control.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
 
                 HStack(spacing: 8) {
                     Image(systemName: "externaldrive.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(theme.accent)
                     Text("No accounts required. Your notes, transcripts, and wiki stay on this Mac.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             }
             .padding()
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.green.opacity(0.08))
-                    .strokeBorder(Color.green.opacity(0.2))
+                    .fill(theme.statusReady.opacity(0.08))
+                    .strokeBorder(theme.statusReady.opacity(0.2))
             )
             .padding(.horizontal, 24)
 
@@ -211,7 +212,7 @@ struct WelcomeStep: View {
                     .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.orange)
+            .tint(theme.accent)
             .padding(.horizontal, 40)
             .padding(.bottom, 24)
         }
@@ -221,6 +222,7 @@ struct WelcomeStep: View {
 // MARK: - Step 2: Setup
 
 struct SetupStep: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var appState: AppState
     @ObservedObject var modelManager: ModelManager
     let onContinue: () -> Void
@@ -300,7 +302,7 @@ struct SetupStep: View {
 
             Text("Grant permissions. AF Flow chooses the local models.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .padding(.bottom, 16)
 
             ScrollView {
@@ -316,7 +318,7 @@ struct SetupStep: View {
                             PermissionChecker.openMicrophoneSettings()
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.orange)
+                        .tint(theme.accent)
                         .controlSize(.small)
                     } else if !micGranted {
                         Button("Grant") {
@@ -333,7 +335,7 @@ struct SetupStep: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.orange)
+                        .tint(theme.accent)
                         .controlSize(.small)
                     }
                 }
@@ -358,14 +360,14 @@ struct SetupStep: View {
                         HStack(spacing: 4) {
                             Image(systemName: "mic.fill")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.textSecondary)
 
                             GeometryReader { geo in
                                 ZStack(alignment: .leading) {
                                     RoundedRectangle(cornerRadius: 3)
-                                        .fill(Color(nsColor: .controlBackgroundColor))
+                                        .fill(theme.controlBackground)
                                     RoundedRectangle(cornerRadius: 3)
-                                        .fill(micLevel.level > 0.7 ? .red : micLevel.level > 0.3 ? .orange : .green)
+                                        .fill(micLevel.level > 0.7 ? theme.statusLive : micLevel.level > 0.3 ? theme.accent : theme.statusReady)
                                         .frame(width: geo.size.width * CGFloat(micLevel.level))
                                         .animation(.easeOut(duration: 0.08), value: micLevel.level)
                                 }
@@ -374,7 +376,7 @@ struct SetupStep: View {
 
                             Text("Sound check")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.textSecondary)
                         }
                     }
                     .padding(.horizontal, 4)
@@ -391,7 +393,7 @@ struct SetupStep: View {
                             PermissionChecker.openAccessibilitySettings()
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.orange)
+                        .tint(theme.accent)
                         .controlSize(.small)
                     }
                 }
@@ -411,7 +413,7 @@ struct SetupStep: View {
                                 Task { await loadRequiredLocalModels() }
                             }
                             .buttonStyle(.borderedProminent)
-                            .tint(.orange)
+                            .tint(theme.accent)
                             .controlSize(.small)
                         }
                     }
@@ -438,7 +440,7 @@ struct SetupStep: View {
                         .padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(theme.accent)
                 .padding(.horizontal, 40)
                 .padding(.bottom, 24)
             }
@@ -506,6 +508,7 @@ private extension CleanupModelState {
 }
 
 struct SetupRow<Actions: View>: View {
+    @Environment(\.appTheme) private var theme
     let icon: String
     let title: String
     let subtitle: String
@@ -517,21 +520,21 @@ struct SetupRow<Actions: View>: View {
             Image(systemName: icon)
                 .font(.title2)
                 .frame(width: 32)
-                .foregroundStyle(isComplete ? .green : .secondary)
+                .foregroundStyle(isComplete ? theme.statusReady : theme.textSecondary)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.body.weight(.medium))
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
 
             Spacer()
 
             if isComplete {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(theme.statusReady)
                     .font(.title3)
             } else {
                 actions()
@@ -540,12 +543,13 @@ struct SetupRow<Actions: View>: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(theme.controlBackground)
         )
     }
 }
 
 private struct OnboardingModelSummary: View {
+    @Environment(\.appTheme) private var theme
     let speechModelRow: RuntimeModelRow?
     let cleanupModelRow: RuntimeModelRow?
 
@@ -560,18 +564,19 @@ private struct OnboardingModelSummary: View {
 
             Text("AF Flow picks these during onboarding. Advanced model controls live in Settings.")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.textSecondary)
                 .padding(.top, 4)
         }
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(theme.controlBackground)
         )
     }
 }
 
 private struct OnboardingModelRow: View {
+    @Environment(\.appTheme) private var theme
     let label: String
     let name: String
     let size: String
@@ -584,7 +589,7 @@ private struct OnboardingModelRow: View {
 
             Text(label)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .frame(width: 50, alignment: .leading)
 
             Text(name)
@@ -595,7 +600,7 @@ private struct OnboardingModelRow: View {
 
             Text(statusText)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
     }
 
@@ -604,7 +609,7 @@ private struct OnboardingModelRow: View {
         switch status {
         case .loaded:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(theme.statusReady)
                 .font(.caption)
         case .loading:
             ProgressView()
@@ -620,11 +625,11 @@ private struct OnboardingModelRow: View {
             }
         case .notLoaded:
             Image(systemName: "circle")
-                .foregroundStyle(.quaternary)
+                .foregroundStyle(theme.textSecondary)
                 .font(.caption)
         case .systemManaged:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(theme.statusReady)
                 .font(.caption)
         }
     }
@@ -742,6 +747,7 @@ class TryItController: ObservableObject {
 }
 
 struct TryItStep: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var appState: AppState
     let onContinue: () -> Void
     @StateObject private var controller: TryItController
@@ -760,7 +766,7 @@ struct TryItStep: View {
 
             Text("Hold **Right Command + Right Option** and say something")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
 
             HStack(spacing: 6) {
                 KeyCap(label: "⌘ right", highlighted: true, isActive: controller.isRecording)
@@ -772,17 +778,17 @@ struct TryItStep: View {
                 if controller.isRecording {
                     HStack(spacing: 8) {
                         Circle()
-                            .fill(.red)
+                            .fill(theme.statusLive)
                             .frame(width: 10, height: 10)
                         Text("Recording...")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                 } else if controller.isTranscribing {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
                         Text("Transcribing...")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                 } else if let text = controller.transcribedText {
                     VStack(spacing: 8) {
@@ -793,26 +799,26 @@ struct TryItStep: View {
                             .frame(maxWidth: .infinity)
                             .background(
                                 RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color(nsColor: .controlBackgroundColor))
+                                    .fill(theme.controlBackground)
                             )
                             .padding(.horizontal, 24)
 
                         HStack(spacing: 4) {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(theme.statusReady)
                             Text("It works! Your words will be pasted wherever your cursor is.")
                                 .font(.callout)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(theme.statusReady)
                         }
                     }
                 } else if controller.monitorStartFailed {
                     Text("Could not start hotkey monitor.\nPlease verify Accessibility is enabled in System Settings.")
                         .font(.callout)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(theme.statusLive)
                         .multilineTextAlignment(.center)
                 } else {
                     Text(controller.statusMessage)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             }
             .frame(minHeight: 100)
@@ -836,7 +842,7 @@ struct TryItStep: View {
                         .padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(theme.accent)
             }
             .padding(.horizontal, 40)
             .padding(.bottom, 24)
@@ -847,6 +853,7 @@ struct TryItStep: View {
 }
 
 struct KeyCap: View {
+    @Environment(\.appTheme) private var theme
     let label: String
     let highlighted: Bool
     var isActive: Bool = false
@@ -854,14 +861,14 @@ struct KeyCap: View {
     var body: some View {
         Text(label)
             .font(.system(size: 12, weight: highlighted ? .semibold : .regular))
-            .foregroundStyle(highlighted ? .white : .secondary)
+            .foregroundStyle(highlighted ? .white : theme.textSecondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(highlighted
-                        ? (isActive ? Color.red : Color.orange)
-                        : Color(nsColor: .controlBackgroundColor))
+                        ? (isActive ? theme.statusLive : theme.accent)
+                        : theme.controlBackground)
             )
             .animation(.easeInOut(duration: 0.2), value: isActive)
     }
@@ -870,6 +877,7 @@ struct KeyCap: View {
 // MARK: - Step 4: Done
 
 struct DoneStep: View {
+    @Environment(\.appTheme) private var theme
     let onComplete: () -> Void
     @State private var isCompleting = false
 
@@ -879,53 +887,53 @@ struct DoneStep: View {
 
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(.green)
+                .foregroundStyle(theme.statusReady)
 
             Text("You're All Set!")
                 .font(.system(size: 28, weight: .bold))
 
             Text("AF Flow lives in your menu bar")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
 
             // Menu bar mockup
             HStack(spacing: 10) {
                 Spacer()
                 Image(systemName: "moon.fill")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Image(systemName: "display")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Image("MenuBarIcon")
                     .renderingMode(.template)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(theme.accent)
                 Image(systemName: "wifi")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Image(systemName: "battery.75percent")
                     .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Text(Date(), format: .dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .fill(theme.controlBackground)
             )
             .padding(.horizontal, 40)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("From the menu bar you can:")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 BulletPoint("Switch your microphone")
                 BulletPoint("Change your recording shortcuts")
                 BulletPoint("Record and transcribe meetings")
@@ -953,7 +961,7 @@ struct DoneStep: View {
                 .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.orange)
+            .tint(theme.accent)
             .disabled(isCompleting)
             .padding(.horizontal, 40)
             .padding(.bottom, 24)
@@ -962,16 +970,17 @@ struct DoneStep: View {
 }
 
 struct BulletPoint: View {
+    @Environment(\.appTheme) private var theme
     let text: String
     init(_ text: String) { self.text = text }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Text("•")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             Text(text)
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
     }
 }

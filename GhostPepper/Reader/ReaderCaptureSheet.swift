@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ReaderCaptureSheet: View {
+    @Environment(\.appTheme) private var theme
     let archiveRoot: URL
     let onSaved: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -15,7 +16,7 @@ struct ReaderCaptureSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: "newspaper")
                     .font(.system(size: 16))
-                    .foregroundColor(.orange)
+                    .foregroundStyle(theme.accent)
                 Text("New Reader")
                     .font(.headline)
                 Spacer()
@@ -23,7 +24,7 @@ struct ReaderCaptureSheet: View {
 
             Text("Paste a URL. The article will be saved as a note.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
 
             TextField("https://example.com/article", text: $urlInput)
                 .textFieldStyle(.roundedBorder)
@@ -34,7 +35,7 @@ struct ReaderCaptureSheet: View {
             if let errorMessage {
                 Text(errorMessage)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundStyle(theme.statusLive)
             }
 
             HStack(spacing: 8) {
@@ -57,7 +58,7 @@ struct ReaderCaptureSheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(theme.accent)
                 .disabled(urlInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCapturing)
             }
         }

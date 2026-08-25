@@ -1217,7 +1217,7 @@ final class MeetingTranscriptWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 500, height: 400)
-        window.contentViewController = NSHostingController(rootView: view)
+        window.contentViewController = NSHostingController(rootView: AFFlowThemedRoot { view })
         // Deliberately NOT [.canJoinAllSpaces, .fullScreenAuxiliary]: those made
         // this window follow Andrew onto every Space, including over fullscreen
         // games, which he reported on 2026-07-21 as "on top of everything".
@@ -2588,6 +2588,7 @@ final class MeetingWindowState: ObservableObject {
 // MARK: - Root View
 
 struct MeetingRootView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var state: MeetingWindowState
     let cleanupManager: TextCleanupManager
     let modelManager: ModelManager
@@ -2929,11 +2930,11 @@ struct MeetingRootView: View {
     private var qaResizeHandle: some View {
         ZStack {
             Rectangle()
-                .fill(Color(nsColor: .separatorColor).opacity(0.5))
+                .fill(theme.separator.opacity(0.5))
             // Grip indicator — short horizontal line in the middle so the
             // drag affordance is discoverable.
             Capsule()
-                .fill(Color.secondary.opacity(0.6))
+                .fill(appTheme.hoverFill)
                 .frame(width: 36, height: 3)
         }
         .frame(height: 8)
@@ -2979,14 +2980,14 @@ struct MeetingRootView: View {
                     }
                     Text(qaStatusLine.isEmpty ? "" : qaStatusLine)
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
                     if let usage = qaThread.last?.usage {
                         Text(runningCostText(usage))
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                             .help("\(usage.inputTokens) in / \(usage.outputTokens) out · \(usage.cacheReadTokens) cache read / \(usage.cacheWriteTokens) cache write")
                     }
                     if !qaTranscript.events.isEmpty {
@@ -3020,7 +3021,7 @@ struct MeetingRootView: View {
                         ForEach(Array(qaTranscript.events.enumerated()), id: \.offset) { _, event in
                             Text(formatTraceLine(event))
                                 .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.textSecondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
                         }
@@ -3028,7 +3029,7 @@ struct MeetingRootView: View {
                     .padding(8)
                 }
                 .frame(maxHeight: 180)
-                .background(Color.secondary.opacity(0.06))
+                .background(appTheme.hoverFill)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 6)
             }
@@ -3049,7 +3050,7 @@ struct MeetingRootView: View {
                         .padding(.vertical, 10)
                     }
                     .frame(maxHeight: .infinity)
-                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
+                    .background(theme.controlBackground)
                     .onChange(of: qaThread.last?.answer) { _, _ in
                         if let last = qaThread.last {
                             proxy.scrollTo(last.id, anchor: .bottom)
@@ -3078,7 +3079,7 @@ struct MeetingRootView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .tint(theme.accent)
                     .disabled(isApplyingDossier)
 
                     Button("Discard") { state.pendingDossierApply = nil }
@@ -3089,11 +3090,11 @@ struct MeetingRootView: View {
 
                     Text("Merges with existing dossier (LLM call). Aliases & sources stay.")
                         .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(Color.orange.opacity(0.08))
+                .background(appTheme.accent.opacity(0.08))
             }
         }
     }
@@ -3124,7 +3125,7 @@ struct MeetingRootView: View {
             HStack(spacing: 8) {
                 Image(systemName: "cpu")
                     .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
 
                 TextField(qaPlaceholder, text: $qaQuestion)
                     .textFieldStyle(.plain)
@@ -3145,7 +3146,7 @@ struct MeetingRootView: View {
                     Button(action: { askAcrossMeetings() }) {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 16))
-                            .foregroundColor(.orange)
+                            .foregroundStyle(theme.accent)
                     }
                     .buttonStyle(.plain)
                 }
@@ -3158,7 +3159,7 @@ struct MeetingRootView: View {
                             Text("New")
                                 .font(.system(size: 11, weight: .medium))
                         }
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                     }
                     .buttonStyle(.plain)
                     .help("Start a new conversation (clears the thread)")
@@ -3178,10 +3179,10 @@ struct MeetingRootView: View {
             HStack(alignment: .top, spacing: 6) {
                 Text("›")
                     .font(.system(.callout, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.textSecondary)
                 Text(turn.question)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .textSelection(.enabled)
             }
             if turn.isStreaming && turn.answer.isEmpty {
@@ -3189,7 +3190,7 @@ struct MeetingRootView: View {
                     ProgressView().scaleEffect(0.5)
                     Text(qaStatusLine.isEmpty ? "Thinking…" : qaStatusLine)
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             } else if !turn.answer.isEmpty {
                 QAAnswerView(source: turn.answer, onLink: handleAnswerLink)
@@ -3198,7 +3199,7 @@ struct MeetingRootView: View {
                 if let usage = turn.usage {
                     Text(usageFooterText(usage))
                         .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             }
         }
@@ -3449,7 +3450,7 @@ struct MeetingRootView: View {
 
             if run.isRunning {
                 ProgressView(value: run.progressFraction)
-                    .tint(.orange)
+                    .tint(theme.accent)
                     .frame(width: 120)
             }
 
@@ -3457,7 +3458,7 @@ struct MeetingRootView: View {
                 isWikiGenerationMinimized = false
             }
             .buttonStyle(.borderedProminent)
-            .tint(.orange)
+            .tint(theme.accent)
 
             if run.isRunning {
                 Button("Stop") {
@@ -3479,7 +3480,7 @@ struct MeetingRootView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.orange.opacity(0.32), lineWidth: 1)
+                .stroke(appTheme.accent.opacity(0.32), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.26), radius: 18, x: 0, y: 10)
     }
@@ -3507,7 +3508,7 @@ struct MeetingRootView: View {
         } else {
             Image(systemName: "brain.head.profile")
                 .font(.system(size: size * 0.62, weight: .semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(theme.accent)
                 .frame(width: size, height: size)
         }
     }
@@ -3629,6 +3630,7 @@ struct MeetingRootView: View {
             var totalInputTokens = 0
             var totalOutputTokens = 0
             struct PreparedSource {
+                @Environment(\.appTheme) private var theme
                 let index: Int
                 let url: URL
                 let task: Task<GeneratedWikiResult, Error>
@@ -4016,7 +4018,7 @@ struct MeetingRootView: View {
             Button(action: { state.showSidebar.toggle() }) {
                 Image(systemName: "sidebar.left")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(state.showSidebar ? appTheme.accent : .secondary)
+                    .foregroundColor(state.showSidebar ? appTheme.accent : theme.textSecondary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
             }
@@ -4073,7 +4075,7 @@ struct MeetingRootView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
                     }
@@ -4088,7 +4090,7 @@ struct MeetingRootView: View {
             Button(action: { state.showModelsSidebar.toggle() }) {
                 Image(systemName: "sidebar.right")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(state.showModelsSidebar ? appTheme.accent : .secondary)
+                    .foregroundColor(state.showModelsSidebar ? appTheme.accent : theme.textSecondary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
             }
@@ -4157,7 +4159,7 @@ struct MeetingRootView: View {
         HStack(spacing: 8) {
             Image(systemName: "brain.head.profile")
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundStyle(theme.textSecondary)
             switch brainBuildStatus {
             case .notBuilt(let meetings) where meetings > 0:
                 Button {
@@ -4172,7 +4174,7 @@ struct MeetingRootView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
-                    .background(Capsule().fill(Color.orange))
+                    .background(Capsule().fill(theme.accent))
                     .foregroundColor(.white)
                 }
                 .buttonStyle(.plain)
@@ -4180,7 +4182,7 @@ struct MeetingRootView: View {
                 .help("Build generated 2nd Brain pages for the next 50 unprocessed meetings or notes.")
                 Text("\(meetings) meetings available")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             case .built(let pageCount):
                 Button {
                     state.openSecondBrain()
@@ -4194,7 +4196,7 @@ struct MeetingRootView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
-                    .background(Capsule().fill(Color.orange))
+                    .background(Capsule().fill(theme.accent))
                     .foregroundColor(.white)
                 }
                 .buttonStyle(.plain)
@@ -4202,7 +4204,7 @@ struct MeetingRootView: View {
                 .help("Update the 2nd Brain by adding the next 50 unprocessed meetings or notes.")
                 Text("\(pageCount) pages")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             case .notBuilt, .none:
                 EmptyView()
             }
@@ -4257,7 +4259,7 @@ struct MeetingRootView: View {
                 state.startNewNote()
             }
             .buttonStyle(.borderedProminent)
-            .tint(.orange)
+            .tint(theme.accent)
 
             Button("New Ad Hoc Meeting") {
                 state.startAdHocCall()
@@ -4273,6 +4275,7 @@ struct MeetingRootView: View {
 // MARK: - File Tab View (observes individual tab)
 
 private struct HomeTabView: View {
+    @Environment(\.appTheme) private var theme
     let isActive: Bool
     let onSelect: () -> Void
 
@@ -4280,18 +4283,18 @@ private struct HomeTabView: View {
         HStack(spacing: 6) {
             Image(systemName: isActive ? "house.fill" : "house")
                 .font(.system(size: 11))
-                .foregroundColor(isActive ? .orange : .secondary)
+                .foregroundColor(isActive ? theme.accent : theme.textSecondary)
             Text("Home")
                 .font(.system(size: 12))
-                .foregroundColor(isActive ? .primary : .secondary)
+                .foregroundColor(isActive ? theme.textPrimary : theme.textSecondary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(isActive ? Color(nsColor: .textBackgroundColor) : Color.clear)
+        .background(isActive ? theme.textBackground : Color.clear)
         .overlay(alignment: .bottom) {
             if isActive {
-                Rectangle().fill(Color.orange).frame(height: 2)
+                Rectangle().fill(theme.accent).frame(height: 2)
             }
         }
         .contentShape(Rectangle())
@@ -4301,6 +4304,7 @@ private struct HomeTabView: View {
 }
 
 private struct FileTabView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var tab: OpenMeetingTab
     let isActive: Bool
     let onSelect: () -> Void
@@ -4309,27 +4313,27 @@ private struct FileTabView: View {
     var body: some View {
         HStack(spacing: 6) {
             if tab.isRecording {
-                Circle().fill(.red).frame(width: 6, height: 6)
+                Circle().fill(theme.statusLive).frame(width: 6, height: 6)
             }
             Text(tab.transcript.meetingName)
                 .font(.system(size: 12))
-                .foregroundColor(isActive ? .primary : .secondary)
+                .foregroundColor(isActive ? theme.textPrimary : theme.textSecondary)
                 .lineLimit(1)
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.plain)
             .opacity(isActive ? 1 : 0.5)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(isActive ? Color(nsColor: .textBackgroundColor) : Color.clear)
+        .background(isActive ? theme.textBackground : Color.clear)
         .overlay(alignment: .bottom) {
             if isActive {
-                Rectangle().fill(Color.orange).frame(height: 2)
+                Rectangle().fill(theme.accent).frame(height: 2)
             }
         }
         .contentShape(Rectangle())
@@ -4338,6 +4342,7 @@ private struct FileTabView: View {
 }
 
 private struct IndexTabView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var tab: OpenIndexTab
     let isActive: Bool
     let onSelect: () -> Void
@@ -4347,26 +4352,26 @@ private struct IndexTabView: View {
         HStack(spacing: 6) {
             Image(systemName: tab.content.iconSystemName)
                 .font(.system(size: 10))
-                .foregroundColor(isActive ? .orange : .secondary)
+                .foregroundColor(isActive ? theme.accent : theme.textSecondary)
             Text(tab.content.title)
                 .font(.system(size: 12))
-                .foregroundColor(isActive ? .primary : .secondary)
+                .foregroundColor(isActive ? theme.textPrimary : theme.textSecondary)
                 .lineLimit(1)
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.plain)
             .opacity(isActive ? 1 : 0.5)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(isActive ? Color(nsColor: .textBackgroundColor) : Color.clear)
+        .background(isActive ? theme.textBackground : Color.clear)
         .overlay(alignment: .bottom) {
             if isActive {
-                Rectangle().fill(Color.orange).frame(height: 2)
+                Rectangle().fill(theme.accent).frame(height: 2)
             }
         }
         .contentShape(Rectangle())
@@ -4378,6 +4383,7 @@ private struct IndexTabView: View {
 /// dispatches to either IndexEntryView or MeetingTabContentView depending on
 /// what the tab currently holds. Cmd+[ goes back.
 struct NavTabContentView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var tab: OpenIndexTab
     @ObservedObject var state: MeetingWindowState
 
@@ -4398,7 +4404,7 @@ struct NavTabContentView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 4)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
+            .background(theme.controlBackground)
 
             Divider()
 
@@ -4638,6 +4644,7 @@ private struct BrowserBackEventBridge: NSViewRepresentable {
 }
 
 private struct SecondBrainLintSheet: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var run: SecondBrainLintRun
     let onCancel: () -> Void
     let onApply: () -> Void
@@ -4663,7 +4670,7 @@ private struct SecondBrainLintSheet: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: run.errorMessage == nil ? "checklist" : "exclamationmark.triangle")
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(run.errorMessage == nil ? .orange : .red)
+                    .foregroundStyle(run.errorMessage == nil ? theme.accent : theme.statusLive)
                     .frame(width: 34, height: 34)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -4671,10 +4678,10 @@ private struct SecondBrainLintSheet: View {
                         .font(.system(size: 18, weight: .semibold))
                     Text("Generated pages only")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                     Text(run.status)
                         .font(.system(size: 12))
-                        .foregroundColor(run.errorMessage == nil ? .secondary : .red)
+                        .foregroundColor(run.errorMessage == nil ? theme.textSecondary : theme.statusLive)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -4684,10 +4691,10 @@ private struct SecondBrainLintSheet: View {
                 VStack(alignment: .trailing, spacing: 5) {
                     Text("\(run.scannedPages)/\(max(run.totalPages, run.scannedPages)) pages")
                         .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                     Text("\(run.proposals.count) proposals · \(run.acceptedCount) accepted")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
 
                 if run.isRunning {
@@ -4704,7 +4711,7 @@ private struct SecondBrainLintSheet: View {
             }
 
             ProgressView(value: run.progressFraction)
-                .tint(run.errorMessage == nil ? .orange : .red)
+                .tint(run.errorMessage == nil ? theme.accent : theme.statusLive)
         }
         .padding(18)
     }
@@ -4713,7 +4720,7 @@ private struct SecondBrainLintSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Lint progress")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
 
             lintProgressRow(title: "Pages", value: "\(run.scannedPages) of \(max(run.totalPages, run.scannedPages))", isActive: run.isRunning)
             lintProgressRow(title: "Proposals", value: "\(run.proposals.count)", isActive: run.isRunning)
@@ -4724,7 +4731,7 @@ private struct SecondBrainLintSheet: View {
 
             Text("Checks")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
 
             checkCard(title: "Duplicate entities", status: run.isRunning ? "scanning..." : "complete")
             checkCard(title: "Duplicate topics", status: run.isRunning ? "scanning..." : "complete")
@@ -4736,7 +4743,7 @@ private struct SecondBrainLintSheet: View {
                 .help("Copy lint scan trace and proposals")
         }
         .padding(16)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+        .background(theme.controlBackground)
     }
 
     private var detailPane: some View {
@@ -4754,7 +4761,7 @@ private struct SecondBrainLintSheet: View {
                             .font(.system(size: 16, weight: .semibold))
                         Text("\(run.proposals.count) merge proposal\(run.proposals.count == 1 ? "" : "s") · \(run.acceptedCount) accepted")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                     Spacer()
                     Button("Accept all") {
@@ -4781,14 +4788,14 @@ private struct SecondBrainLintSheet: View {
             }
 
             if let error = run.errorMessage {
-                resultCard(title: "Error", systemImage: "exclamationmark.triangle", tint: .red) {
+                resultCard(title: "Error", systemImage: "exclamationmark.triangle", tint: theme.statusLive) {
                     Text(error)
                         .font(.system(size: 12))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(theme.statusLive)
                         .textSelection(.enabled)
                 }
             } else if let result = run.resultMessage {
-                resultCard(title: "Result", systemImage: "checkmark.circle", tint: .green) {
+                resultCard(title: "Result", systemImage: "checkmark.circle", tint: theme.statusReady) {
                     Text(result)
                         .font(.system(size: 12))
                         .textSelection(.enabled)
@@ -4828,7 +4835,7 @@ private struct SecondBrainLintSheet: View {
                     Label("Accept", systemImage: proposal.accepted ? "checkmark.circle.fill" : "checkmark.circle")
                 }
                 .buttonStyle(.bordered)
-                .tint(proposal.accepted ? .green : nil)
+                .tint(proposal.accepted ? theme.statusReady : nil)
 
                 Button {
                     run.setProposalAccepted(proposal, accepted: false)
@@ -4836,23 +4843,23 @@ private struct SecondBrainLintSheet: View {
                     Label("Skip", systemImage: proposal.accepted ? "circle" : "xmark.circle.fill")
                 }
                 .buttonStyle(.bordered)
-                .tint(proposal.accepted ? nil : .red)
+                .tint(proposal.accepted ? nil : theme.statusLive)
             }
 
             Text("Merge into: \(proposal.targetTitle)")
                 .font(.system(size: 12, weight: .medium))
             Text(proposal.reason)
                 .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             Text("\(relativePath(proposal.sourceURL)) -> \(relativePath(proposal.targetURL))")
                 .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+        .background(theme.controlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -4860,13 +4867,13 @@ private struct SecondBrainLintSheet: View {
         HStack(spacing: 8) {
             Image(systemName: isActive ? "circle.dotted" : "checkmark.circle")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(isActive ? .orange : .secondary)
+                .foregroundStyle(isActive ? theme.accent : theme.textSecondary)
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
             Spacer()
             Text(value)
                 .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
     }
 
@@ -4876,11 +4883,11 @@ private struct SecondBrainLintSheet: View {
                 .font(.system(size: 12, weight: .semibold))
             Text(status)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+        .background(theme.controlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -4898,15 +4905,15 @@ private struct SecondBrainLintSheet: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+        .background(theme.controlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func confidenceColor(_ confidence: String) -> Color {
         switch confidence {
-        case "high": return .green
-        case "medium": return .orange
-        default: return .red
+        case "high": return theme.statusReady
+        case "medium": return theme.accent
+        default: return theme.statusLive
         }
     }
 
@@ -4919,6 +4926,7 @@ private struct SecondBrainLintSheet: View {
 }
 
 private struct WikiGenerationConsoleSheet: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var run: WikiGenerationRun
     let onCancel: () -> Void
     let onOpenOverview: () -> Void
@@ -4949,7 +4957,7 @@ private struct WikiGenerationConsoleSheet: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: run.errorMessage == nil ? "brain.head.profile" : "exclamationmark.triangle")
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(run.errorMessage == nil ? .orange : .red)
+                    .foregroundStyle(run.errorMessage == nil ? theme.accent : theme.statusLive)
                     .frame(width: 34, height: 34)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -4957,24 +4965,24 @@ private struct WikiGenerationConsoleSheet: View {
                         .font(.system(size: 18, weight: .semibold))
                     Text(run.meetingTitle)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(run.status)
                         .font(.system(size: 12))
-                        .foregroundColor(run.errorMessage == nil ? .secondary : .red)
+                        .foregroundColor(run.errorMessage == nil ? theme.textSecondary : theme.statusLive)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if run.isRunning {
                         Text(activeProcessingText)
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
                         if let next = nextSourceSummaryText {
                             Text(next)
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.orange.opacity(0.9))
+                                .foregroundStyle(theme.accent.opacity(0.9))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
@@ -4986,19 +4994,19 @@ private struct WikiGenerationConsoleSheet: View {
 	                VStack(alignment: .trailing, spacing: 5) {
 	                    Text(tokenCounterText)
 	                        .font(.system(size: 12, design: .monospaced))
-	                        .foregroundStyle(.secondary)
+	                        .foregroundStyle(theme.textSecondary)
 	                    if let selected = run.selectedFunction {
 	                        Text(throughputText(for: selected))
 	                            .font(.system(size: 10, design: .monospaced))
-	                            .foregroundStyle(.secondary)
+	                            .foregroundStyle(theme.textSecondary)
 	                    }
 	                    Text("\(run.modelCallsCompleted)/\(run.modelCallTotal) model calls")
 	                        .font(.system(size: 11, weight: .medium))
-	                        .foregroundStyle(.secondary)
+	                        .foregroundStyle(theme.textSecondary)
                     if run.isRunning, run.activeOutputTokenEstimate > 0 {
                         Text("current call ~\(run.activeOutputTokenEstimate) out")
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                 }
 
@@ -5012,7 +5020,7 @@ private struct WikiGenerationConsoleSheet: View {
             }
 
             ProgressView(value: run.progressFraction)
-                .tint(run.errorMessage == nil ? .orange : .red)
+                .tint(run.errorMessage == nil ? theme.accent : theme.statusLive)
         }
         .padding(18)
     }
@@ -5022,7 +5030,7 @@ private struct WikiGenerationConsoleSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(run.isBatch ? "Batch progress" : "Meeting progress")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
 
                 progressRow(
                     title: run.isBatch ? "Sources" : "Meeting",
@@ -5062,7 +5070,7 @@ private struct WikiGenerationConsoleSheet: View {
 
             Text("Steps")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
@@ -5078,7 +5086,7 @@ private struct WikiGenerationConsoleSheet: View {
                     if run.functions.isEmpty {
                         Text("The first model call will appear here.")
                             .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 8)
                     }
@@ -5091,7 +5099,7 @@ private struct WikiGenerationConsoleSheet: View {
             .help("Copy prompts, model output, saved files, and token counts")
         }
         .padding(16)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+        .background(theme.controlBackground)
     }
 
     private var detailPane: some View {
@@ -5103,7 +5111,7 @@ private struct WikiGenerationConsoleSheet: View {
                             .font(.system(size: 15, weight: .semibold))
                         Text(functionStatusText(selected))
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                     Spacer()
                     Button {
@@ -5133,14 +5141,14 @@ private struct WikiGenerationConsoleSheet: View {
 	            if run.reviewDraft != nil {
 	                EmptyView()
 	            } else if let error = run.errorMessage {
-	                resultCard(title: "Error", systemImage: "exclamationmark.triangle", tint: .red) {
+	                resultCard(title: "Error", systemImage: "exclamationmark.triangle", tint: theme.statusLive) {
 	                    Text(error)
 	                        .font(.system(size: 12))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(theme.statusLive)
                         .textSelection(.enabled)
                 }
             } else if let result = run.result {
-                resultCard(title: "Result", systemImage: "checkmark.circle", tint: .green) {
+                resultCard(title: "Result", systemImage: "checkmark.circle", tint: theme.statusReady) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(result.gitMessage)
                             .font(.system(size: 12))
@@ -5151,13 +5159,13 @@ private struct WikiGenerationConsoleSheet: View {
                                 .buttonStyle(.borderedProminent)
                             Text("Saved \(run.savedRelativePaths.count) files")
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.textSecondary)
                             Spacer()
                         }
                     }
                 }
             } else if !run.savedRelativePaths.isEmpty {
-                resultCard(title: "Saved files", systemImage: "doc.text", tint: .orange) {
+                resultCard(title: "Saved files", systemImage: "doc.text", tint: theme.accent) {
                     savedFilesList
                 }
             }
@@ -5177,7 +5185,7 @@ private struct WikiGenerationConsoleSheet: View {
                         .font(.system(size: 16, weight: .semibold))
                     Text("\(draft.entities.count) entities · \(draft.topics.count) topics · \(draft.claimCount) claims · source \(draft.meetingPath)")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -5202,7 +5210,7 @@ private struct WikiGenerationConsoleSheet: View {
                             if draft.entities.isEmpty {
                                 Text("(none)")
                                     .font(.system(size: 12, design: .monospaced))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(theme.textSecondary)
                             }
                         }
                     }
@@ -5215,7 +5223,7 @@ private struct WikiGenerationConsoleSheet: View {
                             if draft.topics.isEmpty {
                                 Text("(none)")
                                     .font(.system(size: 12, design: .monospaced))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(theme.textSecondary)
                             }
                         }
                     }
@@ -5228,7 +5236,7 @@ private struct WikiGenerationConsoleSheet: View {
                             if draft.claimCount == 0 {
                                 Text("(none)")
                                     .font(.system(size: 12, design: .monospaced))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(theme.textSecondary)
                             }
                         }
                     }
@@ -5237,11 +5245,11 @@ private struct WikiGenerationConsoleSheet: View {
             }
         }
         .padding(16)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(theme.windowBackground)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.orange.opacity(0.24), lineWidth: 1)
+                .stroke(theme.accent.opacity(0.24), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.22), radius: 22, x: 0, y: 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -5270,7 +5278,7 @@ private struct WikiGenerationConsoleSheet: View {
                         .font(.system(size: 13, weight: .semibold))
                     Text(title)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -5280,13 +5288,13 @@ private struct WikiGenerationConsoleSheet: View {
                     .opacity(run.nextSourceReviewDraft == nil ? 1 : 0)
                 if run.nextSourceReviewDraft != nil {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(theme.statusReady)
                 }
             }
 
             Text(run.nextSourceStatus ?? "Queued for background pre-load")
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
@@ -5337,12 +5345,12 @@ private struct WikiGenerationConsoleSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             Label(title, systemImage: systemImage)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             content()
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.06))
+        .background(theme.hoverFill)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -5391,11 +5399,11 @@ private struct WikiGenerationConsoleSheet: View {
                     HStack(spacing: 6) {
                         Text(isMerged ? "Merge Entity:" : isDiscarded ? "Discard Entity:" : "New Entity:")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(isDiscarded ? .secondary : .primary)
+                            .foregroundStyle(isDiscarded ? theme.textSecondary : theme.textPrimary)
                         TextField("Entity name", text: proposedName)
                             .textFieldStyle(.plain)
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(isDiscarded ? .secondary : .primary)
+                            .foregroundStyle(isDiscarded ? theme.textSecondary : theme.textPrimary)
                             .disabled(isDiscarded || isMerged)
                             .frame(minWidth: 120, maxWidth: 260, alignment: .leading)
                     }
@@ -5410,7 +5418,7 @@ private struct WikiGenerationConsoleSheet: View {
                         .disabled(isDiscarded || isMerged)
                         Text(entity.resolutionLabel)
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                         confidenceBadge(entity.confidence)
                     }
                 }
@@ -5421,7 +5429,7 @@ private struct WikiGenerationConsoleSheet: View {
                     Label("Add", systemImage: isKept ? "checkmark.circle.fill" : "plus.circle")
                 }
                 .buttonStyle(.bordered)
-                .tint(isKept ? .green : nil)
+                .tint(isKept ? theme.statusReady : nil)
                 Button {
                     let target = mergeTarget.isEmpty
                         ? (entity.suggestedMatches.first ?? entity.mergeOptions.first ?? "")
@@ -5431,7 +5439,7 @@ private struct WikiGenerationConsoleSheet: View {
                     Label("Merge", systemImage: isMerged ? "checkmark.circle.fill" : "arrow.triangle.merge")
                 }
                 .buttonStyle(.bordered)
-                .tint(isMerged ? .blue : nil)
+                .tint(isMerged ? theme.accent : nil)
                 .disabled(entity.suggestedMatches.isEmpty && entity.mergeOptions.isEmpty && mergeTarget.isEmpty)
                 Button {
                     run.setEntityDecision(entity, keep: false, canonicalName: nil)
@@ -5439,13 +5447,13 @@ private struct WikiGenerationConsoleSheet: View {
                     Label("Discard", systemImage: isDiscarded ? "checkmark.circle.fill" : "xmark.circle")
                 }
                 .buttonStyle(.bordered)
-                .tint(isDiscarded ? .red : nil)
+                .tint(isDiscarded ? theme.statusLive : nil)
             }
 
             if !entity.context.isEmpty {
                 Text(entity.context)
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
             }
 
@@ -5453,10 +5461,10 @@ private struct WikiGenerationConsoleSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Source context")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                     Text(entity.sourceSnippet)
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .lineLimit(4)
                         .textSelection(.enabled)
                 }
@@ -5467,7 +5475,7 @@ private struct WikiGenerationConsoleSheet: View {
                 HStack(spacing: 8) {
                     Text("Merge with")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                     Picker("Merge with", selection: mergeSelection) {
                         Text("Select existing entity").tag("__none__")
                         if !entity.suggestedMatches.isEmpty {
@@ -5495,14 +5503,14 @@ private struct WikiGenerationConsoleSheet: View {
                 if isMerged {
                     Text("Selected merge target: \(mergeTarget)")
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
 
                 if !entity.suggestedMatches.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Suggested matches")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                         ForEach(entity.suggestedMatches, id: \.self) { match in
                             Button {
                                 run.setEntityDecision(entity, keep: true, canonicalName: match)
@@ -5512,7 +5520,7 @@ private struct WikiGenerationConsoleSheet: View {
                                     Text(match)
                                         .fontWeight(.semibold)
                                     Text(entity.suggestedMatchReasons[match] ?? "Possible existing entity.")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(theme.textSecondary)
                                         .lineLimit(1)
                                 }
                                 .font(.system(size: 10))
@@ -5526,7 +5534,7 @@ private struct WikiGenerationConsoleSheet: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isDiscarded ? Color.red.opacity(0.06) : Color.black.opacity(0.12))
+        .background(isDiscarded ? theme.statusLive.opacity(0.06) : Color.black.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -5571,7 +5579,7 @@ private struct WikiGenerationConsoleSheet: View {
                     HStack(spacing: 6) {
                         Text(isConnected ? "Connect Topic:" : isDiscarded ? "Discard Topic:" : "Keep Topic:")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(isDiscarded ? .secondary : .primary)
+                            .foregroundStyle(isDiscarded ? theme.textSecondary : theme.textPrimary)
                         TextField("Topic", text: topicTitle)
                             .textFieldStyle(.plain)
                             .font(.system(size: 13, weight: .semibold))
@@ -5581,7 +5589,7 @@ private struct WikiGenerationConsoleSheet: View {
                     if topic.indexCandidate {
                         Text(topic.suggestedCanonicalTopic?.isEmpty == false ? "suggested reusable topic -> \(topic.suggestedCanonicalTopic!)" : "suggested reusable topic")
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(theme.accent)
                             .lineLimit(1)
                     }
                 }
@@ -5592,7 +5600,7 @@ private struct WikiGenerationConsoleSheet: View {
                     Label("Keep", systemImage: isKept ? "checkmark.circle.fill" : "checkmark.circle")
                 }
                 .buttonStyle(.bordered)
-                .tint(isKept ? .green : nil)
+                .tint(isKept ? theme.statusReady : nil)
                 Button {
                     let target = connectTarget.isEmpty
                         ? (topic.suggestedMatches.first ?? topic.mergeOptions.first ?? topicTitle.wrappedValue)
@@ -5602,25 +5610,25 @@ private struct WikiGenerationConsoleSheet: View {
                     Label("Connect", systemImage: isConnected ? "checkmark.circle.fill" : "link")
                 }
                 .buttonStyle(.bordered)
-                .tint(isConnected ? .blue : nil)
+                .tint(isConnected ? theme.accent : nil)
                 Button {
                     run.setTopicDecision(topic, keep: false, canonicalTopic: nil)
                 } label: {
                     Label("Discard", systemImage: isDiscarded ? "checkmark.circle.fill" : "xmark.circle")
                 }
                 .buttonStyle(.bordered)
-                .tint(isDiscarded ? .red : nil)
+                .tint(isDiscarded ? theme.statusLive : nil)
             }
             if !topic.description.isEmpty {
                 Text(topic.description)
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
             }
             HStack(spacing: 8) {
                 Text("Connect to")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Picker("Connect topic to", selection: connectSelection) {
                     Text("Just this meeting").tag("__none__")
                     if !topic.suggestedMatches.isEmpty {
@@ -5642,20 +5650,20 @@ private struct WikiGenerationConsoleSheet: View {
                 if isConnected {
                     Text(connectTarget)
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                 }
             }
             if !topic.indexReason.isEmpty || (isConnected && topic.indexReason.isEmpty) {
                 Text(topic.indexReason.isEmpty ? "Connected during review." : topic.indexReason)
                     .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
             }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isDiscarded ? Color.red.opacity(0.06) : Color.black.opacity(0.12))
+        .background(isDiscarded ? theme.statusLive.opacity(0.06) : Color.black.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -5681,7 +5689,7 @@ private struct WikiGenerationConsoleSheet: View {
         let mergeTarget = decision.canonicalClaim?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let isConnected = decision.keep && !mergeTarget.isEmpty
         let isMeetingOnly = decision.keep && mergeTarget.isEmpty
-        let statusColor: Color = isDiscarded ? .secondary : isConnected ? .blue : .green
+        let statusColor: Color = isDiscarded ? theme.textSecondary : isConnected ? theme.accent : theme.statusReady
         let mergeOptions = orderedClaimMergeOptions(for: claim, selected: mergeTarget)
         let claimText = Binding<String>(
             get: { run.reviewClaimDecisions[claim.id]?.text ?? claim.text },
@@ -5708,12 +5716,12 @@ private struct WikiGenerationConsoleSheet: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(isConnected ? "Connect Claim" : isDiscarded ? "Discard Claim" : "Keep Claim")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(isDiscarded ? .secondary : .primary)
+                        .foregroundStyle(isDiscarded ? theme.textSecondary : theme.textPrimary)
                     confidenceBadge(claim.confidence)
                     if claim.indexCandidate, !claim.indexReason.isEmpty {
                         Text(claim.indexReason)
                             .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                             .lineLimit(2)
                     }
                     TextField("Claim", text: claimText, axis: .vertical)
@@ -5724,7 +5732,7 @@ private struct WikiGenerationConsoleSheet: View {
                     if !claim.sourceContext.isEmpty {
                         Text(claim.sourceContext)
                             .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                             .lineLimit(2)
                     }
                 }
@@ -5736,7 +5744,7 @@ private struct WikiGenerationConsoleSheet: View {
                     Label("Keep", systemImage: isMeetingOnly ? "checkmark.circle.fill" : "checkmark.circle")
                 }
                 .buttonStyle(.bordered)
-                .tint(isMeetingOnly ? .green : nil)
+                .tint(isMeetingOnly ? theme.statusReady : nil)
 
                 Button {
                     let target = mergeTarget.isEmpty
@@ -5747,7 +5755,7 @@ private struct WikiGenerationConsoleSheet: View {
                     Label("Connect", systemImage: isConnected ? "checkmark.circle.fill" : "link")
                 }
                 .buttonStyle(.bordered)
-                .tint(isConnected ? .blue : nil)
+                .tint(isConnected ? theme.accent : nil)
 
                 Button {
                     run.setClaimDecision(claim, keep: false, canonicalClaim: nil)
@@ -5755,13 +5763,13 @@ private struct WikiGenerationConsoleSheet: View {
                     Label("Discard", systemImage: isDiscarded ? "checkmark.circle.fill" : "xmark.circle")
                 }
                 .buttonStyle(.bordered)
-                .tint(isDiscarded ? .red : nil)
+                .tint(isDiscarded ? theme.statusLive : nil)
             }
 
             HStack(spacing: 8) {
                 Text("Connect to")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Picker("Merge claim with", selection: mergeSelection) {
                     Text("Just this meeting").tag("__none__")
                     Text("New claim index: \(String((run.reviewClaimDecisions[claim.id]?.text ?? claim.text).prefix(64)))").tag(run.reviewClaimDecisions[claim.id]?.text ?? claim.text)
@@ -5786,14 +5794,14 @@ private struct WikiGenerationConsoleSheet: View {
             if isConnected {
                 Text("Selected claim index target: \(mergeTarget)")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
 
             if !claim.suggestedMatches.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Suggested claims")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                     ForEach(claim.suggestedMatches, id: \.self) { match in
                         Button {
                             run.setClaimDecision(claim, keep: true, canonicalClaim: match)
@@ -5803,7 +5811,7 @@ private struct WikiGenerationConsoleSheet: View {
                                 Text(match)
                                     .fontWeight(.semibold)
                                 Text(claim.suggestedMatchReasons[match] ?? "Possible existing claim.")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(theme.textSecondary)
                                     .lineLimit(1)
                             }
                             .font(.system(size: 10))
@@ -5815,7 +5823,7 @@ private struct WikiGenerationConsoleSheet: View {
             }
         }
         .padding(8)
-        .background(isDiscarded ? Color.red.opacity(0.06) : Color.black.opacity(0.12))
+        .background(isDiscarded ? theme.statusLive.opacity(0.06) : Color.black.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
@@ -5939,7 +5947,7 @@ private struct WikiGenerationConsoleSheet: View {
             HStack(spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.statusLive)
                 Text("Import stopped")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.black)
@@ -5947,7 +5955,7 @@ private struct WikiGenerationConsoleSheet: View {
             }
             Text(run.errorMessage ?? "Unknown error")
                 .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.red)
+                .foregroundStyle(theme.statusLive)
                 .textSelection(.enabled)
             terminalView
         }
@@ -6069,7 +6077,7 @@ private struct WikiGenerationConsoleSheet: View {
         } else {
             Image(systemName: "brain.head.profile")
                 .font(.system(size: size * 0.62, weight: .semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(theme.accent)
                 .frame(width: size, height: size)
         }
     }
@@ -6123,9 +6131,9 @@ private struct WikiGenerationConsoleSheet: View {
     }
 
     private var nextSourceInlineTint: Color {
-        if run.nextSourceFailed { return .red }
-        if run.nextSourceReviewDraft != nil { return .green }
-        return .orange
+        if run.nextSourceFailed { return theme.statusLive }
+        if run.nextSourceReviewDraft != nil { return theme.statusReady }
+        return theme.accent
     }
 
     private var nextSourceRailText: String {
@@ -6214,7 +6222,7 @@ private struct WikiGenerationConsoleSheet: View {
             }
             .padding(10)
         }
-        .background(Color.secondary.opacity(0.06))
+        .background(theme.hoverFill)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -6222,7 +6230,7 @@ private struct WikiGenerationConsoleSheet: View {
     private func confidenceBadge(_ confidence: String) -> some View {
         let cleaned = confidence.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !cleaned.isEmpty {
-            let color: Color = cleaned == "high" ? .green : cleaned == "medium" ? .orange : .red
+            let color: Color = cleaned == "high" ? theme.statusReady : cleaned == "medium" ? theme.accent : theme.statusLive
             Text("\(cleaned) confidence")
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(color)
@@ -6237,7 +6245,7 @@ private struct WikiGenerationConsoleSheet: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             Text(text)
                 .font(.system(size: 10, design: .monospaced))
                 .textSelection(.enabled)
@@ -6254,13 +6262,13 @@ private struct WikiGenerationConsoleSheet: View {
         return HStack {
             Image(systemName: isActive ? "circle.dotted" : (isComplete ? "checkmark.circle" : "circle"))
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(isActive ? Color.orange : (isComplete ? Color.secondary : Color.secondary.opacity(0.45)))
+                .foregroundStyle(isActive ? theme.accent : (isComplete ? Color.secondary : theme.hoverFill))
             Text(title)
                 .font(.system(size: 12, weight: .medium))
             Spacer()
             Text(value)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
     }
 
@@ -6270,7 +6278,7 @@ private struct WikiGenerationConsoleSheet: View {
             HStack(spacing: 6) {
                 Image(systemName: function.isFinished ? "checkmark.circle.fill" : "waveform")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(function.isFinished ? .green : .orange)
+                    .foregroundStyle(function.isFinished ? theme.statusReady : theme.accent)
                 Text(function.name)
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
@@ -6278,11 +6286,11 @@ private struct WikiGenerationConsoleSheet: View {
             }
             Text(function.isFinished ? "\(function.inputTokens) in / \(function.outputTokens) out" : function.output.isEmpty ? function.modelStatus : "streaming...")
                 .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(selected ? Color.orange.opacity(0.16) : Color.secondary.opacity(0.07))
+        .background(selected ? theme.accent.opacity(0.16) : theme.hoverFill)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -6303,7 +6311,7 @@ private struct WikiGenerationConsoleSheet: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.06))
+        .background(theme.hoverFill)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
@@ -6313,7 +6321,7 @@ private struct WikiGenerationConsoleSheet: View {
                 ForEach(run.savedRelativePaths, id: \.self) { path in
                     Text(path)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -6332,6 +6340,7 @@ private struct WikiGenerationConsoleSheet: View {
 }
 
 private struct GeneratedWikiPageView: View {
+    @Environment(\.appTheme) private var theme
     let page: GeneratedWikiPage
     var onSave: (GeneratedWikiPage, String) throws -> Void
     var onRename: (GeneratedWikiPage, String) throws -> GeneratedWikiPage
@@ -6379,9 +6388,9 @@ private struct GeneratedWikiPageView: View {
                         Spacer()
                     }
                     .font(.system(size: 12))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.statusLive)
                     .padding(10)
-                    .background(Color.red.opacity(0.10))
+                    .background(theme.statusLive.opacity(0.10))
                     .cornerRadius(6)
                 }
                 if page.userEdited || page.pendingGeneratedUpdate {
@@ -6457,7 +6466,7 @@ private struct GeneratedWikiPageView: View {
                             .font(.system(size: 24, weight: .semibold))
                             .padding(.vertical, 3)
                             .padding(.horizontal, 8)
-                            .background(Color(nsColor: .textBackgroundColor).opacity(0.35))
+                            .background(theme.textBackground)
                             .cornerRadius(6)
                         Button("Save name") {
                             do {
@@ -6531,13 +6540,13 @@ private struct GeneratedWikiPageView: View {
                         .truncationMode(.middle)
                 }
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             }
             Spacer()
             HStack(spacing: 8) {
                 Text(isAutosaving || hasUnsavedChanges ? "Saving..." : "Saved")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(isAutosaving || hasUnsavedChanges ? .orange : .secondary)
+                    .foregroundStyle(isAutosaving || hasUnsavedChanges ? theme.statusBusy : theme.textSecondary)
                 if hasUnsavedChanges {
                     Button("Revert") {
                         autosaveTask?.cancel()
@@ -6559,16 +6568,16 @@ private struct GeneratedWikiPageView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Page body")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             TextEditor(text: $draftBody)
                 .font(.system(size: 15))
                 .scrollContentBackground(.hidden)
                 .padding(14)
                 .frame(minHeight: 640)
-                .background(Color(nsColor: .textBackgroundColor).opacity(0.28))
+                .background(theme.textBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(hasUnsavedChanges ? Color.orange.opacity(0.35) : Color.secondary.opacity(0.18), lineWidth: 1)
+                        .stroke(hasUnsavedChanges ? theme.statusBusy.opacity(0.35) : theme.separator, lineWidth: 1)
                 )
                 .cornerRadius(6)
                 .onChange(of: draftBody) { _, newValue in
@@ -6591,7 +6600,7 @@ private struct GeneratedWikiPageView: View {
             Spacer()
         }
         .padding(10)
-        .background(Color.blue.opacity(0.10))
+        .background(theme.accent.opacity(0.10))
         .cornerRadius(6)
     }
 
@@ -6610,7 +6619,7 @@ private struct GeneratedWikiPageView: View {
                 Spacer()
             }
             .padding(10)
-            .background(Color.orange.opacity(0.10))
+            .background(theme.accent.opacity(0.10))
             .cornerRadius(6)
         }
         .buttonStyle(.plain)
@@ -6638,7 +6647,7 @@ private struct GeneratedWikiPageView: View {
                     .font(.system(size: 14))
                     .padding(10)
                     .frame(minHeight: block.editHeight)
-                    .background(Color(nsColor: .textBackgroundColor).opacity(0.35))
+                    .background(theme.textBackground)
                     .cornerRadius(6)
                     .onChange(of: editingBlockText) { _, newValue in
                         let currentBlocks = EditableMarkdownBlock.split(draftBody)
@@ -6648,20 +6657,20 @@ private struct GeneratedWikiPageView: View {
                     }
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                    .foregroundStyle(Color.orange.opacity(0.85))
+                    .foregroundStyle(theme.accent.opacity(0.85))
                     .allowsHitTesting(false)
                 Text("Editing")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(theme.accent)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(Color(nsColor: .windowBackgroundColor))
+                    .background(theme.windowBackground)
                     .clipShape(Capsule())
                     .padding(.leading, 10)
                     .offset(y: -10)
             }
             .padding(6)
-            .background(Color.orange.opacity(0.04))
+            .background(theme.accent.opacity(0.04))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         } else {
             ZStack(alignment: .topTrailing) {
@@ -6670,10 +6679,10 @@ private struct GeneratedWikiPageView: View {
                 if recentlySavedBlockIndex == index {
                     Text("Saved")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(theme.statusReady)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
-                        .background(Color.green.opacity(0.12))
+                        .background(theme.statusReady.opacity(Brand.selectedOpacity))
                         .clipShape(Capsule())
                         .transition(.opacity.combined(with: .scale))
                 }
@@ -6792,12 +6801,12 @@ private struct GeneratedWikiPageView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("•")
                             .font(.system(size: 14))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                         if let sourceMeeting = Self.sourceMeetingPath(in: item) {
                             Button(action: { onOpenSourceMeeting(sourceMeeting) }) {
                                 Text(sourceMeeting)
                                     .font(.system(size: 14, design: .monospaced))
-                                    .foregroundStyle(.blue)
+                                    .foregroundStyle(theme.accent)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .buttonStyle(.plain)
@@ -6816,7 +6825,7 @@ private struct GeneratedWikiPageView: View {
                 .font(.system(.caption, design: .monospaced))
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.secondary.opacity(0.08))
+                .background(theme.hoverFill)
                 .cornerRadius(4)
                 .textSelection(.enabled)
         }
@@ -6843,7 +6852,7 @@ private struct GeneratedWikiPageView: View {
                         }
                     } label: {
                         Text(displayName)
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(theme.accent)
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
@@ -7170,6 +7179,7 @@ private protocol KeyHandlingTextViewDelegate: AnyObject {
 }
 
 private struct SecondBrainDashboardView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var state: MeetingWindowState
     var onBuildNextBatch: () -> Void
     var onLint: () -> Void
@@ -7188,13 +7198,13 @@ private struct SecondBrainDashboardView: View {
                     .font(.system(size: 16, weight: .semibold))
                 Text("\(graph.nodes.count) pages · \(graph.edges.count) links")
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Spacer()
                 Button(action: onBuildNextBatch) {
                     Label(state.isGeneratingMeetingWiki ? "Adding..." : "Add next 50", systemImage: "sparkles.rectangle.stack")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(theme.accent)
                 .controlSize(.small)
                 .disabled(state.isGeneratingMeetingWiki)
 
@@ -7228,11 +7238,11 @@ private struct SecondBrainDashboardView: View {
                         HStack {
                             Text("Graph")
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.textSecondary)
                             Spacer()
                             Text("\(graph.nodes.count) nodes")
                                 .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.textSecondary)
                         }
 
                         SecondBrainGraphView(
@@ -7284,11 +7294,11 @@ private struct SecondBrainDashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Hubs")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             if hubs.isEmpty {
                 Text("No 2nd Brain pages yet.")
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 8)], spacing: 8) {
                     ForEach(Array(hubs)) { node in
@@ -7296,19 +7306,19 @@ private struct SecondBrainDashboardView: View {
                             HStack(spacing: 8) {
                                 Image(systemName: node.icon)
                                     .font(.system(size: 12))
-                                    .foregroundStyle(node.isHub ? .orange : .secondary)
+                                    .foregroundStyle(node.isHub ? theme.accent : theme.textSecondary)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(node.title)
                                         .font(.system(size: 12, weight: .medium))
                                         .lineLimit(1)
                                     Text("\(node.degree) links · \(node.folderTitle)")
                                         .font(.system(size: 10))
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(theme.textSecondary)
                                 }
                                 Spacer()
                             }
                             .padding(8)
-                            .background(Color.secondary.opacity(0.07))
+                            .background(theme.hoverFill)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
@@ -7346,6 +7356,7 @@ private struct SecondBrainDashboardView: View {
 }
 
 private struct SecondBrainGraphView: View {
+    @Environment(\.appTheme) private var theme
     let graph: SecondBrainGraph
     var onOpenPage: (URL) -> Void
     var onOpenPageInNewTab: (URL) -> Void
@@ -7353,18 +7364,18 @@ private struct SecondBrainGraphView: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .textBackgroundColor).opacity(0.62))
+                .fill(theme.textBackground)
 
             if graph.nodes.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "point.3.connected.trianglepath.dotted")
                         .font(.system(size: 28))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                     Text("No 2nd Brain graph yet")
                         .font(.system(size: 13, weight: .semibold))
                     Text("Add meetings to the 2nd Brain to create pages and links.")
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             } else {
                 SecondBrainGraphWebView(
@@ -7375,7 +7386,7 @@ private struct SecondBrainGraphView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                        .stroke(theme.separator, lineWidth: 1)
                 )
             }
         }
@@ -7993,6 +8004,7 @@ private struct SecondBrainGraphWebView: NSViewRepresentable {
 }
 
 private struct SecondBrainGraphNodeView: View {
+    @Environment(\.appTheme) private var theme
     let node: SecondBrainGraph.Node
     @State private var isHovering = false
 
@@ -8000,12 +8012,12 @@ private struct SecondBrainGraphNodeView: View {
         VStack(spacing: 3) {
             ZStack {
                 Circle()
-                    .fill(node.isHub ? Color.orange.opacity(0.25) : Color.secondary.opacity(0.12))
+                    .fill(node.isHub ? theme.accent.opacity(0.25) : theme.hoverFill)
                 Circle()
-                    .stroke(node.isHub ? Color.orange.opacity(0.9) : Color.secondary.opacity(0.35), lineWidth: node.isHub ? 2 : 1)
+                    .stroke(node.isHub ? theme.accent.opacity(0.9) : theme.separator, lineWidth: node.isHub ? 2 : 1)
                 Image(systemName: node.icon)
                     .font(.system(size: max(10, node.radius * 0.42), weight: .semibold))
-                    .foregroundStyle(node.isHub ? .orange : .secondary)
+                    .foregroundStyle(node.isHub ? theme.accent : theme.textSecondary)
             }
             .frame(width: node.radius * 2, height: node.radius * 2)
 
@@ -8016,7 +8028,7 @@ private struct SecondBrainGraphNodeView: View {
                 .frame(width: 110)
             Text("\(node.degree)")
                 .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
         .contentShape(Rectangle())
         .overlay(alignment: .top) {
@@ -8046,11 +8058,11 @@ private struct SecondBrainGraphNodeView: View {
                 .lineLimit(1)
             Text("\(node.type.replacingOccurrences(of: "_", with: " ").capitalized) · \(node.folderTitle)")
                 .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .lineLimit(1)
             Text("\(node.degree) links")
                 .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
@@ -8059,7 +8071,7 @@ private struct SecondBrainGraphNodeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+                .stroke(theme.separator, lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 5)
     }
@@ -8364,19 +8376,20 @@ private struct SecondBrainGraph: Equatable {
 }
 
 private struct AirtableTablePreviewView: View {
+    @Environment(\.appTheme) private var theme
     let table: AirtableTablePreview
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "tablecells")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(theme.accent)
                 Text(table.name)
                     .font(.title3.weight(.semibold))
                 Spacer()
                 Text("\(table.rows.count) records")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)
@@ -8387,11 +8400,11 @@ private struct AirtableTablePreviewView: View {
                         ForEach(Array(table.headers.enumerated()), id: \.offset) { _, header in
                             Text(header.isEmpty ? "Untitled" : header)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.textSecondary)
                                 .lineLimit(1)
                                 .frame(minWidth: 140, maxWidth: 240, alignment: .leading)
                                 .padding(8)
-                                .background(Color(nsColor: .controlBackgroundColor))
+                                .background(theme.controlBackground)
                         }
                     }
 
@@ -8416,16 +8429,17 @@ private struct AirtableTablePreviewView: View {
 
 /// Separate view that observes a single tab so isRecording changes trigger re-render.
 private struct ActiveTabRecordingIndicator: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var tab: OpenMeetingTab
 
     var body: some View {
         if tab.isRecording, let session = tab.session {
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
-                    Circle().fill(.red).frame(width: 8, height: 8)
+                    Circle().fill(theme.statusLive).frame(width: 8, height: 8)
                     LiveDurationView(startDate: tab.transcript.startDate)
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
 
                 Button(action: { Task { await session.stop() } }) {
@@ -8434,7 +8448,7 @@ private struct ActiveTabRecordingIndicator: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(Capsule().fill(.red))
+                        .background(Capsule().fill(theme.statusLive))
                 }
                 .buttonStyle(.plain)
             }
@@ -8461,6 +8475,7 @@ private enum MeetingContentTab: Hashable {
 }
 
 struct MeetingTabContentView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var tab: OpenMeetingTab
     @ObservedObject var transcript: MeetingTranscript
     @ObservedObject var state: MeetingWindowState
@@ -8503,10 +8518,10 @@ struct MeetingTabContentView: View {
                                         Text("Detect")
                                             .font(.caption)
                                     }
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(theme.textSecondary)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    .background(Color(nsColor: .controlBackgroundColor))
+                                    .background(theme.controlBackground)
                                     .cornerRadius(6)
                                 }
                                 .buttonStyle(.plain)
@@ -8517,15 +8532,15 @@ struct MeetingTabContentView: View {
                         HStack(spacing: 8) {
                             Text(dateSubtitle)
                                 .font(.callout)
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(theme.textSecondary)
 
                             if tab.transcript.importedFrom != nil {
                                 Text("Imported from \(tab.transcript.importedFrom!.capitalized)")
                                     .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.orange)
+                                    .foregroundStyle(theme.accent)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 2)
-                                    .background(Color.orange.opacity(0.1))
+                                    .background(theme.accent.opacity(0.1))
                                     .cornerRadius(4)
                             }
                         }
@@ -8535,15 +8550,15 @@ struct MeetingTabContentView: View {
                             HStack(spacing: 6) {
                                 Image(systemName: "person.2")
                                     .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(theme.textSecondary)
                                 ForEach(tab.transcript.attendees, id: \.self) { attendee in
                                     Text(attendee.name)
                                         .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(attendee.declined ? .red : .primary)
+                                        .foregroundColor(attendee.declined ? theme.statusLive : theme.textPrimary)
                                         .strikethrough(attendee.declined)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 3)
-                                        .background(Color(nsColor: .controlBackgroundColor))
+                                        .background(theme.controlBackground)
                                         .cornerRadius(10)
                                         .help(attendee.declined ? "Declined" : "")
                                 }
@@ -8689,11 +8704,11 @@ struct MeetingTabContentView: View {
                     Button(action: { selectedContentTab = ct }) {
                         Text(ct.label)
                             .font(.system(size: 13, weight: selectedContentTab == ct ? .semibold : .regular))
-                            .foregroundColor(selectedContentTab == ct ? .orange : .secondary)
+                            .foregroundColor(selectedContentTab == ct ? theme.accent : theme.textSecondary)
                             .padding(.bottom, 10)
                             .overlay(alignment: .bottom) {
                                 if selectedContentTab == ct {
-                                    Rectangle().fill(Color.orange).frame(height: 2).offset(y: 1)
+                                    Rectangle().fill(theme.accent).frame(height: 2).offset(y: 1)
                                 }
                             }
                     }
@@ -8701,7 +8716,7 @@ struct MeetingTabContentView: View {
                 }
                 Spacer()
             }
-            Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1)
+            Rectangle().fill(theme.separator).frame(height: 1)
         }
         .onAppear {
             if !availableContentTabs.contains(selectedContentTab) {
@@ -8714,14 +8729,14 @@ struct MeetingTabContentView: View {
 
     private var searchBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundColor(.secondary).font(.caption)
+            Image(systemName: "magnifyingglass").foregroundStyle(theme.textSecondary).font(.caption)
             TextField("Search...", text: $searchText)
                 .textFieldStyle(.plain).font(.system(size: 13)).focused($searchFocused)
                 .onSubmit { advanceMatch(forward: true) }
             if !searchText.isEmpty {
                 Text(matchCount == 0 ? "no matches" : "\(currentMatchIndex + 1) / \(matchCount)")
                     .font(.caption.monospacedDigit())
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Button(action: { advanceMatch(forward: false) }) {
                     Image(systemName: "chevron.up").font(.caption)
                 }
@@ -8735,15 +8750,15 @@ struct MeetingTabContentView: View {
                 .disabled(matchCount == 0)
                 .keyboardShortcut("g", modifiers: [.command])
                 Button(action: { searchText = "" }) {
-                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.caption)
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(theme.textSecondary).font(.caption)
                 }.buttonStyle(.plain)
             }
             Button(action: { showSearch = false; searchText = "" }) {
-                Text("Done").font(.caption).foregroundColor(.secondary)
+                Text("Done").font(.caption).foregroundStyle(theme.textSecondary)
             }.buttonStyle(.plain)
         }
         .padding(.horizontal, 52).padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+        .background(theme.controlBackground)
         .onAppear { searchFocused = true }
         .onChange(of: searchText) { _, _ in currentMatchIndex = 0 }
         .onChange(of: selectedContentTab) { _, _ in currentMatchIndex = 0 }
@@ -8760,34 +8775,34 @@ struct MeetingTabContentView: View {
 
     private var noAudioWarning: some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).font(.caption)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.statusBusy).font(.caption)
             Text("No audio detected. Check your microphone.").font(.caption)
             Spacer()
             Button("Open Settings") { state.onOpenSettings?() }
-                .font(.caption.weight(.medium)).buttonStyle(.borderedProminent).tint(.orange).controlSize(.small)
+                .font(.caption.weight(.medium)).buttonStyle(.borderedProminent).tint(theme.accent).controlSize(.small)
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
-        .background(Color.orange.opacity(0.1))
+        .background(theme.statusBusy.opacity(0.1))
     }
 
     private func saveFailureWarning(_ message: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red).font(.caption)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.statusLive).font(.caption)
             Text(message).font(.caption)
             Spacer()
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
+        .background(theme.statusLive.opacity(0.1))
     }
 
     private func captureDegradedWarning(_ message: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "waveform.slash").foregroundColor(.orange).font(.caption)
+            Image(systemName: "waveform.slash").foregroundStyle(theme.statusBusy).font(.caption)
             Text(message).font(.caption)
             Spacer()
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
-        .background(Color.orange.opacity(0.1))
+        .background(theme.statusBusy.opacity(0.1))
     }
 
     // MARK: - Tab Content
@@ -8819,7 +8834,7 @@ struct MeetingTabContentView: View {
                             Text(host)
                                 .font(.caption)
                         }
-                        .foregroundColor(.orange)
+                        .foregroundStyle(theme.accent)
                     }
                     .padding(.bottom, 4)
                 }
@@ -8843,7 +8858,7 @@ struct MeetingTabContentView: View {
         } else {
             Text("No article saved.")
                 .font(.callout)
-                .foregroundColor(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
     }
 
@@ -8863,7 +8878,7 @@ struct MeetingTabContentView: View {
                 if tab.transcript.notes.isEmpty {
                     Text("Start typing your notes...")
                         .font(Self.notesFont)
-                        .foregroundColor(Color(nsColor: .placeholderTextColor))
+                        .foregroundColor(theme.textSecondary)
                         .padding(.top, 1).padding(.leading, 6)
                         .allowsHitTesting(false)
                 }
@@ -8886,7 +8901,7 @@ struct MeetingTabContentView: View {
         var searchRange = lower.startIndex..<lower.endIndex
         while let range = lower.range(of: q, range: searchRange) {
             if let aRange = Range(range, in: attributed) {
-                attributed[aRange].backgroundColor = .orange.opacity(0.35)
+                attributed[aRange].backgroundColor = theme.accent.opacity(0.35)
                 attributed[aRange].foregroundColor = .primary
             }
             searchRange = range.upperBound..<lower.endIndex
@@ -8917,10 +8932,10 @@ struct MeetingTabContentView: View {
                 if tab.isRecording {
                     HStack(spacing: 8) {
                         ProgressView().scaleEffect(0.6)
-                        Text("Listening, segments appear every ~30 seconds").font(.callout).foregroundColor(.secondary)
+                        Text("Listening, segments appear every ~30 seconds").font(.callout).foregroundStyle(theme.textSecondary)
                     }.padding(.vertical, 8)
                 } else {
-                    Text("No transcript yet.").font(.callout).foregroundColor(.secondary).padding(.vertical, 8)
+                    Text("No transcript yet.").font(.callout).foregroundStyle(theme.textSecondary).padding(.vertical, 8)
                 }
             }
             ForEach(filteredSegments) { segment in
@@ -8929,11 +8944,11 @@ struct MeetingTabContentView: View {
             if tab.isRecording && !tab.transcript.segments.isEmpty {
                 HStack(spacing: 8) {
                     HStack(spacing: 4) {
-                        Circle().fill(Color.secondary.opacity(0.4)).frame(width: 4, height: 4)
-                        Circle().fill(Color.secondary.opacity(0.3)).frame(width: 4, height: 4)
-                        Circle().fill(Color.secondary.opacity(0.2)).frame(width: 4, height: 4)
+                        Circle().fill(theme.hoverFill).frame(width: 4, height: 4)
+                        Circle().fill(theme.hoverFill).frame(width: 4, height: 4)
+                        Circle().fill(theme.hoverFill).frame(width: 4, height: 4)
                     }
-                    Text("Listening...").font(.caption).foregroundColor(.secondary)
+                    Text("Listening...").font(.caption).foregroundStyle(theme.textSecondary)
                 }.padding(.top, 4)
             }
         }
@@ -8944,7 +8959,7 @@ struct MeetingTabContentView: View {
             HStack(spacing: 8) {
                 Image(systemName: "person.wave.2")
                     .font(.system(size: 13))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(theme.accent)
                 Text("Speakers")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
@@ -8958,7 +8973,7 @@ struct MeetingTabContentView: View {
             if let speakerReviewError {
                 Text(speakerReviewError)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.statusLive)
             }
 
             ForEach(speakerReviewItems) { item in
@@ -8975,10 +8990,10 @@ struct MeetingTabContentView: View {
             }
         }
         .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+        .background(theme.controlBackground)
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                .stroke(theme.separator, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
@@ -9004,18 +9019,18 @@ struct MeetingTabContentView: View {
         VStack(alignment: .leading, spacing: 24) {
             if tab.isRecording {
                 VStack(spacing: 12) {
-                    Image(systemName: "sparkles").font(.system(size: 32)).foregroundColor(.orange.opacity(0.4))
-                    Text("Summary will be generated when the meeting ends").font(.callout).foregroundColor(.secondary)
+                    Image(systemName: "sparkles").font(.system(size: 32)).foregroundColor(theme.accent.opacity(0.4))
+                    Text("Summary will be generated when the meeting ends").font(.callout).foregroundStyle(theme.textSecondary)
                 }.frame(maxWidth: .infinity).padding(.vertical, 60)
             } else if tab.transcript.isGeneratingSummary {
                 VStack(spacing: 12) {
                     ProgressView().scaleEffect(0.8)
-                    Text("Generating summary...").font(.callout).foregroundColor(.secondary)
+                    Text("Generating summary...").font(.callout).foregroundStyle(theme.textSecondary)
                 }.frame(maxWidth: .infinity).padding(.vertical, 60)
             } else if tab.transcript.summary != nil {
                 summaryStats
             } else if tab.transcript.segments.isEmpty {
-                Text("No transcript to summarize.").font(.callout).foregroundColor(.secondary).padding(.vertical, 40)
+                Text("No transcript to summarize.").font(.callout).foregroundStyle(theme.textSecondary).padding(.vertical, 40)
             } else {
                 summaryStats
             }
@@ -9034,7 +9049,7 @@ struct MeetingTabContentView: View {
                             Text("Regenerate")
                                 .font(.caption)
                         }
-                        .foregroundColor(.orange)
+                        .foregroundStyle(theme.accent)
                     }
                     .buttonStyle(.plain)
                     .disabled(tab.transcript.isGeneratingSummary)
@@ -9049,7 +9064,7 @@ struct MeetingTabContentView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Capsule().fill(Color.orange))
+                        .background(Capsule().fill(theme.accent))
                     }
                     .buttonStyle(.plain)
                     .disabled(tab.transcript.isGeneratingSummary || tab.transcript.segments.isEmpty)
@@ -9065,7 +9080,7 @@ struct MeetingTabContentView: View {
                         Text("Customize")
                             .font(.caption)
                     }
-                    .foregroundColor(showSummaryPrompt ? .orange : .secondary)
+                    .foregroundColor(showSummaryPrompt ? theme.accent : theme.textSecondary)
                 }
                 .buttonStyle(.plain)
             }
@@ -9076,7 +9091,7 @@ struct MeetingTabContentView: View {
                     // Model picker
                     HStack {
                         Text("Model")
-                            .font(.caption).foregroundColor(.secondary)
+                            .font(.caption).foregroundStyle(theme.textSecondary)
                         Picker("", selection: $selectedModelKind) {
                             ForEach(TextCleanupManager.cleanupGenerationModels, id: \.kind) { model in
                                 Text(model.displayName).tag(model.kind.rawValue)
@@ -9088,13 +9103,13 @@ struct MeetingTabContentView: View {
 
                     // Prompt editor
                     Text("Summary prompt")
-                        .font(.caption).foregroundColor(.secondary)
+                        .font(.caption).foregroundStyle(theme.textSecondary)
 
                     TextEditor(text: $summaryPrompt)
                         .font(.system(size: 11, design: .monospaced))
                         .scrollContentBackground(.hidden)
                         .padding(6)
-                        .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+                        .background(theme.textBackground)
                         .cornerRadius(6)
                         .frame(height: 120)
 
@@ -9104,13 +9119,13 @@ struct MeetingTabContentView: View {
                         }
                         .font(.caption)
                         .buttonStyle(.plain)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(theme.textSecondary)
 
                         Spacer()
                     }
                 }
                 .padding(10)
-                .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                .background(theme.controlBackground)
                 .cornerRadius(8)
             }
 
@@ -9129,7 +9144,7 @@ struct MeetingTabContentView: View {
                     if (tab.transcript.summary ?? "").isEmpty {
                         Text("Summary will appear here after generation...")
                             .font(Self.notesFont)
-                            .foregroundColor(Color(nsColor: .placeholderTextColor))
+                            .foregroundColor(theme.textSecondary)
                             .padding(.top, 1).padding(.leading, 6)
                             .allowsHitTesting(false)
                     }
@@ -9165,18 +9180,18 @@ struct MeetingTabContentView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "doc.text")
                         Text(url.lastPathComponent)
-                    }.font(.caption).foregroundColor(.secondary)
+                    }.font(.caption).foregroundStyle(theme.textSecondary)
                 }.buttonStyle(.plain)
             }
             Spacer()
             if !tab.transcript.segments.isEmpty {
-                Text("\(tab.transcript.segments.count) segments").font(.caption).foregroundStyle(.tertiary)
+                Text("\(tab.transcript.segments.count) segments").font(.caption).foregroundStyle(theme.textSecondary)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 6)
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(theme.textBackground)
         .overlay(alignment: .top) {
-            Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.5)).frame(height: 1)
+            Rectangle().fill(theme.separator.opacity(0.5)).frame(height: 1)
         }
     }
 }
@@ -9184,6 +9199,7 @@ struct MeetingTabContentView: View {
 // MARK: - Sidebar
 
 struct MeetingSidebarView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var state: MeetingWindowState
     @State private var searchText = ""
     @State private var expandedLibraryFolders: Set<String> = []
@@ -9249,13 +9265,13 @@ struct MeetingSidebarView: View {
             HStack(spacing: 8) {
                 Text("Library")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Spacer()
 
                 Button(action: { openMeetingsFolder() }) {
                     Image(systemName: "folder")
                         .font(.system(size: 12))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
                 .buttonStyle(.borderless)
                 .help("Show in Finder")
@@ -9271,7 +9287,7 @@ struct MeetingSidebarView: View {
             HStack(spacing: 4) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 TextField("Search library", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 11))
@@ -9279,7 +9295,7 @@ struct MeetingSidebarView: View {
                     Button(action: { searchText = "" }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                     .buttonStyle(.borderless)
                 }
@@ -9300,14 +9316,14 @@ struct MeetingSidebarView: View {
 
                     if meetingGroups.isEmpty && airtableGroups.isEmpty && filteredWikiFolders.allSatisfy({ $0.items.isEmpty }) && !searchText.isEmpty {
                         Text(searchText.isEmpty ? "No past meetings or 2nd Brain pages" : "No matches")
-                            .font(.caption).foregroundColor(.secondary)
+                            .font(.caption).foregroundStyle(theme.textSecondary)
                             .padding(.horizontal, 16).padding(.top, 8)
                     }
 
                     if !meetingGroups.isEmpty {
                         Text("Meetings")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(theme.textSecondary)
                             .padding(.horizontal, 16)
                             .padding(.top, 12)
                             .padding(.bottom, 2)
@@ -9316,7 +9332,7 @@ struct MeetingSidebarView: View {
                     ForEach(meetingGroups, id: \.date) { group in
                         Text(group.date)
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(theme.textSecondary)
                             .padding(.horizontal, 16)
                             .padding(.top, 10).padding(.bottom, 2)
 
@@ -9326,10 +9342,10 @@ struct MeetingSidebarView: View {
                                 HStack(spacing: 6) {
                                     Image(systemName: entry.isGranola ? "square.and.arrow.down.on.square" : "doc.text")
                                         .font(.system(size: 10))
-                                        .foregroundColor(isOpen ? appTheme.accent : (entry.isGranola ? .green.opacity(0.7) : .secondary))
+                                        .foregroundColor(isOpen ? appTheme.accent : (entry.isGranola ? appTheme.statusReady.opacity(0.7) : appTheme.textSecondary))
                                     Text(entry.name)
                                         .font(.system(size: 12))
-                                        .foregroundColor(isOpen ? appTheme.accent : .primary)
+                                        .foregroundColor(isOpen ? appTheme.accent : appTheme.textPrimary)
                                         .lineLimit(1)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -9442,7 +9458,7 @@ struct MeetingSidebarView: View {
                 if airtableGroups.isEmpty {
                     Text("No Airtable imports")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .padding(.leading, 34)
                         .padding(.trailing, 12)
                         .padding(.vertical, 4)
@@ -9473,11 +9489,11 @@ struct MeetingSidebarView: View {
             HStack(spacing: 6) {
                 Image(systemName: expandedLibraryFolders.contains(id) ? "chevron.down" : "chevron.right")
                     .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.textSecondary)
                     .frame(width: 10)
                 Image(systemName: icon)
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Text(title)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.primary)
@@ -9485,12 +9501,12 @@ struct MeetingSidebarView: View {
                     .truncationMode(.tail)
                 Text("(\(count))")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Spacer()
                 Button(action: openAction) {
                     Image(systemName: "folder")
                         .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
                 }
@@ -9520,11 +9536,11 @@ struct MeetingSidebarView: View {
             HStack(spacing: 6) {
                 Image(systemName: expandedWikiFolders.contains(folder.slug) ? "chevron.down" : "chevron.right")
                     .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.textSecondary)
                     .frame(width: 10)
                 Image(systemName: folder.iconSystemName)
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Text(folder.title)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.primary)
@@ -9532,7 +9548,7 @@ struct MeetingSidebarView: View {
                     .truncationMode(.tail)
                 Text("(\(folder.items.count))")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -9553,10 +9569,10 @@ struct MeetingSidebarView: View {
             HStack(spacing: 6) {
                 Image(systemName: item.type == "meeting_overview" ? "doc.richtext" : "doc.text")
                     .font(.system(size: 10))
-                    .foregroundColor(isOpen ? .orange : .secondary)
+                    .foregroundColor(isOpen ? appTheme.accent : appTheme.textSecondary)
                 Text(item.title)
                     .font(.system(size: 12))
-                    .foregroundColor(isOpen ? .orange : .primary)
+                    .foregroundColor(isOpen ? appTheme.accent : appTheme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer()
@@ -9591,11 +9607,11 @@ struct MeetingSidebarView: View {
             HStack(spacing: 6) {
                 Image(systemName: expandedAirtableFolders.contains(group.date) ? "chevron.down" : "chevron.right")
                     .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.textSecondary)
                     .frame(width: 10)
                 Image(systemName: "tray.full")
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Text(title)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.primary)
@@ -9603,7 +9619,7 @@ struct MeetingSidebarView: View {
                     .truncationMode(.tail)
                 Text("(\(group.entries.count))")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -9619,7 +9635,7 @@ struct MeetingSidebarView: View {
             HStack(spacing: 6) {
                 Image(systemName: "tablecells")
                     .font(.system(size: 10))
-                    .foregroundColor(.green.opacity(0.75))
+                    .foregroundColor(appTheme.statusReady.opacity(0.75))
                 Text(entry.name)
                     .font(.system(size: 12))
                     .foregroundColor(.primary)
@@ -9650,12 +9666,12 @@ struct MeetingSidebarView: View {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 11))
-                    .foregroundColor(.orange)
+                    .foregroundStyle(theme.accent)
                 Text(state.wikiProposals.count == 1
                      ? "Suggested 2nd Brain: \(state.wikiProposals[0].spec.displayName)"
                      : "\(state.wikiProposals.count) suggested 2nd Brains")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.orange)
+                    .foregroundStyle(theme.accent)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer()
@@ -9678,15 +9694,15 @@ struct MeetingSidebarView: View {
             HStack(spacing: 6) {
                 Image(systemName: kind.iconSystemName)
                     .font(.system(size: 11))
-                    .foregroundColor(isOpen ? .orange : .secondary)
+                    .foregroundColor(isOpen ? appTheme.accent : appTheme.textSecondary)
                 Text(kind.displayName)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(isOpen ? .orange : .primary)
+                    .foregroundColor(isOpen ? appTheme.accent : appTheme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text("(\(count))")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -9702,6 +9718,7 @@ struct MeetingSidebarView: View {
 // MARK: - Consent Dialog
 
 private struct ConsentDialogView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var state: MeetingWindowState
     @State private var copied = false
     @AppStorage("skipConsentDialog") private var skipConsent = false
@@ -9713,7 +9730,7 @@ private struct ConsentDialogView: View {
             // Header
             Image(systemName: "mic.badge.xmark")
                 .font(.system(size: 36))
-                .foregroundColor(.orange)
+                .foregroundStyle(theme.statusLive)
                 .padding(.top, 8)
 
             Text("Let participants know")
@@ -9721,7 +9738,7 @@ private struct ConsentDialogView: View {
 
             Text("Before recording, share this with your meeting participants:")
                 .font(.callout)
-                .foregroundColor(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .multilineTextAlignment(.center)
 
             // Message to copy
@@ -9730,7 +9747,7 @@ private struct ConsentDialogView: View {
                     .font(.system(size: 13))
                     .padding(12)
                     .frame(maxWidth: .infinity)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(theme.controlBackground))
 
                 Button(action: {
                     NSPasteboard.general.clearContents()
@@ -9745,7 +9762,7 @@ private struct ConsentDialogView: View {
                     .font(.caption.weight(.medium))
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.blue)
+                .foregroundColor(theme.accent)
             }
 
             Divider()
@@ -9754,16 +9771,16 @@ private struct ConsentDialogView: View {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 13))
-                        .foregroundColor(.orange)
+                        .foregroundStyle(theme.statusLive)
                         .padding(.top, 1)
                     Text(recordingStartError)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
+                .background(RoundedRectangle(cornerRadius: 8).fill(theme.accent.opacity(0.12)))
             }
 
             // Buttons
@@ -9774,14 +9791,14 @@ private struct ConsentDialogView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange))
+                        .background(RoundedRectangle(cornerRadius: 8).fill(theme.accent))
                 }
                 .buttonStyle(.plain)
 
                 Button(action: { state.cancelRecording() }) {
                     Text("Cancel")
                         .font(.callout)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
                 .buttonStyle(.plain)
             }
@@ -9790,7 +9807,7 @@ private struct ConsentDialogView: View {
             Toggle(isOn: $skipConsent) {
                 Text("Don't ask again (my jurisdiction doesn't require consent)")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .toggleStyle(.checkbox)
             .padding(.bottom, 4)
@@ -9827,27 +9844,30 @@ private struct CopyButton: View {
 }
 
 private struct SummarySectionHeader: View {
+    @Environment(\.appTheme) private var theme
     let title: String
     var body: some View {
         Text(title.uppercased())
             .font(.system(size: 11, weight: .bold))
-            .foregroundColor(.secondary).tracking(0.5)
+            .foregroundStyle(theme.textSecondary).tracking(0.5)
     }
 }
 
 private struct StatBlock: View {
+    @Environment(\.appTheme) private var theme
     let value: String
     let label: String
     var color: Color = .primary
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value).font(.system(size: 22, weight: .bold)).foregroundColor(color)
-            Text(label).font(.caption).foregroundColor(.secondary)
+            Text(label).font(.caption).foregroundStyle(theme.textSecondary)
         }
     }
 }
 
 struct TranscriptSegmentRow: View {
+    @Environment(\.appTheme) private var theme
     let segment: TranscriptSegment
     var highlightText: String = ""
 
@@ -9868,7 +9888,7 @@ struct TranscriptSegmentRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(segment.formattedTimestamp)
                 .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.textSecondary)
                 .frame(width: 48, alignment: .trailing)
             if showSpeakerBadge {
                 Text(segment.speaker.displayName)
@@ -9889,7 +9909,7 @@ struct TranscriptSegmentRow: View {
         let query = highlightText.lowercased()
         var searchRange = attributed.startIndex..<attributed.endIndex
         while let range = attributed[searchRange].range(of: query, options: .caseInsensitive) {
-            attributed[range].backgroundColor = .yellow.opacity(0.5)
+            attributed[range].backgroundColor = theme.statusBusy.opacity(0.5)
             attributed[range].foregroundColor = .black
             searchRange = range.upperBound..<attributed.endIndex
         }
@@ -9898,13 +9918,14 @@ struct TranscriptSegmentRow: View {
 
     private var speakerColor: Color {
         switch segment.speaker {
-        case .me: return .orange
-        case .remote: return .blue
+        case .me: return theme.accent
+        case .remote: return theme.accent
         }
     }
 }
 
 private struct SpeakerReviewRow: View {
+    @Environment(\.appTheme) private var theme
     let item: MeetingSpeakerReviewItem
     @Binding var draftName: String
     let onSave: () -> Void
@@ -9932,17 +9953,17 @@ private struct SpeakerReviewRow: View {
 
                 Text(statusText)
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(item.isVoicePrintBacked ? .green : .secondary)
+                    .foregroundStyle(item.isVoicePrintBacked ? theme.statusReady : theme.textSecondary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(
                         Capsule()
-                            .fill(item.isVoicePrintBacked ? Color.green.opacity(0.12) : Color.secondary.opacity(0.1))
+                            .fill(item.isVoicePrintBacked ? theme.statusReady.opacity(0.12) : theme.hoverFill)
                     )
 
                 Text("\(item.segmentCount) \(item.segmentCount == 1 ? "turn" : "turns")")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
 
                 Spacer()
 
@@ -9958,11 +9979,11 @@ private struct SpeakerReviewRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(item.firstTimestamp)
                     .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.textSecondary)
                     .frame(width: 42, alignment: .trailing)
                 Text(item.sampleText.isEmpty ? "No transcript sample available." : item.sampleText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

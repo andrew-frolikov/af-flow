@@ -17,6 +17,7 @@ import SwiftUI
 /// title out of its header, so calling it from `body` would re-read every
 /// meeting he has ever recorded on every redraw of this window.
 struct MeetingHistorySection: View {
+    @Environment(\.appTheme) private var theme
     /// Shared with the dictation list above, so one search box covers both.
     let searchText: String
     let onOpen: (URL) -> Void
@@ -42,7 +43,7 @@ struct MeetingHistorySection: View {
 
             Text("Saved as markdown next to your notes. Deleting one here is not offered on purpose: these are files, and Finder is where you delete files.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if filteredGroups.isEmpty {
@@ -62,7 +63,7 @@ struct MeetingHistorySection: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(group.date)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.textSecondary)
 
                             ForEach(group.entries) { entry in
                                 MeetingHistoryRow(entry: entry, onOpen: onOpen)
@@ -126,6 +127,7 @@ struct MeetingHistoryGroup: Identifiable {
 }
 
 private struct MeetingHistoryRow: View {
+    @Environment(\.appTheme) private var theme
     let entry: MeetingHistoryEntry
     let onOpen: (URL) -> Void
 
@@ -139,7 +141,7 @@ private struct MeetingHistoryRow: View {
                 HStack(spacing: 8) {
                     Image(systemName: entry.isGranola ? "square.and.arrow.down" : "waveform.and.mic")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                     Text(entry.name)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -165,7 +167,7 @@ private struct MeetingHistoryRow: View {
             } label: {
                 Image(systemName: "folder")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.borderless)
             .help("Show in Finder")

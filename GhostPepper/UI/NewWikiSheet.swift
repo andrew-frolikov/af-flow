@@ -6,6 +6,7 @@ import SwiftUI
 /// registers the kind and kicks off a background backfill from the existing
 /// meeting cards — nothing is created without an explicit approve.
 struct NewWikiSheet: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var state: MeetingWindowState
     @Environment(\.dismiss) private var dismiss
 
@@ -24,7 +25,7 @@ struct NewWikiSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 16))
-                    .foregroundColor(.orange)
+                    .foregroundStyle(theme.accent)
             Text("New 2nd Brain")
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
@@ -32,7 +33,7 @@ struct NewWikiSheet: View {
 
             Text("2nd Brains are folders of dossiers built from your meetings by the local model, like the People index, for any category. Approve a suggestion or define your own.")
                 .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
 
             proposalsSection
 
@@ -78,13 +79,13 @@ struct NewWikiSheet: View {
             if let generateMessage {
                 Text(generateMessage)
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
 
             if state.wikiProposals.isEmpty && !isGenerating {
                 Text("No pending suggestions. The local model proposes 2nd Brains once it has digested enough meetings, or ask it now.")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
 
             ForEach(state.wikiProposals) { proposal in
@@ -97,7 +98,7 @@ struct NewWikiSheet: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: proposal.spec.iconSystemName)
                 .font(.system(size: 14))
-                .foregroundColor(.orange)
+                .foregroundStyle(theme.accent)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(proposal.spec.displayName)
@@ -105,7 +106,7 @@ struct NewWikiSheet: View {
                 if !proposal.rationale.isEmpty {
                     Text(proposal.rationale)
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -113,7 +114,7 @@ struct NewWikiSheet: View {
             if approvedSlugs.contains(proposal.spec.slug) {
                 Label("Building…", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 11))
-                    .foregroundColor(.green)
+                    .foregroundStyle(theme.statusReady)
             } else {
                 Button("Dismiss") {
                     WikiKindStore.shared.removeProposal(slug: proposal.spec.slug)
@@ -125,11 +126,11 @@ struct NewWikiSheet: View {
                 }
                 .font(.system(size: 11))
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(theme.accent)
             }
         }
         .padding(8)
-        .background(Color.secondary.opacity(0.06))
+        .background(theme.hoverFill)
         .cornerRadius(6)
     }
 
@@ -183,7 +184,7 @@ struct NewWikiSheet: View {
                 }
                 .disabled(customName.trimmingCharacters(in: .whitespaces).isEmpty)
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(theme.accent)
             }
         }
     }

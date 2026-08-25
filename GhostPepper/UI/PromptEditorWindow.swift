@@ -24,7 +24,7 @@ final class PromptEditorController: NSObject, NSWindowDelegate {
         window.title = "Edit Cleanup Prompt"
         window.delegate = self
         window.isReleasedWhenClosed = false
-        window.contentViewController = NSHostingController(rootView: editor)
+        window.contentViewController = NSHostingController(rootView: AFFlowThemedRoot { editor })
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -51,7 +51,7 @@ final class PromptEditorController: NSObject, NSWindowDelegate {
 
 final class CleanupTranscriptWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
-    private var hostingController: NSHostingController<CleanupTranscriptView>?
+    private var hostingController: NSHostingController<AFFlowThemedRoot<CleanupTranscriptView>>?
 
     func show(transcript: TranscriptionLabCleanupTranscript) {
         let contentView = CleanupTranscriptView(transcript: transcript, onClose: { [weak self] in
@@ -59,9 +59,9 @@ final class CleanupTranscriptWindowController: NSObject, NSWindowDelegate {
         })
 
         if let hostingController {
-            hostingController.rootView = contentView
+            hostingController.rootView = AFFlowThemedRoot { contentView }
         } else {
-            hostingController = NSHostingController(rootView: contentView)
+            hostingController = NSHostingController(rootView: AFFlowThemedRoot { contentView })
         }
 
         if let window {
@@ -105,6 +105,7 @@ final class CleanupTranscriptWindowController: NSObject, NSWindowDelegate {
 }
 
 struct PromptEditorView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var appState: AppState
     let onClose: () -> Void
 
@@ -115,7 +116,7 @@ struct PromptEditorView: View {
 
             Text("This prompt is sent to the local LLM to clean up your transcribed speech.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
 
             TextEditor(text: $appState.cleanupPrompt)
                 .font(.body)
@@ -140,6 +141,7 @@ struct PromptEditorView: View {
 }
 
 private struct CleanupTranscriptView: View {
+    @Environment(\.appTheme) private var theme
     let transcript: TranscriptionLabCleanupTranscript
     let onClose: () -> Void
 
@@ -151,7 +153,7 @@ private struct CleanupTranscriptView: View {
 
                 Text("This shows the exact content sent to the cleanup model for the current lab rerun and the exact raw text it returned.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
 
                 transcriptSection(
                     title: "Sent to cleanup model",

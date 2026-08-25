@@ -220,44 +220,32 @@ struct OverlayPillView: View {
         AppTheme.resolve(selectedThemeID)
     }
 
-    /// True when the pill is wearing AF Flow's own look rather than one of the
-    /// two novelty skins inherited from the fork. Everything brand-specific
-    /// below is gated on this, so the skins keep working untouched.
-    private var isBrand: Bool { appTheme.id == .current }
+    private var textColor: Color { appTheme.overlayText }
 
-    private var textColor: Color {
-        if isBrand { return AFFlowPalette.overlayText }
-        return appTheme.usesDarkText ? .black : .white
-    }
+    private var pillFill: Color { appTheme.overlayFill }
 
-    private var pillFill: Color {
-        switch appTheme.id {
-        case .current:
-            return AFFlowPalette.overlayFill.opacity(0.94)
-        case .windows95:
-            return Color(red: 0.78, green: 0.78, blue: 0.72).opacity(0.96)
-        case .space:
-            return Color(red: 0.03, green: 0.04, blue: 0.16).opacity(0.92)
-        }
-    }
-
-    /// One tint per state, drawn from the same palette the home window uses, so
-    /// the pill that appears while he speaks looks like it came from the same
-    /// app as the window he opened.
+    /// One colour per state, read from the theme's overlay slots so the two
+    /// novelty skins keep their own overlays without a brand-only branch here.
+    ///
+    /// The grades are the DARK ones: this pill floats over whatever he is
+    /// dictating into, so it is ink with paper text, and the light status
+    /// colours would not carry on it. Recording is the clay red rather than
+    /// pine, because a hot microphone has to read as red at a glance and pine
+    /// cannot mean both "ready" and "recording".
     private var dotColor: Color {
         switch message {
         case .recording:
-            return isBrand ? AFFlowPalette.red : .red
+            return appTheme.overlayStatusLive
         case .modelLoading:
-            return isBrand ? AFFlowPalette.gold : appTheme.accent
+            return appTheme.overlayStatusBusy
         case .cleaningUp, .transcribing:
-            return isBrand ? AFFlowPalette.gold : appTheme.accent
+            return appTheme.overlayStatusBusy
         case .clipboardFallback, .secureInputBlocked:
-            return isBrand ? AFFlowPalette.teal : appTheme.accent
+            return appTheme.overlayStatusReady
         case .noSoundDetected, .cannotStart, .captureFailing:
-            return isBrand ? AFFlowPalette.red : appTheme.accent
+            return appTheme.overlayStatusLive
         case .learnedCorrection:
-            return isBrand ? AFFlowPalette.teal : .green
+            return appTheme.overlayStatusReady
         }
     }
 
@@ -270,7 +258,7 @@ struct OverlayPillView: View {
             } else if case .learnedCorrection = message {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(isBrand ? AFFlowPalette.teal : .green)
+                    .foregroundStyle(appTheme.overlayStatusReady)
             } else {
                 // The pulse means "this is still happening". It used to run on
                 // every message, including the ones that are already finished,
@@ -312,7 +300,7 @@ struct OverlayPillView: View {
                 // screen share.
                 .overlay(
                     Capsule().stroke(
-                        isBrand ? AFFlowPalette.overlayRule.opacity(0.55) : appTheme.accent.opacity(0.7),
+                        appTheme.overlayEdge,
                         lineWidth: 1
                     )
                 )

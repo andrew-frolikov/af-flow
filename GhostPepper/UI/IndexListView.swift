@@ -4,6 +4,7 @@ import SwiftUI
 /// the user clicks "People" in the sidebar. Each row is a tappable name that
 /// navigates the current tab to the dossier; right-click opens in a new tab.
 struct IndexListView: View {
+    @Environment(\.appTheme) private var theme
     let kind: IndexKind
     let items: [IndexHistoryItem]
     var onOpenEntry: (_ kind: IndexKind, _ slug: String) -> Void = { _, _ in }
@@ -39,14 +40,14 @@ struct IndexListView: View {
                     .font(.system(size: 22, weight: .semibold))
                 Text("(\(items.count))")
                     .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
 
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 TextField("Search \(kind.displayName.lowercased())", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
@@ -54,14 +55,14 @@ struct IndexListView: View {
                     Button(action: { searchText = "" }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                     .buttonStyle(.borderless)
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
+            .background(theme.textBackground)
             .cornerRadius(6)
         }
         .padding(.horizontal, 32)
@@ -74,19 +75,19 @@ struct IndexListView: View {
             Spacer()
             Image(systemName: kind.iconSystemName)
                 .font(.system(size: 36))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             Text("No \(kind.displayName.lowercased()) yet")
                 .font(.system(size: 15, weight: .medium))
             Text("Build the index from your meeting archive to populate this list.")
                 .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
             Button(action: onBuild) {
                 Label("Build \(kind.displayName) index", systemImage: "wand.and.stars")
             }
             .buttonStyle(.borderedProminent)
-            .tint(.orange)
+            .tint(theme.accent)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -98,7 +99,7 @@ struct IndexListView: View {
                 if filtered.isEmpty {
                     Text("No matches for \"\(searchText)\"")
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .padding(.horizontal, 32)
                         .padding(.vertical, 16)
                 } else {
@@ -116,14 +117,14 @@ struct IndexListView: View {
             HStack(spacing: 10) {
                 Image(systemName: "person.crop.circle")
                     .font(.system(size: 14))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Text(item.canonicalName)
                     .font(.system(size: 14))
                     .foregroundColor(.primary)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .padding(.horizontal, 32)
             .padding(.vertical, 10)

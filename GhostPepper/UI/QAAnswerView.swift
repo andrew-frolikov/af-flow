@@ -8,6 +8,7 @@ import SwiftUI
 /// into `gp://`-scheme links by `QAAnswerCitations`, so they survive markdown
 /// parsing and route through `onLink`.
 struct QAAnswerView: View {
+    @Environment(\.appTheme) private var theme
     let source: String
     let onLink: (URL) -> OpenURLAction.Result
 
@@ -33,7 +34,7 @@ struct QAAnswerView: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("•")
                     .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Text(inline(text))
                     .font(.system(size: 13))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -43,7 +44,7 @@ struct QAAnswerView: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(number).")
                     .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .frame(minWidth: 16, alignment: .trailing)
                 Text(inline(text))
                     .font(.system(size: 13))
@@ -53,12 +54,12 @@ struct QAAnswerView: View {
         case .blockquote(let text):
             HStack(alignment: .top, spacing: 0) {
                 Rectangle()
-                    .fill(Color.orange.opacity(0.6))
+                    .fill(theme.accent.opacity(0.6))
                     .frame(width: 3)
                 Text(inline(text))
                     .font(.system(size: 13))
                     .italic()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .padding(.leading, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -68,7 +69,7 @@ struct QAAnswerView: View {
                 .textSelection(.enabled)
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.secondary.opacity(0.1))
+                .background(theme.hoverFill)
                 .cornerRadius(4)
         case .paragraph(let text):
             Text(inline(text))

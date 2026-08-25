@@ -3,6 +3,7 @@ import AppKit
 import CoreGraphics
 
 struct ShortcutRecorderView: View {
+    @Environment(\.appTheme) private var theme
     let title: String
     let chord: KeyChord
     let onRecordingStateChange: (Bool) -> Void
@@ -23,21 +24,21 @@ struct ShortcutRecorderView: View {
                             .monospaced()
                     }
                     .buttonStyle(BorderedProminentButtonStyle())
-                    .tint(.orange)
+                    .tint(theme.accent)
                 } else {
                     Button(action: toggleRecording) {
                         Text(buttonLabel)
                             .monospaced()
                     }
                     .buttonStyle(BorderedButtonStyle())
-                    .tint(.orange)
+                    .tint(theme.accent)
                 }
             }
 
             if isRecording {
                 Text("Press the full chord, then release. Press Escape to cancel.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
         }
         .onDisappear {

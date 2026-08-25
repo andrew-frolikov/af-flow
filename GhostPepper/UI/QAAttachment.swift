@@ -58,6 +58,7 @@ struct QAAttachment: Identifiable, Equatable {
 }
 
 struct AttachmentChip: View {
+    @Environment(\.appTheme) private var theme
     let attachment: QAAttachment
     let onRemove: () -> Void
 
@@ -65,7 +66,7 @@ struct AttachmentChip: View {
         HStack(spacing: 4) {
             Image(systemName: attachment.kindGlyph)
                 .font(.system(size: 10))
-                .foregroundColor(.orange)
+                .foregroundStyle(theme.accent)
             Text(attachment.title)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.primary)
@@ -74,13 +75,13 @@ struct AttachmentChip: View {
             Button(action: onRemove) {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .semibold))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.orange.opacity(0.12))
+        .background(theme.accent.opacity(0.12))
         .cornerRadius(10)
         .help(attachment.relativePath)
     }

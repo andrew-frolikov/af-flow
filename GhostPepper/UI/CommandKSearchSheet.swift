@@ -5,6 +5,7 @@ import SwiftUI
 /// (quick-note files). ↑/↓ moves the highlight; Enter opens the highlighted
 /// result or asks the local wiki when no exact destination is selected.
 struct CommandKSearchSheet: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var state: MeetingWindowState
     @Binding var isPresented: Bool
     /// When provided, selecting a result calls this instead of opening the
@@ -60,7 +61,7 @@ struct CommandKSearchSheet: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 14))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             TextField(onAttach == nil ? "Search 2nd Brain, people, meetings, notes…" : "Attach context: search 2nd Brain, people, meetings, notes…", text: $query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 16))
@@ -70,7 +71,7 @@ struct CommandKSearchSheet: View {
                 Button(action: { query = "" }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
                 .buttonStyle(.plain)
             }
@@ -81,9 +82,9 @@ struct CommandKSearchSheet: View {
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.15))
+                    .background(theme.hoverFill)
                     .cornerRadius(3)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
@@ -97,9 +98,9 @@ struct CommandKSearchSheet: View {
             .font(.system(size: 10, weight: .medium, design: .monospaced))
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
-            .background(Color.secondary.opacity(0.15))
+            .background(theme.hoverFill)
             .cornerRadius(3)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(theme.textSecondary)
     }
 
     @ViewBuilder
@@ -108,11 +109,11 @@ struct CommandKSearchSheet: View {
             VStack(spacing: 6) {
                 Image(systemName: query.isEmpty ? "magnifyingglass" : "questionmark.circle")
                     .font(.system(size: 28))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                 Text(query.isEmpty ? "Type to search across 2nd Brain, people, meetings, and notes."
                                    : "No matches for \"\(query)\"")
                     .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 36)
@@ -147,7 +148,7 @@ struct CommandKSearchSheet: View {
             Text("\(title) (\(items.count))")
                 .font(.system(size: 10, weight: .semibold))
                 .textCase(.uppercase)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.textSecondary)
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
                 .padding(.bottom, 4)
@@ -164,7 +165,7 @@ struct CommandKSearchSheet: View {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.system(size: 12))
-                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .foregroundStyle(isSelected ? theme.textPrimary : theme.textSecondary)
                     .frame(width: 16)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
@@ -172,20 +173,20 @@ struct CommandKSearchSheet: View {
                     if let subtitle = item.subtitle {
                         Text(subtitle)
                             .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                 }
                 Spacer()
                 if isSelected {
                     Image(systemName: "return")
                         .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? Color.orange.opacity(0.18) : Color.clear)
+            .background(isSelected ? theme.accent.opacity(0.18) : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ModelInventoryCard: View {
+    @Environment(\.appTheme) private var theme
     let rows: [RuntimeModelRow]
     var onDelete: ((RuntimeModelRow) -> Void)?
     var onDownload: ((RuntimeModelRow) -> Void)?
@@ -19,7 +20,7 @@ struct ModelInventoryCard: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(theme.controlBackground)
         )
     }
 
@@ -59,6 +60,7 @@ private extension RuntimeModelStatus {
 }
 
 private struct ModelInventoryRow: View {
+    @Environment(\.appTheme) private var theme
     let row: RuntimeModelRow
     var onDelete: (() -> Void)?
     var onDownload: (() -> Void)?
@@ -80,25 +82,25 @@ private struct ModelInventoryRow: View {
                 HStack(spacing: 6) {
                     Text(row.name)
                         .font(.callout)
-                        .foregroundStyle(isDeleting ? .secondary : .primary)
+                        .foregroundStyle(isDeleting ? theme.textSecondary : theme.textPrimary)
 
                     if row.isSelected {
                         Text("Selected")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(theme.accent)
                     }
                 }
 
                 Text(isDeleting ? "Removing..." : statusText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
 
             Spacer()
 
             Text(row.sizeDescription)
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.textSecondary)
 
             if let onDelete {
                 if isDeleting {
@@ -118,7 +120,7 @@ private struct ModelInventoryRow: View {
                     }) {
                         Image(systemName: "trash")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                     .buttonStyle(.borderless)
                     .help("Remove downloaded model to free disk space")
@@ -146,6 +148,7 @@ private struct ModelInventoryRow: View {
 }
 
 private struct ModelInventoryStatusIndicator: View {
+    @Environment(\.appTheme) private var theme
     let status: RuntimeModelStatus
 
     var body: some View {
@@ -153,18 +156,18 @@ private struct ModelInventoryStatusIndicator: View {
             switch status {
             case .loaded:
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(theme.statusReady)
             case .loading:
                 ProgressView()
                     .controlSize(.mini)
             case .notLoaded:
                 Image(systemName: "icloud.and.arrow.down")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             case .downloading(let progress):
                 PieProgressIndicator(progress: progress)
             case .systemManaged:
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(theme.statusReady)
             }
         }
         .font(.caption)
@@ -173,20 +176,21 @@ private struct ModelInventoryStatusIndicator: View {
 }
 
 private struct PieProgressIndicator: View {
+    @Environment(\.appTheme) private var theme
     let progress: Double?
     @State private var rotation = Angle.zero
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+                .stroke(theme.separator, lineWidth: 1)
 
             if let progress {
                 PieSliceShape(progress: max(0.05, min(progress, 1)))
-                    .fill(Color.orange)
+                    .fill(theme.accent)
             } else {
                 PieSliceShape(progress: 0.28)
-                    .fill(Color.orange)
+                    .fill(theme.accent)
                     .rotationEffect(rotation)
                     .onAppear {
                         withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {

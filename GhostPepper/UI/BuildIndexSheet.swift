@@ -10,6 +10,7 @@ import SwiftUI
 /// path that can produce a non-zero cost, and a currency-formatted placeholder
 /// for a capability the app must never have is residue, not a feature.
 struct BuildIndexSheet: View {
+    @Environment(\.appTheme) private var theme
     let kind: IndexKind
     let fetchBuilder: () -> (any IndexBuilding)?
     let onClose: () -> Void
@@ -68,7 +69,7 @@ struct BuildIndexSheet: View {
                 ProgressView().scaleEffect(0.7)
                 Text("Checking what needs building…")
                     .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             HStack {
                 Spacer()
@@ -85,16 +86,16 @@ struct BuildIndexSheet: View {
                 if estimate.nothingToDo {
                     Text("**Index is up to date**. Every meeting is already covered by an existing entry, so there is nothing to do.")
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .padding(8)
-                        .background(Color.green.opacity(0.1))
+                        .background(theme.statusReady.opacity(0.1))
                         .cornerRadius(6)
                 } else if estimate.isResume {
                     Text("**Resuming existing index**: \(estimate.existingEntryCount) entries on disk, \(estimate.alreadyProcessedCount) of \(estimate.totalMeetingCount) meetings already covered. This run will only process the remaining \(estimate.unprocessedCount).")
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                         .padding(8)
-                        .background(Color.orange.opacity(0.1))
+                        .background(theme.accent.opacity(0.1))
                         .cornerRadius(6)
                 }
 
@@ -108,7 +109,7 @@ struct BuildIndexSheet: View {
                         .font(.system(size: 13))
                     Text("Runs in the background on the local model. You can hit Stop at any time; the build resumes where it left off.")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
 
                 HStack {
@@ -121,7 +122,7 @@ struct BuildIndexSheet: View {
                         }
                         .keyboardShortcut(.defaultAction)
                         .buttonStyle(.borderedProminent)
-                        .tint(.orange)
+                        .tint(theme.accent)
                     }
                 }
             }
@@ -134,7 +135,7 @@ struct BuildIndexSheet: View {
                 ProgressView().scaleEffect(0.7)
                 Text(statusLine.isEmpty ? "Building…" : statusLine)
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -144,15 +145,15 @@ struct BuildIndexSheet: View {
                     HStack {
                         Text("\(meetingsProcessed) of \(totalMeetings) meetings")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                         Spacer()
                         Text("\(Int(progressFraction * 100))%")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                     ProgressView(value: progressFraction)
                         .progressViewStyle(.linear)
-                        .tint(.orange)
+                        .tint(theme.accent)
                 }
             }
 
@@ -161,7 +162,7 @@ struct BuildIndexSheet: View {
                 Label("On device, CAD 0", systemImage: "bolt.circle")
             }
             .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(theme.textSecondary)
 
             HStack {
                 Spacer()
@@ -181,24 +182,24 @@ struct BuildIndexSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
+                    .foregroundStyle(theme.statusReady)
                 Text("Built \(entriesWritten) entries")
                     .font(.system(size: 13, weight: .medium))
             }
             if totalMeetings > 0 {
                 Text("\(meetingsProcessed) of \(totalMeetings) meetings covered")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             Text("Ran entirely on this Mac. Total cost CAD 0.")
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             HStack {
                 Spacer()
                 Button("Done", action: onClose)
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .tint(theme.accent)
             }
         }
     }
@@ -207,14 +208,14 @@ struct BuildIndexSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(.orange)
+                    .foregroundStyle(theme.statusLive)
                 Text("Build failed")
                     .font(.system(size: 13, weight: .medium))
             }
             if let errorMessage {
                 Text(errorMessage)
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .textSelection(.enabled)
             }
             HStack {

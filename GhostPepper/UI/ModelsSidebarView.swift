@@ -4,6 +4,7 @@ import SwiftUI
 /// and the toolkit of local models. Local model rows expose inline
 /// download/delete affordances.
 struct ModelsSidebarView: View {
+    @Environment(\.appTheme) private var theme
     @AppStorage("speechModel") private var selectedSpeechModelID: String = SpeechModelCatalog.defaultModelID
     @AppStorage("selectedCleanupModelKind") private var selectedCleanupModelKindRaw: String = LocalCleanupModelKind.qwen35_0_8b_q4_k_m.rawValue
 
@@ -28,7 +29,7 @@ struct ModelsSidebarView: View {
                 .id(refreshTick)
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(theme.controlBackground)
     }
 
     // MARK: - Header
@@ -37,14 +38,14 @@ struct ModelsSidebarView: View {
         HStack(spacing: 8) {
             Text("Models")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.secondary)
+                .foregroundStyle(theme.textSecondary)
             Spacer()
             Button(action: {
                 refreshTick += 1
             }) {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.borderless)
             .help("Re-check status")
@@ -233,7 +234,7 @@ struct ModelsSidebarView: View {
             Divider()
             Text("AF Flow runs 100% on-device.")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
         .padding(.top, 4)
     }
@@ -284,7 +285,7 @@ struct ModelsSidebarView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
             VStack(alignment: .leading, spacing: 6) {
                 content()
@@ -301,6 +302,7 @@ private enum ModelLocation { case local, cloud }
 /// the secondary line. The picker is constrained to choices the user can
 /// actually use — caller filters to downloaded local models.
 private struct FunctionRowPicker<Picker: View>: View {
+    @Environment(\.appTheme) private var theme
     let icon: String
     let title: String
     let location: ModelLocation
@@ -314,7 +316,7 @@ private struct FunctionRowPicker<Picker: View>: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: icon)
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .frame(width: 14, alignment: .leading)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
@@ -324,16 +326,16 @@ private struct FunctionRowPicker<Picker: View>: View {
                         .foregroundColor(.primary)
                     Text(location == .local ? "local" : "cloud")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(location == .local ? .green : .blue)
+                        .foregroundColor(location == .local ? theme.statusReady : theme.accent)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
-                        .background((location == .local ? Color.green : Color.blue).opacity(0.12))
+                        .background((location == .local ? theme.statusReady : theme.accent).opacity(0.12))
                         .cornerRadius(3)
                 }
                 if isEmpty {
                     Text(emptyMessage)
                         .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 } else {
                     picker()
                         .frame(maxWidth: 220)
@@ -346,6 +348,7 @@ private struct FunctionRowPicker<Picker: View>: View {
 }
 
 private struct FunctionRow: View {
+    @Environment(\.appTheme) private var theme
     let icon: String
     let title: String
     let modelLabel: String
@@ -356,7 +359,7 @@ private struct FunctionRow: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: icon)
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .frame(width: 14, alignment: .leading)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 1) {
@@ -366,16 +369,16 @@ private struct FunctionRow: View {
                 HStack(spacing: 4) {
                     Text(modelLabel)
                         .font(.system(size: 11))
-                        .foregroundColor(available ? .secondary : .red.opacity(0.8))
+                        .foregroundColor(available ? theme.textSecondary : theme.statusLive.opacity(0.8))
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(location == .local ? "local" : "cloud")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(location == .local ? .green : .blue)
+                        .foregroundColor(location == .local ? theme.statusReady : theme.accent)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(
-                            (location == .local ? Color.green : Color.blue).opacity(0.12)
+                            (location == .local ? theme.statusReady : theme.accent).opacity(0.12)
                         )
                         .cornerRadius(3)
                 }
@@ -394,6 +397,7 @@ enum RowProgress: Equatable {
 }
 
 private struct LocalModelRow: View {
+    @Environment(\.appTheme) private var theme
     let title: String
     let subtitle: String
     let capabilities: [String]
@@ -407,32 +411,32 @@ private struct LocalModelRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Circle()
-                .fill(isDownloaded ? Color.green : Color.secondary.opacity(0.4))
+                .fill(isDownloaded ? theme.statusReady : theme.hoverFill)
                 .frame(width: 6, height: 6)
                 .padding(.top, 5)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(title)
                         .font(.system(size: 12, weight: isActive ? .semibold : .regular))
-                        .foregroundColor(isDownloaded ? .primary : .secondary)
+                        .foregroundColor(isDownloaded ? theme.textPrimary : theme.textSecondary)
                     if isActive {
                         Text("active")
                             .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(.orange)
+                            .foregroundStyle(theme.accent)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
-                            .background(Color.orange.opacity(0.15))
+                            .background(theme.accent.opacity(0.15))
                             .cornerRadius(3)
                     }
                     if !isDownloaded && progress == nil {
                         Text("not downloaded")
                             .font(.system(size: 9))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                 }
                 Text(subtitle)
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(capabilities.joined(separator: " · "))
@@ -454,7 +458,7 @@ private struct LocalModelRow: View {
             Button(action: onCancel) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .symbolRenderingMode(.hierarchical)
             }
             .buttonStyle(.borderless)
@@ -469,7 +473,7 @@ private struct LocalModelRow: View {
             Button(action: onDownload) {
                 Image(systemName: "icloud.and.arrow.down")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.borderless)
             .help("Download model")
@@ -478,7 +482,7 @@ private struct LocalModelRow: View {
             Button(action: onDelete) {
                 Image(systemName: "trash")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.borderless)
             .help("Remove downloaded model to free disk space")
@@ -496,16 +500,16 @@ private struct LocalModelRow: View {
                     .frame(maxWidth: 140)
                 Text("\(Int(value * 100))%")
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
         case .downloading(nil):
             Text("Preparing…")
                 .font(.system(size: 10))
-                .foregroundColor(.secondary)
+                .foregroundStyle(theme.textSecondary)
         case .loading:
             Text("Loading…")
                 .font(.system(size: 10))
-                .foregroundColor(.secondary)
+                .foregroundStyle(theme.textSecondary)
         }
     }
 }

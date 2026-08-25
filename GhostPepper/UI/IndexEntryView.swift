@@ -7,6 +7,7 @@ import AppKit
 /// AttributedString link rendering keeps them tappable inside flowing text;
 /// taps are intercepted via `.environment(\.openURL, ...)`.
 struct IndexEntryView: View {
+    @Environment(\.appTheme) private var theme
     let entry: IndexEntry
     let saveDir: URL
     var onOpenEntry: (_ kind: IndexKind, _ slug: String) -> Void = { _, _ in }
@@ -66,7 +67,7 @@ struct IndexEntryView: View {
                 Text("Updated \(formatted(entry.lastUpdated))")
             }
             .font(.system(size: 11))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(theme.textSecondary)
         }
     }
 
@@ -85,14 +86,14 @@ struct IndexEntryView: View {
                         .font(.system(size: 11, weight: .medium))
                     Text("generated")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
-                .background(Capsule().fill(Color.secondary.opacity(0.12)))
+                .background(Capsule().fill(theme.hoverFill))
             }
             .buttonStyle(.plain)
             .help("Generated \(formatted(gen.generatedAt))\nPrompt: \(gen.promptKind) · #\(gen.promptHash)\nClick to refresh with Q&A.")
@@ -114,13 +115,13 @@ struct IndexEntryView: View {
         HStack(spacing: 6) {
             Text("Also known as")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             ForEach(entry.aliases, id: \.self) { alias in
                 Text(alias)
                     .font(.system(size: 11))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                    .background(Capsule().fill(theme.hoverFill))
             }
         }
     }
@@ -156,7 +157,7 @@ struct IndexEntryView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("•")
                             .font(.system(size: 14))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                         inlineText(item)
                             .font(.system(size: 14))
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -170,7 +171,7 @@ struct IndexEntryView: View {
                 .font(.system(.caption, design: .monospaced))
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.secondary.opacity(0.08))
+                .background(theme.hoverFill)
                 .cornerRadius(4)
                 .textSelection(.enabled)
         }
@@ -220,7 +221,7 @@ struct IndexEntryView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Source meetings")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
             ForEach(entry.sourceMeetings, id: \.self) { path in
                 Button(action: { onOpenMeeting(path) }) {
@@ -230,7 +231,7 @@ struct IndexEntryView: View {
                         Text(path)
                             .font(.system(size: 12))
                     }
-                    .foregroundColor(.orange)
+                    .foregroundStyle(theme.accent)
                 }
                 .buttonStyle(.plain)
                 .contextMenu {

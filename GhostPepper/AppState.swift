@@ -36,6 +36,58 @@ enum AppThemeID: String, CaseIterable, Identifiable {
     }
 }
 
+/// The brand's exact token values, from the canonical visual identity at
+/// `AndrewFrolikov OS/Context/brand-visual.md`. These are the source values;
+/// nothing in the app may hardcode a colour that belongs here.
+/// Applied to this app by `docs/design/af-flow-visual-system.md`.
+enum Brand {
+    // Canon palette
+    static let ground = Color(hex: 0xF5F1E8)          // --paper
+    static let well = Color(hex: 0xFFFDF7)            // --panel
+    static let textPrimary = Color(hex: 0x17201D)     // --ink
+    static let textSecondary = Color(hex: 0x626C68)   // --muted
+    static let hairline = Color(hex: 0xD8D3C8)        // --line
+    static let accent = Color(hex: 0x1E5C46)          // --signal, deep pine
+    static let onAccent = Color(hex: 0xF5F1E8)        // --signal-ink
+    static let mist = Color(hex: 0xA7E8C6)            // --signal-soft
+
+    // App additions, see the design document section 2
+    static let accentHover = Color(hex: 0x174A38)
+    static let accentPressed = Color(hex: 0x123B2D)
+
+    // Functional status colours. Pine cannot mean both "all is well" and
+    // "the microphone is hot", so recording gets a clay red that is NOT the
+    // retired terracotta.
+    static let statusReady = Color(hex: 0x1E5C46)
+    static let statusBusy = Color(hex: 0x7A5414)
+    static let statusLive = Color(hex: 0x9E3B24)
+
+    // Dark constants, for the recording overlay and the context bubble
+    static let surfaceDark = Color(hex: 0x17201D)     // --dark
+    static let textOnDark = Color(hex: 0xF5F1E8)      // --dark-ink
+    static let secondaryOnDark = Color(hex: 0xB9C3BE) // --dark-muted
+    static let statusReadyOnDark = Color(hex: 0xA7E8C6)
+    static let statusBusyOnDark = Color(hex: 0xE0A94E)
+    static let statusLiveOnDark = Color(hex: 0xE8836B)
+
+    /// State tints. Fixed opacities over the ground, never new hues.
+    static let hoverOpacity: Double = 0.06
+    static let pressedOpacity: Double = 0.10
+    static let selectedOpacity: Double = 0.12
+}
+
+extension Color {
+    init(hex: UInt32) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255.0,
+            green: Double((hex >> 8) & 0xFF) / 255.0,
+            blue: Double(hex & 0xFF) / 255.0,
+            opacity: 1
+        )
+    }
+}
+
 struct AppTheme {
     static let storageKey = "appTheme"
 
@@ -47,7 +99,7 @@ struct AppTheme {
 
     var accent: Color {
         switch id {
-        case .current: .orange
+        case .current: Brand.accent
         case .windows95: Color(red: 0.0, green: 0.0, blue: 0.50)
         case .space: Color(red: 0.45, green: 0.78, blue: 1.0)
         }
@@ -55,14 +107,15 @@ struct AppTheme {
 
     var accentText: Color {
         switch id {
-        case .current, .windows95: .black
+        case .current: Brand.onAccent
+        case .windows95: .black
         case .space: Color(red: 0.02, green: 0.03, blue: 0.12)
         }
     }
 
     var windowBackground: Color {
         switch id {
-        case .current: Color(nsColor: .windowBackgroundColor)
+        case .current: Brand.ground
         case .windows95: Color(red: 0.78, green: 0.78, blue: 0.72)
         case .space: Color(red: 0.02, green: 0.03, blue: 0.12)
         }
@@ -70,15 +123,18 @@ struct AppTheme {
 
     var textBackground: Color {
         switch id {
-        case .current: Color(nsColor: .textBackgroundColor)
+        case .current: Brand.well
         case .windows95: Color(red: 0.86, green: 0.86, blue: 0.80)
         case .space: Color(red: 0.05, green: 0.07, blue: 0.18)
         }
     }
 
+    /// Deliberately the same as `windowBackground` on the brand skin. The
+    /// monolith rule forbids a third region colour, so existing
+    /// `controlBackground` fills become invisible seams, which is correct.
     var controlBackground: Color {
         switch id {
-        case .current: Color(nsColor: .controlBackgroundColor)
+        case .current: Brand.ground
         case .windows95: Color(red: 0.75, green: 0.75, blue: 0.70)
         case .space: Color(red: 0.08, green: 0.10, blue: 0.26)
         }
@@ -86,7 +142,7 @@ struct AppTheme {
 
     var separator: Color {
         switch id {
-        case .current: Color(nsColor: .separatorColor)
+        case .current: Brand.hairline
         case .windows95: Color.black.opacity(0.42)
         case .space: Color(red: 0.45, green: 0.78, blue: 1.0).opacity(0.28)
         }
@@ -94,9 +150,147 @@ struct AppTheme {
 
     var selectedFill: Color {
         switch id {
-        case .current: Color(nsColor: .selectedContentBackgroundColor).opacity(0.22)
+        case .current: Brand.accent.opacity(Brand.selectedOpacity)
         case .windows95: Color(red: 0.0, green: 0.0, blue: 0.50).opacity(0.18)
         case .space: Color(red: 0.45, green: 0.22, blue: 0.90).opacity(0.28)
+        }
+    }
+
+    // MARK: - Text
+
+    var textPrimary: Color {
+        switch id {
+        case .current: Brand.textPrimary
+        case .windows95: .black
+        case .space: Color(hex: 0xE2E7FF)
+        }
+    }
+
+    /// There is deliberately NO tertiary level. Any hex passing 4.5:1 on the
+    /// ground sits within a hair of this one, so a third level would fake a
+    /// distinction that cannot legibly exist. Hierarchy below secondary is
+    /// carried by the caption size instead.
+    var textSecondary: Color {
+        switch id {
+        case .current: Brand.textSecondary
+        case .windows95: Color.black.opacity(0.6)
+        case .space: Color(hex: 0x9FA8CE)
+        }
+    }
+
+    // MARK: - State tints
+
+    var hoverFill: Color {
+        switch id {
+        case .current: Brand.textPrimary.opacity(Brand.hoverOpacity)
+        case .windows95: accent.opacity(0.12)
+        case .space: accent.opacity(0.15)
+        }
+    }
+
+    var pressedFill: Color {
+        switch id {
+        case .current: Brand.textPrimary.opacity(Brand.pressedOpacity)
+        case .windows95: accent.opacity(0.20)
+        case .space: accent.opacity(0.25)
+        }
+    }
+
+    var accentHover: Color {
+        switch id {
+        case .current: Brand.accentHover
+        case .windows95, .space: accent
+        }
+    }
+
+    var accentPressed: Color {
+        switch id {
+        case .current: Brand.accentPressed
+        case .windows95, .space: accent
+        }
+    }
+
+    // MARK: - Status
+
+    var statusReady: Color {
+        switch id {
+        case .current: Brand.statusReady
+        case .windows95: Color(hex: 0x008000)
+        case .space: Color(hex: 0x63E6A8)
+        }
+    }
+
+    var statusBusy: Color {
+        switch id {
+        case .current: Brand.statusBusy
+        case .windows95: Color(hex: 0x808000)
+        case .space: Color(hex: 0xFFC85E)
+        }
+    }
+
+    var statusLive: Color {
+        switch id {
+        case .current: Brand.statusLive
+        case .windows95: Color(hex: 0xC00000)
+        case .space: Color(hex: 0xFF7A66)
+        }
+    }
+
+    // MARK: - Recording overlay
+
+    var overlayFill: Color {
+        switch id {
+        case .current: Brand.surfaceDark.opacity(0.96)
+        case .windows95: Color(red: 0.78, green: 0.78, blue: 0.72).opacity(0.96)
+        case .space: Color(red: 0.02, green: 0.03, blue: 0.12).opacity(0.92)
+        }
+    }
+
+    var overlayText: Color {
+        switch id {
+        case .current: Brand.textOnDark
+        case .windows95: .black
+        case .space: .white
+        }
+    }
+
+    var overlaySecondaryText: Color {
+        switch id {
+        case .current: Brand.secondaryOnDark
+        case .windows95: Color.black.opacity(0.6)
+        case .space: Color(hex: 0x9FA8CE)
+        }
+    }
+
+    /// The canon offers a mint edge at 45% or an off-white edge at 30% "where
+    /// the mint would read as an accent". On a status pill a mint ring would
+    /// read as a permanent green status while the dot is trying to say red,
+    /// which is exactly that escape clause, so the brand takes the off-white.
+    var overlayEdge: Color {
+        switch id {
+        case .current: Brand.textOnDark.opacity(0.30)
+        case .windows95, .space: accent.opacity(0.7)
+        }
+    }
+
+    var overlayStatusReady: Color {
+        switch id {
+        case .current: Brand.statusReadyOnDark
+        case .windows95, .space: statusReady
+        }
+    }
+
+    var overlayStatusBusy: Color {
+        switch id {
+        case .current: Brand.statusBusyOnDark
+        case .windows95, .space: statusBusy
+        }
+    }
+
+    var overlayStatusLive: Color {
+        switch id {
+        case .current: Brand.statusLiveOnDark
+        case .windows95, .space: statusLive
         }
     }
 
@@ -104,10 +298,7 @@ struct AppTheme {
         switch id {
         case .current:
             LinearGradient(
-                colors: [
-                    Color(nsColor: NSColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1)),
-                    Color(nsColor: NSColor(red: 0.12, green: 0.09, blue: 0.06, alpha: 1))
-                ],
+                colors: [Brand.surfaceDark, Color(hex: 0x1C2822)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -128,6 +319,82 @@ struct AppTheme {
 
     var usesDarkText: Bool {
         id == .windows95
+    }
+
+    /// The window's own appearance, so system chrome (traffic lights, native
+    /// controls, the focus ring) matches the skin rather than fighting it.
+    ///
+    /// The brand is forced light because its ground is warm paper and a system
+    /// semantic colour resolving to its dark value would put a dark region back
+    /// into the one surface this design exists to remove. Space is a dark skin
+    /// and must not be forced light.
+    var windowAppearance: NSAppearance.Name {
+        switch id {
+        case .current, .windows95: .aqua
+        case .space: .darkAqua
+        }
+    }
+}
+
+// MARK: - Reaching the theme from anywhere
+
+/// The theme travels down the view tree in the environment.
+///
+/// Before this existed, a view could only be themed if it happened to declare
+/// its own `@AppStorage(AppTheme.storageKey)`, so the ones that did not reached
+/// for raw macOS semantic colours instead. That is why the window had a
+/// different look in every section. One injection at each window root now
+/// reaches every descendant, and switching skins still re-renders, because the
+/// root's `@AppStorage` drives the environment value.
+private struct AppThemeEnvironmentKey: EnvironmentKey {
+    /// Reads the stored skin rather than hardcoding the brand. A view that
+    /// misses an injection should still show the skin Andrew picked; baking
+    /// `.current` in here meant Windows 95 rendered half pine.
+    static var defaultValue: AppTheme {
+        AppTheme.resolve(UserDefaults.standard.string(forKey: AppTheme.storageKey) ?? AppThemeID.current.rawValue)
+    }
+}
+
+extension EnvironmentValues {
+    var appTheme: AppTheme {
+        get { self[AppThemeEnvironmentKey.self] }
+        set { self[AppThemeEnvironmentKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// The whole brand surface in one modifier: the theme itself, the pine tint
+    /// that native controls pick up, and the primary foreground colour.
+    ///
+    /// **Never apply this inside the body of the view that also reads
+    /// `@Environment(\.appTheme)`.** SwiftUI resolves a view's own environment
+    /// from its ANCESTORS, so a modifier applied within its own body reaches
+    /// its children and not itself. That was the first version of this and it
+    /// left the root view of the main window reading the default while all its
+    /// children read the injected value. Verified with a rendered probe, not
+    /// from memory. Wrap at the hosting root with `AFFlowThemedRoot` instead.
+    func afFlowTheme(_ theme: AppTheme) -> some View {
+        environment(\.appTheme, theme)
+            .tint(theme.accent)
+            .foregroundStyle(theme.textPrimary)
+    }
+}
+
+/// Wraps a window's root view so the theme is a genuine ANCESTOR of it.
+///
+/// This is the only correct place to inject: it holds the `@AppStorage`, so
+/// switching skin re-renders everything below, and because the injection sits
+/// above the root view rather than inside it, the root view sees it too.
+struct AFFlowThemedRoot<Content: View>: View {
+    @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppThemeID.current.rawValue
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content.afFlowTheme(AppTheme.resolve(selectedThemeID))
     }
 }
 
