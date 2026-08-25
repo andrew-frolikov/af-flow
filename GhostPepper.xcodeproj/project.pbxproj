@@ -17,6 +17,7 @@
 		00B000000000000000000002 /* WikiKindStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000002 /* WikiKindStore.swift */; };
 		00B000000000000000000003 /* QMDService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000003 /* QMDService.swift */; };
 		00B000000000000000000099 /* HomeWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000099 /* HomeWindow.swift */; };
+		00B000000000000000009A /* HeroFog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000009A /* HeroFog.swift */; };
 		C1B0000000000000000003 /* BrandFonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A0000000000000000003 /* BrandFonts.swift */; };
 		00B000000000000000000101 /* RecordingStartBlockedReasonTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000101 /* RecordingStartBlockedReasonTests.swift */; };
 		00B000000000000000000102 /* LanguageChoiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000102 /* LanguageChoiceTests.swift */; };
@@ -180,6 +181,8 @@
 		BF329CF451CC34A3B74348CC /* HotkeyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF88392E6B9F0168E43B8C51 /* HotkeyMonitor.swift */; };
 		BF5FCF390A41E50CEF527720 /* ghost-pepper-character.png in Resources */ = {isa = PBXBuildFile; fileRef = 19DE683197A1CFDF171F2F38 /* ghost-pepper-character.png */; };
 		C1B0000000000000000002 /* Inter-variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C1A0000000000000000002 /* Inter-variable.ttf */; };
+		C1B0000000000000000011 /* hero-poster-graded.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C1A0000000000000000011 /* hero-poster-graded.jpg */; };
+		C1B0000000000000000010 /* hero-fog-960-graded.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = C1A0000000000000000010 /* hero-fog-960-graded.mp4 */; };
 		C1B0000000000000000001 /* Fraunces-opsz9-wght500.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C1A0000000000000000001 /* Fraunces-opsz9-wght500.ttf */; };
 		C18E7F36CC6523A86671707D /* PromptEditorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B43697CC08695B8E8F8AD01 /* PromptEditorWindow.swift */; };
 		C1949C00F2F721B802EC237E /* PepperChatWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB753C40197FA7255E1DEA29 /* PepperChatWindow.swift */; };
@@ -278,6 +281,7 @@
 		00A000000000000000000002 /* WikiKindStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStore.swift; sourceTree = "<group>"; };
 		00A000000000000000000003 /* QMDService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QMDService.swift; sourceTree = "<group>"; };
 		00A000000000000000000099 /* HomeWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeWindow.swift; sourceTree = "<group>"; };
+		00A000000000000000009A /* HeroFog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroFog.swift; sourceTree = "<group>"; };
 		C1A0000000000000000003 /* BrandFonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandFonts.swift; sourceTree = "<group>"; };
 		00A000000000000000000101 /* RecordingStartBlockedReasonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStartBlockedReasonTests.swift; sourceTree = "<group>"; };
 		00A000000000000000000102 /* LanguageChoiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageChoiceTests.swift; sourceTree = "<group>"; };
@@ -307,6 +311,8 @@
 		17F70F511A956DAB5778D430 /* WindowCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowCaptureService.swift; sourceTree = "<group>"; };
 		19DE683197A1CFDF171F2F38 /* ghost-pepper-character.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "ghost-pepper-character.png"; sourceTree = "<group>"; };
 		C1A0000000000000000002 /* Inter-variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-variable.ttf"; sourceTree = "<group>"; };
+		C1A0000000000000000011 /* hero-poster-graded.jpg */ = {isa = PBXFileReference; lastKnownFileType = file; path = "hero-poster-graded.jpg"; sourceTree = "<group>"; };
+		C1A0000000000000000010 /* hero-fog-960-graded.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = "hero-fog-960-graded.mp4"; sourceTree = "<group>"; };
 		C1A0000000000000000001 /* Fraunces-opsz9-wght500.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Fraunces-opsz9-wght500.ttf"; sourceTree = "<group>"; };
 		1AC12AC919C182CDEF77DB11 /* CommandKSearchSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandKSearchSheet.swift; sourceTree = "<group>"; };
 		1AFEA05207B7965A3D44D000 /* MeetingQAAgentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingQAAgentTests.swift; sourceTree = "<group>"; };
@@ -707,6 +713,8 @@
 			children = (
 				19DE683197A1CFDF171F2F38 /* ghost-pepper-character.png */,
 				C1A0000000000000000002 /* Inter-variable.ttf */,
+				C1A0000000000000000011 /* hero-poster-graded.jpg */,
+				C1A0000000000000000010 /* hero-fog-960-graded.mp4 */,
 				C1A0000000000000000001 /* Fraunces-opsz9-wght500.ttf */,
 				2AF744C59EEAE51FC81BE6D6 /* sprite_frame_0.png */,
 				79231C6829FD88741536FF4A /* sprite_frame_0@2x.png */,
@@ -761,6 +769,7 @@
 				95281DF90A125CA223FCEE7A /* ContextBubbleView.swift */,
 				2715D9117D8664700616D95A /* DebugLogWindow.swift */,
 				00A000000000000000000099 /* HomeWindow.swift */,
+				00A000000000000000009A /* HeroFog.swift */,
 				C1A0000000000000000003 /* BrandFonts.swift */,
 				864660499212282B8ADC1AA7 /* HighlightedTextView.swift */,
 				2F22B92A6ECEE8A19C9A5095 /* IndexEntryView.swift */,
@@ -1131,6 +1140,8 @@
 				9BE17BC60B1F9CFD3747A844 /* Assets.xcassets in Resources */,
 				BF5FCF390A41E50CEF527720 /* ghost-pepper-character.png in Resources */,
 				C1B0000000000000000002 /* Inter-variable.ttf in Resources */,
+				C1B0000000000000000011 /* hero-poster-graded.jpg in Resources */,
+				C1B0000000000000000010 /* hero-fog-960-graded.mp4 in Resources */,
 				C1B0000000000000000001 /* Fraunces-opsz9-wght500.ttf in Resources */,
 				0A1823314AE4FF4E17DCF627 /* sprite_frame_0.png in Resources */,
 				527B55EBCA9ACB4EC0FBC618 /* sprite_frame_0@2x.png in Resources */,
@@ -1227,6 +1238,7 @@
 				3DD297DFB3E56835BBD705EF /* MeetingTranscriptWindow.swift in Sources */,
 				47212FA484A38B3ABB2D679A /* MeetingWindowHeuristics.swift in Sources */,
 				00B000000000000000000099 /* HomeWindow.swift in Sources */,
+				00B000000000000000009A /* HeroFog.swift in Sources */,
 				C1B0000000000000000003 /* BrandFonts.swift in Sources */,
 				5589DDF10DE9446993C99B6B /* MenuBarView.swift in Sources */,
 				9A7637F5576B21D74F14149D /* ModelInventory.swift in Sources */,

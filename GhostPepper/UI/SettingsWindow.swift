@@ -378,7 +378,38 @@ struct SettingsView: View {
         .brandMotion(value: isSelected)
     }
 
+    /// The fog plays only while the window is REALLY visible. `orderOut` does
+    /// not unmount SwiftUI, so `onDisappear` cannot be the signal; this mirrors
+    /// what the debug log's raw-text claim already learned the hard way.
+    @State private var isWindowVisible = true
+
+    /// Home is the only section that wears the hero.
+    private var showsHero: Bool { selectedSection == .home }
+
     var body: some View {
+        heroShell
+    }
+
+    /// The window is ONE continuous image when Home is selected: the fog runs
+    /// edge to edge behind the sidebar as well as the pane, and the sidebar is
+    /// a veil over the same picture rather than a different surface.
+    ///
+    /// **This is Andrew's own idea and it is what removes the vertical seam.**
+    /// He rejected bounding the hero inside a paper pane; extending the one
+    /// image through the whole window achieves the same thing while keeping the
+    /// full-bleed hero he chose.
+    @ViewBuilder
+    private var heroShell: some View {
+        ZStack {
+            if showsHero {
+                HeroFog(isVisible: isWindowVisible)
+                    .ignoresSafeArea()
+            }
+            shellContent
+        }
+    }
+
+    private var shellContent: some View {
         HSplitView {
             VStack(alignment: .leading, spacing: 0) {
                 // The brand lockup, exactly as the website header carries it,
@@ -408,7 +439,9 @@ struct SettingsView: View {
 
                 Text("AF Flow v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
                     .font(theme.captionFont)
-                    .foregroundStyle(theme.textSecondary)
+                    // Ink, not muted, because the veil under it is only 0.86:
+                    // muted measures 3.50:1 there and fails, ink gives 10.74:1.
+                    .foregroundStyle(showsHero && theme.id == .current ? theme.textPrimary : theme.textSecondary)
                     .padding(.leading, 16)
                     .padding(.bottom, 16)
             }
@@ -416,9 +449,20 @@ struct SettingsView: View {
             // the detail pane takes the rest. min == max is what stops
             // HSplitView offering a drag handle.
             .frame(minWidth: 232, idealWidth: 232, maxWidth: 232, maxHeight: .infinity, alignment: .topLeading)
-            // No fill. The sidebar is not a differently coloured region; it is
-            // the same sheet, distinguished by layout and one hairline.
-            .background(theme.windowBackground)
+            // No fill of its own. On every section but Home the sidebar is
+            // the same paper sheet as the pane. On Home it becomes a VEIL over
+            // the shared image at a flat 0.86, which is the density Andrew
+            // chose after seeing 0.92, 0.86 and a graded version.
+            //
+            // Measured at 0.86 over the darkest fog, the worst case for dark
+            // text: row labels 10.74:1, row icons 3.50:1 which clears the 3:1
+            // non-text minimum, and the fog's visible swing is 32 of 255 so it
+            // genuinely reads. The version line had to leave `textSecondary`,
+            // which measures 3.50:1 here and fails.
+            .background(
+                theme.windowBackground
+                    .opacity(showsHero && theme.id == .current ? HeroSurface.sidebarVeilAlpha : 1)
+            )
             .overlay(alignment: .trailing) {
                 Rectangle()
                     .fill(theme.separator)
@@ -443,7 +487,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .background(theme.windowBackground)
+            .background(showsHero ? Color.clear : theme.windowBackground)
         }
         // The theme is injected ABOVE this view by AFFlowThemedRoot at the
         // hosting root, not here. A modifier applied inside a view's own body
@@ -461,6 +505,7 @@ struct SettingsView: View {
         // leave the debug log streaming after he closed or minimised the window.
         .onReceive(NotificationCenter.default.publisher(for: .afFlowWindowVisibilityChanged)) { note in
             let isWindowVisible = (note.object as? Bool) ?? true
+            self.isWindowVisible = isWindowVisible
             setDebugLogStreaming(isWindowVisible && selectedSection == .debugLog)
 
             // The permission poll is a 2-second timer and the same `orderOut`

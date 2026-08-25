@@ -389,6 +389,91 @@ final class BrandPaletteTests: XCTestCase {
         XCTAssertEqual(got.2, want.2, accuracy: 1.0 / 255.0, "accent blue")
     }
 
+    // MARK: - 4. The Home hero, per docs/design/af-flow-home-hero.md
+
+    /// **The soft plate is the contrast guarantee, so it is pinned as one.**
+    ///
+    /// The bound is the interesting part: compositing is monotone per channel,
+    /// so ink at 0.84 over ANY sRGB video pixel is darker than ink at 0.84 over
+    /// pure white. Measuring the white case therefore measures the worst case
+    /// on every frame of any SDR encode, present or future, which a per-frame
+    /// sample can never do.
+    func testTheSoftPlateGuaranteesItsFloorOnEveryPossibleFrame() {
+        let white = (1.0, 1.0, 1.0)
+        let floor = over(components(Brand.textPrimary), white, HeroSurface.plateAlpha)
+
+        XCTAssertEqual(hex(floor), 0x3C4441, "the plate floor moved off #3C4441")
+
+        // The design document computes these in continuous float and reports
+        // 8.92, 5.56, 7.18, 3.78 and 4.77. These are the same pairs QUANTISED
+        // to 8 bits, which is the pixel that actually reaches the screen and
+        // what a screenshot sampler reads back. The difference is in the third
+        // decimal and never changes a verdict; the quantised figure is the one
+        // the built app can be measured against.
+        let pairs: [(String, Color, Double, Double)] = [
+            ("paper on the plate", Brand.textOnDark, 4.5, 8.891),
+            ("dark-muted on the plate", Brand.secondaryOnDark, 4.5, 5.542),
+            ("mist on the plate", Brand.mist, 4.5, 7.159),
+            ("clay dot on the plate", Brand.statusLiveOnDark, 3.0, 3.766),
+            ("ochre dot on the plate", Brand.statusBusyOnDark, 3.0, 4.751)
+        ]
+        for (name, colour, minimum, expected) in pairs {
+            let measured = contrast(components(colour), floor)
+            XCTAssertGreaterThanOrEqual(measured, minimum, "\(name) measures \(measured), below \(minimum)")
+            XCTAssertEqual(measured, expected, accuracy: 0.01, "\(name) drifted from the specified \(expected)")
+        }
+    }
+
+    /// Clay is BANNED as body text on the fog, and this keeps the ban's reason
+    /// alive. If it ever passes, the paper-plus-dot error treatment in
+    /// `AFFlowHomeView` can be revisited deliberately rather than by accident.
+    func testClayStillFailsAsBodyTextOnThePlateSoTheErrorRuleKeepsItsReason() {
+        let floor = over(components(Brand.textPrimary), (1.0, 1.0, 1.0), HeroSurface.plateAlpha)
+        XCTAssertLessThan(contrast(components(Brand.statusLiveOnDark), floor), 4.5,
+                          "clay now passes as body text; the error treatment can change")
+    }
+
+    /// The footer sits on a flat band, not a gradient, so its contrast cannot
+    /// depend on what the fog is doing.
+    func testTheFooterBandCarriesTheFooter() {
+        let band = over(components(Brand.textPrimary), (1.0, 1.0, 1.0), HeroSurface.footerBandAlpha)
+        XCTAssertEqual(hex(band), 0x333B38, "the footer band moved off #333B38")
+        // Quantised, as above; the document's float figures are 6.39, 10.25, 8.25.
+        XCTAssertEqual(contrast(components(Brand.secondaryOnDark), band), 6.368, accuracy: 0.01, "eyebrows")
+        XCTAssertEqual(contrast(components(Brand.textOnDark), band), 10.217, accuracy: 0.01, "values")
+        XCTAssertEqual(contrast(components(Brand.mist), band), 8.227, accuracy: 0.01, "privacy value")
+    }
+
+    /// **The sidebar veil, at the density Andrew chose.**
+    ///
+    /// The worst case for dark text is the DARKEST fog under the veil, so the
+    /// veil is composited over black. At his chosen 0.86 the row labels clear
+    /// comfortably and the icons clear the non-text minimum, but MUTED TEXT
+    /// FAILS at 3.50:1, which is exactly why the version line was moved to ink.
+    /// The failing assertion below is deliberate: it keeps that move's reason.
+    func testTheSidebarVeilKeepsItsRowsReadableAndExplainsTheVersionLine() {
+        let black = (0.0, 0.0, 0.0)
+        let surface = over(components(Brand.ground), black, HeroSurface.sidebarVeilAlpha)
+
+        XCTAssertEqual(contrast(components(Brand.textPrimary), surface), 10.74, accuracy: 0.01,
+                       "row labels and the version line, in ink")
+        let muted = contrast(components(Brand.textSecondary), surface)
+        XCTAssertGreaterThanOrEqual(muted, 3.0, "row icons must still clear the non-text minimum")
+        XCTAssertLessThan(muted, 4.5,
+                          "muted now passes on the veil, so the version line need not be ink any more")
+    }
+
+    /// The two shipped hero assets must actually be in the bundle. The fog is
+    /// ambience and Home survives without it, so a miss would be silent.
+    func testTheHeroAssetsAreInTheBundle() {
+        XCTAssertNotNil(HeroFogAsset.videoURL, "the graded fog clip is not in the bundle")
+        XCTAssertNotNil(HeroFogAsset.poster, "the graded poster is not in the bundle")
+    }
+
+    private func hex(_ c: (Double, Double, Double)) -> UInt32 {
+        (UInt32((c.0 * 255).rounded()) << 16) | (UInt32((c.1 * 255).rounded()) << 8) | UInt32((c.2 * 255).rounded())
+    }
+
     /// The arithmetic itself is checked against two ratios the canon publishes
     /// independently, so a bug in the formula cannot silently pass everything.
     /// These two ARE literals on purpose: they are the calibration.

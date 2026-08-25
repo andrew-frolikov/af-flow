@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "af-flow-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8731", "--directory", "/private/tmp/claude-501/-Users-andriifrolikov-Claude/5f087d32-c923-4d95-9331-c283938f0172/scratchpad/preview"],
+      "port": 8731
+    }
+  ]
+}

@@ -35,6 +35,10 @@ struct AFFlowHomeView: View {
     /// option." His stored binding is Right Command plus Right Option, and the
     /// screen has to say what is actually bound, or the first thing the app
     /// tells him is a lie. Reading the chord means it can never drift again.
+    /// The hero is the brand skin's treatment. Windows 95 and Space keep their
+    /// own grounds: a fog clip under a novelty skin would be neither.
+    private var wearsHero: Bool { theme.id == .current }
+
     private var pushToTalk: String { appState.pushToTalkChord.displayString }
     private var toggleToTalk: String { appState.toggleToTalkChord.displayString }
 
@@ -42,7 +46,7 @@ struct AFFlowHomeView: View {
         VStack(spacing: 0) {
             Spacer(minLength: 28)
 
-            StatusPill(status: appState.status)
+            StatusPill(status: appState.status, onHero: wearsHero)
                 .padding(.bottom, appState.permissionWarning == nil ? 26 : 10)
 
             // Ledger item 23: a missing grant used to produce a log line and
@@ -52,7 +56,7 @@ struct AFFlowHomeView: View {
             if let permissionWarning = appState.permissionWarning {
                 Text(permissionWarning)
                     .font(theme.textFont(size: 12))
-                    .foregroundStyle(theme.textSecondary)
+                    .foregroundStyle(wearsHero ? Brand.secondaryOnDark : theme.textSecondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 28)
@@ -63,34 +67,65 @@ struct AFFlowHomeView: View {
 
             Text("Release, and your words land where the cursor is")
                 .font(theme.textFont(size: 13.5))
-                .foregroundColor(theme.textPrimary)
+                .foregroundColor(wearsHero ? Brand.textOnDark : theme.textPrimary)
                 .padding(.top, 14)
 
             if !toggleToTalk.isEmpty {
                 Text("\(toggleToTalk) keeps it running hands-free")
                     .font(theme.textFont(size: 12))
-                    .foregroundColor(theme.textSecondary)
+                    .foregroundColor(wearsHero ? Brand.secondaryOnDark : theme.textSecondary)
                     .padding(.top, 18)
             }
 
             if let error = appState.errorMessage, !error.isEmpty {
-                Text(error)
-                    .font(theme.textFont(size: 12))
-                    .foregroundColor(theme.statusLive)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
-                    .padding(.top, 16)
+                // **Clay is banned as body text on the fog.** `#E8836B`
+                // measures 3.78:1 on the plate floor, below the 4.5 minimum, so
+                // the message is set in paper and a clay dot carries the alarm
+                // at the 3:1 non-text minimum. The pill above has already gone
+                // red; the dot ties the two together. On paper the ordinary
+                // rule (error text in statusLive) is unchanged.
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    if wearsHero {
+                        Circle()
+                            .fill(Brand.statusLiveOnDark)
+                            .frame(width: 7, height: 7)
+                    }
+                    Text(error)
+                        .font(theme.textFont(size: 12))
+                        .foregroundColor(wearsHero ? Brand.textOnDark : theme.statusLive)
+                        .multilineTextAlignment(wearsHero ? .leading : .center)
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 16)
             }
 
             Spacer(minLength: 28)
             footer
         }
-        // `maxWidth`/`maxHeight` as well as the minimums, and the background
-        // comes AFTER: as a section this has to fill the detail pane, and a view
-        // whose background was sized to its content leaves the rest of the pane
-        // in the shell's colour.
+        // `maxWidth`/`maxHeight` as well as the minimums: as a section this
+        // has to fill the detail pane. On the brand skin it paints NO ground of
+        // its own, because the fog runs edge to edge behind the whole window.
         .frame(minWidth: 460, maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
-        .background(theme.windowBackground)
+        .background {
+            if wearsHero {
+                ZStack {
+                    // The website's own two scrims, carried over verbatim.
+                    // MOOD, not guarantee: measured over real frames this alone
+                    // falls to 1.76:1 for paper text at its weak end.
+                    HeroSurface.diagonalScrim
+                    HeroSurface.groundingScrim
+                    // The guarantee. Ink at an effective 0.84 under the text,
+                    // feathered out. Because compositing is monotone per
+                    // channel, 0.84 over any SDR pixel is darker than 0.84 over
+                    // pure white, which is `#3C4441`: paper 8.92:1, muted
+                    // 5.56:1, mist 7.18:1, on EVERY frame rather than on one.
+                    HeroSurface.softPlate
+                }
+                .ignoresSafeArea()
+            } else {
+                theme.windowBackground
+            }
+        }
     }
 
     /// **The three-word menu that used to sit here is gone, 2026-08-24.**
@@ -113,13 +148,13 @@ struct AFFlowHomeView: View {
                 Text("Hold")
                     .font(theme.displayFont)
                     .tracking(-0.48)
-                    .foregroundColor(theme.textPrimary)
-                Keycap(text: pushToTalk)
+                    .foregroundColor(wearsHero ? Brand.textOnDark : theme.textPrimary)
+                Keycap(text: pushToTalk, onHero: wearsHero)
             }
             Text("and speak")
                 .font(theme.displayFont)
                 .tracking(-0.48)
-                .foregroundColor(theme.textPrimary)
+                .foregroundColor(wearsHero ? Brand.textOnDark : theme.textPrimary)
         }
     }
 
@@ -146,15 +181,23 @@ struct AFFlowHomeView: View {
 
     private var footer: some View {
         HStack(spacing: 0) {
-            FooterCell(label: "Language", value: Self.languageSummary)
-            Divider().overlay(theme.separator)
-            FooterCell(label: "Model", value: SpeechModelCatalog.currentDisplayName)
-            Divider().overlay(theme.separator)
-            FooterCell(label: "Privacy", value: "Never leaves this Mac", tint: theme.accent)
+            FooterCell(label: "Language", value: Self.languageSummary, onHero: wearsHero)
+            Divider().overlay(wearsHero ? Brand.textOnDark.opacity(0.30) : theme.separator)
+            FooterCell(label: "Model", value: SpeechModelCatalog.currentDisplayName, onHero: wearsHero)
+            Divider().overlay(wearsHero ? Brand.textOnDark.opacity(0.30) : theme.separator)
+            FooterCell(label: "Privacy", value: "Never leaves this Mac",
+                       tint: wearsHero ? Brand.mist : theme.accent, onHero: wearsHero)
         }
         .frame(height: 52)
-        .background(theme.windowBackground)
-        .overlay(theme.separator.frame(height: 1), alignment: .top)
+        // On the hero the footer sits on a flat ink band at 0.88, which
+        // composites to `#333B38` over pure white: eyebrows 6.39:1, values
+        // 10.25:1, the privacy value in mist 8.25:1. A gradient here would make
+        // the footer's contrast depend on what the fog is doing.
+        .background(wearsHero ? Color(hex: 0x17201D).opacity(HeroSurface.footerBandAlpha) : theme.windowBackground)
+        .overlay(
+            (wearsHero ? Brand.textOnDark.opacity(0.30) : theme.separator).frame(height: 1),
+            alignment: .top
+        )
     }
 
     // MARK: - Pieces
@@ -162,16 +205,27 @@ struct AFFlowHomeView: View {
     private struct Keycap: View {
         @Environment(\.appTheme) private var theme
         let text: String
+        var onHero: Bool = false
         var body: some View {
+            // **The single lightest object on the plate, deliberately.** The
+            // chord is what the eye has to find first, and a solid `well` fill
+            // gives it 16.37:1 regardless of what the fog is doing underneath.
+            // It is one of only two paper-side fills allowed on the fog; a
+            // translucent one would let contrast drift with the video.
+            // On the hero it drops its border: on ink the edge articulates
+            // itself, and the light-surface keycap keeps its hairline.
             Text(text.isEmpty ? "no shortcut set" : text)
                 .font(theme.textFont(size: 15, weight: 500))
-                .foregroundColor(theme.textPrimary)
+                .foregroundColor(Brand.textPrimary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(theme.textBackground)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.separator, lineWidth: 1))
+                        .fill(Brand.well)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(onHero ? Color.clear : theme.separator, lineWidth: 1)
+                        )
                 )
         }
     }
@@ -182,7 +236,24 @@ struct AFFlowHomeView: View {
 
         /// One tint per state, so the pill is readable at a glance from across
         /// a screen-share rather than needing the label read.
+        var onHero: Bool = false
+
+        /// One tint per state, so the pill is readable at a glance from across
+        /// a screen-share rather than needing the label read.
         private var tint: (dot: Color, text: Color, background: Color) {
+            if onHero {
+                // **The recording overlay's vocabulary, which already solved
+                // status on ink**: a SOLID capsule, so the two-second glance
+                // ("is it ready") never depends on the frame underneath.
+                // Label 14.78:1; dots 11.90, 7.90 and 6.26 against 3:1.
+                let dot: Color
+                switch status {
+                case .ready: dot = Brand.statusReadyOnDark
+                case .recording, .error: dot = Brand.statusLiveOnDark
+                default: dot = Brand.statusBusyOnDark
+                }
+                return (dot, Brand.textOnDark, Brand.surfaceDark)
+            }
             switch status {
             case .ready: return (theme.statusReady, theme.statusReady, theme.statusReady.opacity(Brand.selectedOpacity))
             case .recording: return (theme.statusLive, theme.statusLive, theme.statusLive.opacity(Brand.selectedOpacity))
@@ -200,7 +271,13 @@ struct AFFlowHomeView: View {
             .foregroundColor(tint.text)
             .padding(.horizontal, 15)
             .padding(.vertical, 7)
-            .background(Capsule().fill(tint.background))
+            .background(
+                Capsule()
+                    .fill(tint.background)
+                    .overlay(
+                        Capsule().stroke(onHero ? Brand.textOnDark.opacity(0.30) : Color.clear, lineWidth: 1)
+                    )
+            )
         }
     }
 
@@ -209,6 +286,7 @@ struct AFFlowHomeView: View {
         let label: String
         let value: String
         var tint: Color?
+        var onHero: Bool = false
 
         var body: some View {
             VStack(spacing: 3) {
@@ -218,10 +296,10 @@ struct AFFlowHomeView: View {
                 Text(label.uppercased())
                     .font(theme.eyebrowFont)
                     .tracking(0.9)
-                    .foregroundColor(theme.textSecondary)
+                    .foregroundColor(onHero ? Brand.secondaryOnDark : theme.textSecondary)
                 Text(value)
                     .font(theme.textFont(size: 12, weight: 500))
-                    .foregroundColor(tint ?? theme.textPrimary)
+                    .foregroundColor(tint ?? (onHero ? Brand.textOnDark : theme.textPrimary))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
