@@ -380,6 +380,24 @@ extension View {
     }
 }
 
+extension NSWindow {
+    /// Put the window's own chrome on the current skin.
+    ///
+    /// **Every window that paints brand tokens must call this.** The brand's
+    /// tokens are fixed light values, so a window left following the SYSTEM
+    /// appearance paints paper fills while macOS hands it dark system colours
+    /// for anything not yet converted: Andrew runs macOS in dark mode, and
+    /// onboarding rendered white system label text on a paper fill. Forcing the
+    /// skin's own appearance is what makes the fixed tokens safe.
+    func applyAFFlowSkin() {
+        let skin = AppTheme.resolve(
+            UserDefaults.standard.string(forKey: AppTheme.storageKey) ?? AppThemeID.current.rawValue
+        )
+        appearance = NSAppearance(named: skin.windowAppearance)
+        backgroundColor = NSColor(skin.windowBackground)
+    }
+}
+
 /// Wraps a window's root view so the theme is a genuine ANCESTOR of it.
 ///
 /// This is the only correct place to inject: it holds the `@AppStorage`, so

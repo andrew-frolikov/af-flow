@@ -1218,6 +1218,7 @@ final class MeetingTranscriptWindowController: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 500, height: 400)
         window.contentViewController = NSHostingController(rootView: AFFlowThemedRoot { view })
+window.applyAFFlowSkin()
         // Deliberately NOT [.canJoinAllSpaces, .fullScreenAuxiliary]: those made
         // this window follow Andrew onto every Space, including over fullscreen
         // games, which he reported on 2026-07-21 as "on top of everything".

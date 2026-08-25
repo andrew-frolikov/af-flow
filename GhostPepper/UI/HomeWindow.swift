@@ -306,12 +306,8 @@ final class HomeWindowController: NSObject, NSWindowDelegate {
         // Read once at creation. The view tree below updates live on a skin
         // change through `AFFlowThemedRoot`; the window chrome follows on the
         // next launch, which is the same behaviour the chrome had before.
-        let skin = AppTheme.resolve(
-            UserDefaults.standard.string(forKey: AppTheme.storageKey) ?? AppThemeID.current.rawValue
-        )
-        created.appearance = NSAppearance(named: skin.windowAppearance)
+        created.applyAFFlowSkin()
         created.titlebarAppearsTransparent = true
-        created.backgroundColor = NSColor(skin.windowBackground)
         created.center()
         created.delegate = self
         // No `.canJoinAllSpaces`, no `.fullScreenAuxiliary`, and no

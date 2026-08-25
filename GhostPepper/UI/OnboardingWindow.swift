@@ -101,6 +101,7 @@ class OnboardingWindowController {
             )
             window.title = "AF Flow"
             window.contentView = NSHostingView(rootView: AFFlowThemedRoot { onboardingView })
+            window.applyAFFlowSkin()
             window.center()
             window.level = .normal
             window.isReleasedWhenClosed = false

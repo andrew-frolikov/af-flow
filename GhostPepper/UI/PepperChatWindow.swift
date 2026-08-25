@@ -45,6 +45,7 @@ final class PepperChatWindowController: NSObject, NSWindowDelegate {
         window.backgroundColor = .clear
         window.hasShadow = true
         window.contentViewController = NSHostingController(rootView: AFFlowThemedRoot { rootView })
+        window.applyAFFlowSkin()
 
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame

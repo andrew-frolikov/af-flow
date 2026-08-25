@@ -25,6 +25,7 @@ final class PromptEditorController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.contentViewController = NSHostingController(rootView: AFFlowThemedRoot { editor })
+        window.applyAFFlowSkin()
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -80,6 +81,7 @@ final class CleanupTranscriptWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.contentViewController = hostingController
+        window.applyAFFlowSkin()
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
