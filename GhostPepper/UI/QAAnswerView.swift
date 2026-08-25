@@ -26,28 +26,28 @@ struct QAAnswerView: View {
         switch block {
         case .heading(let level, let text):
             Text(inline(text))
-                .font(.system(size: headingSize(level), weight: .semibold))
+                .font(theme.textFont(size: headingSize(level), weight: 600))
                 .padding(.top, level == 1 ? 8 : 4)
                 .padding(.bottom, 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .bullet(let text):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("•")
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .foregroundStyle(theme.textSecondary)
                 Text(inline(text))
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.leading, 6)
         case .ordered(let number, let text):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(number).")
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .foregroundStyle(theme.textSecondary)
                     .frame(minWidth: 16, alignment: .trailing)
                 Text(inline(text))
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.leading, 6)
@@ -57,7 +57,7 @@ struct QAAnswerView: View {
                     .fill(theme.accent.opacity(0.6))
                     .frame(width: 3)
                 Text(inline(text))
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .italic()
                     .foregroundStyle(theme.textSecondary)
                     .padding(.leading, 8)
@@ -65,7 +65,7 @@ struct QAAnswerView: View {
             }
         case .codeBlock(let text):
             Text(text)
-                .font(.system(.caption, design: .monospaced))
+                .font(theme.monoFont())
                 .textSelection(.enabled)
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -73,7 +73,7 @@ struct QAAnswerView: View {
                 .cornerRadius(4)
         case .paragraph(let text):
             Text(inline(text))
-                .font(.system(size: 13))
+                .font(theme.textFont(size: 13))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

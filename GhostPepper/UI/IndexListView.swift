@@ -35,26 +35,26 @@ struct IndexListView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: kind.iconSystemName)
-                    .font(.system(size: 22))
+                    .font(theme.textFont(size: 22))
                 Text(kind.displayName)
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(theme.textFont(size: 22, weight: 600))
                 Text("(\(items.count))")
-                    .font(.system(size: 14))
+                    .font(theme.textFont(size: 14))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
 
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundStyle(theme.textSecondary)
                 TextField("Search \(kind.displayName.lowercased())", text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }) {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 11))
+                            .font(theme.textFont(size: 11))
                             .foregroundStyle(theme.textSecondary)
                     }
                     .buttonStyle(.borderless)
@@ -62,8 +62,11 @@ struct IndexListView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(theme.textBackground)
-            .cornerRadius(6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(theme.textBackground)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(theme.separator, lineWidth: 1))
+            )
         }
         .padding(.horizontal, 32)
         .padding(.top, 24)
@@ -74,12 +77,12 @@ struct IndexListView: View {
         VStack(spacing: 12) {
             Spacer()
             Image(systemName: kind.iconSystemName)
-                .font(.system(size: 36))
+                .font(theme.textFont(size: 36))
                 .foregroundStyle(theme.textSecondary)
             Text("No \(kind.displayName.lowercased()) yet")
-                .font(.system(size: 15, weight: .medium))
+                .font(theme.textFont(size: 15, weight: 500))
             Text("Build the index from your meeting archive to populate this list.")
-                .font(.system(size: 12))
+                .font(theme.textFont(size: 12))
                 .foregroundStyle(theme.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
@@ -98,7 +101,7 @@ struct IndexListView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if filtered.isEmpty {
                     Text("No matches for \"\(searchText)\"")
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .foregroundStyle(theme.textSecondary)
                         .padding(.horizontal, 32)
                         .padding(.vertical, 16)
@@ -116,14 +119,14 @@ struct IndexListView: View {
         Button(action: { onOpenEntry(item.kind, item.slug) }) {
             HStack(spacing: 10) {
                 Image(systemName: "person.crop.circle")
-                    .font(.system(size: 14))
+                    .font(theme.textFont(size: 14))
                     .foregroundStyle(theme.textSecondary)
                 Text(item.canonicalName)
-                    .font(.system(size: 14))
+                    .font(theme.textFont(size: 14))
                     .foregroundColor(.primary)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10))
+                    .font(theme.textFont(size: 10))
                     .foregroundStyle(theme.textSecondary)
             }
             .padding(.horizontal, 32)

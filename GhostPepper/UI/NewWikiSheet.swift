@@ -24,15 +24,15 @@ struct NewWikiSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 16))
+                    .font(theme.textFont(size: 16))
                     .foregroundStyle(theme.accent)
             Text("New 2nd Brain")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(theme.textFont(size: 16, weight: 600))
                 Spacer()
             }
 
             Text("2nd Brains are folders of dossiers built from your meetings by the local model, like the People index, for any category. Approve a suggestion or define your own.")
-                .font(.system(size: 12))
+                .font(theme.textFont(size: 12))
                 .foregroundStyle(theme.textSecondary)
 
             proposalsSection
@@ -58,7 +58,7 @@ struct NewWikiSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Suggestions")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(theme.textFont(size: 13, weight: 600))
                 Spacer()
                 Button {
                     generateProposals()
@@ -73,18 +73,18 @@ struct NewWikiSheet: View {
                     }
                 }
                 .disabled(isGenerating)
-                .font(.system(size: 12))
+                .font(theme.textFont(size: 12))
             }
 
             if let generateMessage {
                 Text(generateMessage)
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
             }
 
             if state.wikiProposals.isEmpty && !isGenerating {
                 Text("No pending suggestions. The local model proposes 2nd Brains once it has digested enough meetings, or ask it now.")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
             }
 
@@ -97,15 +97,15 @@ struct NewWikiSheet: View {
     private func proposalRow(_ proposal: WikiKindProposal) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: proposal.spec.iconSystemName)
-                .font(.system(size: 14))
+                .font(theme.textFont(size: 14))
                 .foregroundStyle(theme.accent)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(proposal.spec.displayName)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(theme.textFont(size: 13, weight: 500))
                 if !proposal.rationale.isEmpty {
                     Text(proposal.rationale)
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -113,18 +113,18 @@ struct NewWikiSheet: View {
             Spacer()
             if approvedSlugs.contains(proposal.spec.slug) {
                 Label("Building…", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.statusReady)
             } else {
                 Button("Dismiss") {
                     WikiKindStore.shared.removeProposal(slug: proposal.spec.slug)
                     state.loadIndexes()
                 }
-                .font(.system(size: 11))
+                .font(theme.textFont(size: 11))
                 Button("Approve") {
                     approve(proposal.spec)
                 }
-                .font(.system(size: 11))
+                .font(theme.textFont(size: 11))
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
             }
@@ -140,21 +140,21 @@ struct NewWikiSheet: View {
     private var customSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Define your own")
-                .font(.system(size: 13, weight: .semibold))
+                .font(theme.textFont(size: 13, weight: 600))
 
             HStack(spacing: 8) {
                 TextField("Name (e.g. Companies)", text: $customName)
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                 TextField("Singular (e.g. company)", text: $customNoun)
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .frame(width: 150)
             }
 
             TextField("What counts as one? (guides extraction)", text: $customHint)
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: 12))
+                .font(theme.textFont(size: 12))
 
             HStack(spacing: 8) {
                 Picker("Icon", selection: $customIcon) {

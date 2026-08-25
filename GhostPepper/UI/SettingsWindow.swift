@@ -329,58 +329,100 @@ struct SettingsView: View {
     }
 
 
+    @State private var hoveredSection: AFFlowSection?
+
+    /// One sidebar row.
+    ///
+    /// **The two-line subtitles are gone.** Seven rows do not need explanatory
+    /// subtitles, and removing them is what lets a row become a quiet capsule
+    /// instead of a card. The subtitle text survives as each section's first
+    /// caption line, where it still earns its place.
+    ///
+    /// The selected row is a full pine capsule rather than a tint: it is the
+    /// single strongest colour statement in the window and it always points at
+    /// where you are. A tinted row was tried in the design pass and rejected as
+    /// too weak to anchor the window.
+    @ViewBuilder
+    private func sidebarRow(_ section: AFFlowSection) -> some View {
+        let isSelected = selectedSection == section
+        let isHovered = hoveredSection == section
+        let squareCorners = appTheme.id == .windows95
+        Button {
+            selectedSection = section
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: section.systemImageName)
+                    .frame(width: 18)
+                    .foregroundStyle(isSelected ? appTheme.accentText : appTheme.textSecondary)
+                Text(section.title)
+                    .font(isSelected ? appTheme.emphasisFont : appTheme.bodyStrongFont)
+                    .foregroundStyle(isSelected ? appTheme.accentText : appTheme.textPrimary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Hit-test the whole row, not the opaque pixels of its label.
+            // Without this, clicks landed only on the text and icon. (Fixes #74.)
+            .contentShape(Capsule(style: .continuous))
+            .background(
+                Group {
+                    if squareCorners {
+                        Rectangle().fill(isSelected ? appTheme.accent : (isHovered ? appTheme.hoverFill : .clear))
+                    } else {
+                        Capsule(style: .continuous)
+                            .fill(isSelected ? appTheme.accent : (isHovered ? appTheme.hoverFill : .clear))
+                    }
+                }
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .onHover { hoveredSection = $0 ? section : (hoveredSection == section ? nil : hoveredSection) }
+        .animation(.easeOut(duration: 0.18), value: isSelected)
+    }
+
     var body: some View {
         HSplitView {
-            ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(AFFlowSection.visible) { section in
-                    Button {
-                        selectedSection = section
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: section.systemImageName)
-                                .frame(width: 18)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(section.title)
-                                    .font(.body.weight(.medium))
-                                Text(section.subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(theme.textSecondary)
-                                    .lineLimit(2)
-                            }
-                            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 0) {
+                // The brand lockup, exactly as the website header carries it,
+                // scaled down. The mark is a rendered asset rather than live
+                // text, per the canon's rule that the glyphs are outline paths.
+                HStack(spacing: 8) {
+                    Image("SidebarMark")
+                        .resizable()
+                        .frame(width: 28, height: 28)
+                    Text("AF Flow")
+                        .font(appTheme.brandNameFont)
+                        .foregroundStyle(appTheme.textPrimary)
+                }
+                .padding(.leading, 16)
+                .padding(.top, 20)
+                .padding(.bottom, 14)
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(AFFlowSection.visible) { section in
+                            sidebarRow(section)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        // Make the full row (icon + text + surrounding padding + trailing
-                        // whitespace) hit-testable. Without this, SwiftUI hit-tests a plain
-                        // Button against the opaque pixels of its label — so clicks landed only
-                        // on the visible text/icon, not the empty space in the row. (Fixes #74.)
-                        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .background(
-                            RoundedRectangle(cornerRadius: appTheme.id == .windows95 ? 0 : 12, style: .continuous)
-                                .fill(selectedSection == section ? appTheme.selectedFill : .clear)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: appTheme.id == .windows95 ? 0 : 12, style: .continuous)
-                                .stroke(
-                                    selectedSection == section
-                                        ? appTheme.separator
-                                        : Color.clear,
-                                    lineWidth: 1
-                                )
-                        )
                     }
-                    .buttonStyle(.plain)
                 }
 
                 Spacer(minLength: 0)
+
+                Text("AF Flow v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
+                    .font(appTheme.captionFont)
+                    .foregroundStyle(appTheme.textSecondary)
+                    .padding(.leading, 16)
+                    .padding(.bottom, 16)
             }
-            }
-            .frame(minWidth: 250, idealWidth: 270, maxWidth: 270, maxHeight: .infinity, alignment: .topLeading)
-            .padding(20)
-            .background(appTheme.controlBackground)
+            // Fixed, not draggable: the sidebar is a fixed narrow column and
+            // the detail pane takes the rest. min == max is what stops
+            // HSplitView offering a drag handle.
+            .frame(minWidth: 232, idealWidth: 232, maxWidth: 232, maxHeight: .infinity, alignment: .topLeading)
+            // No fill. The sidebar is not a differently coloured region; it is
+            // the same sheet, distinguished by layout and one hairline.
+            .background(appTheme.windowBackground)
             .overlay(alignment: .trailing) {
                 Rectangle()
                     .fill(appTheme.separator)
@@ -399,7 +441,7 @@ struct SettingsView: View {
                 } else {
                     ScrollView {
                         detailContent
-                            .padding(.horizontal, 40)
+                            .padding(.horizontal, 32)
                             .padding(.vertical, 32)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -952,11 +994,16 @@ struct SettingsView: View {
             if !selectedSection.drawsItsOwnHeader,
                !(selectedSection == .transcriptionLab && transcriptionLabController.selectedEntry != nil) {
                 VStack(alignment: .leading, spacing: 8) {
+                    // Section titles come from a fixed English enum, so they
+                    // are app-authored and safe for the display face. Nothing
+                    // a user typed or dictated may land here: Fraunces has no
+                    // Cyrillic.
                     Text(selectedSection.title)
-                        .font(.system(size: 28, weight: .semibold))
+                        .font(theme.sectionTitleFont)
+                        .tracking(-0.32)
                     if selectedSection != .transcriptionLab {
                         Text(selectedSection.subtitle)
-                            .font(.title3)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -1014,7 +1061,7 @@ struct SettingsView: View {
                         )
 
                         Text("Both permissions are required for hotkeys and pasting to work reliably. If AF Flow does not appear in a privacy list, click + and select it from Applications, then quit and reopen AF Flow.")
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
@@ -1040,12 +1087,12 @@ struct SettingsView: View {
 
                     if let shortcutErrorMessage = appState.shortcutErrorMessage {
                         Text(shortcutErrorMessage)
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.statusLive)
                     }
 
                     Text("Push to talk records while the hold chord stays down. Toggle recording starts and stops when you press the full toggle chord.")
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                 }
             }
@@ -1095,7 +1142,7 @@ struct SettingsView: View {
             SettingsCard("Test dictation") {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Record a short sample with your current microphone and speech model without leaving Settings.")
-                        .font(.callout)
+                        .font(theme.bodyFont)
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -1137,7 +1184,7 @@ struct SettingsView: View {
                             )
                     } else if let lastError = dictationTestController.lastError {
                         Text(lastError)
-                            .font(.callout)
+                            .font(theme.bodyFont)
                             .foregroundStyle(theme.statusLive)
                     }
                 }
@@ -1182,13 +1229,13 @@ struct SettingsView: View {
                     if appState.cleanupEnabled {
                         if appState.textCleanupManager.state == .error {
                             Text(appState.textCleanupManager.errorMessage ?? "Error loading model")
-                                .font(.caption)
+                                .font(theme.captionFont)
                                 .foregroundStyle(theme.statusLive)
                         }
                     }
 
                     Text("When enabled, AF Flow runs local cleanup with the selected cleanup model from the Models section.")
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                 }
             }
@@ -1196,7 +1243,7 @@ struct SettingsView: View {
             SettingsCard("Cleanup prompt") {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("AF Flow uses this prompt before adding OCR context and correction hints.")
-                        .font(.callout)
+                        .font(theme.bodyFont)
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -1241,7 +1288,7 @@ struct SettingsView: View {
                     )
 
                     Text("Correction hints are added to the cleanup prompt; they are not applied as regexes or deterministic substitutions. Preferred transcriptions are also forwarded into OCR custom words.")
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1266,7 +1313,7 @@ struct SettingsView: View {
                     )
 
                     Text("AF Flow uses high-quality OCR on the frontmost window and adds the result to the cleanup prompt. When learning is enabled, AF Flow does a high-quality OCR check about 15 seconds after paste and only keeps narrow, high-confidence corrections.")
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1293,7 +1340,7 @@ struct SettingsView: View {
                 }
 
                 Text("AF Flow uses this model for speech recognition everywhere in the app.")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
 
                 SettingsField("Language") {
@@ -1336,9 +1383,9 @@ struct SettingsView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(theme.statusBusy)
-                            .font(.caption)
+                            .font(theme.captionFont)
                         Text("You've selected a non-English language but are using an English-only model. Switch to **Multilingual** or **Parakeet v3** above for best results.")
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
@@ -1367,7 +1414,7 @@ struct SettingsView: View {
                 }
 
                 Text("Recommended cleanup models are marked Very fast, Fast, and Full.")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1383,7 +1430,7 @@ struct SettingsView: View {
 
                     if let activeDownloadText = RuntimeModelInventory.activeDownloadText(rows: modelRows) {
                         Text(activeDownloadText)
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
@@ -1455,7 +1502,7 @@ struct SettingsView: View {
                             .disabled(isRunningExperiment)
 
                             Text(experimentLoadedFileURL?.path ?? "No file selected; using pasted context.")
-                                .font(.caption)
+                                .font(theme.captionFont)
                                 .foregroundStyle(theme.textSecondary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -1478,7 +1525,7 @@ struct SettingsView: View {
 
                     if downloadedRunnableExperimentModels.isEmpty {
                         Text("No downloaded wired-up GGUF models are available. Download one from Settings > Models first.")
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     } else if let descriptor = downloadedRunnableExperimentModels.first(where: { $0.kind == experimentModelKind }) {
@@ -1486,14 +1533,14 @@ struct SettingsView: View {
                             Text(experimentModelStatusText(descriptor))
                             Text(experimentPromptBudgetText(descriptor))
                         }
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("System prompt")
-                            .font(.caption.weight(.semibold))
+                            .font(theme.textFont(size: 11.5, weight: 600))
                             .foregroundStyle(theme.textSecondary)
                         BorderedTextEditor(
                             text: $experimentSystemPrompt,
@@ -1505,7 +1552,7 @@ struct SettingsView: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Context / user prompt")
-                            .font(.caption.weight(.semibold))
+                            .font(theme.textFont(size: 11.5, weight: 600))
                             .foregroundStyle(theme.textSecondary)
                         BorderedTextEditor(
                             text: $experimentContext,
@@ -1552,14 +1599,14 @@ struct SettingsView: View {
                             ProgressView()
                                 .controlSize(.small)
                             Text("Generating")
-                                .font(.caption)
+                                .font(theme.captionFont)
                                 .foregroundStyle(theme.textSecondary)
                         }
                     }
 
                     if let experimentErrorMessage {
                         Label(experimentErrorMessage, systemImage: "exclamationmark.triangle")
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.statusLive)
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1573,16 +1620,16 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Text("Model output")
-                            .font(.caption.weight(.semibold))
+                            .font(theme.textFont(size: 11.5, weight: 600))
                             .foregroundStyle(theme.textSecondary)
                         Spacer()
                         Text("\(experimentTokenCount) token\(experimentTokenCount == 1 ? "" : "s") · \(experimentRawOutput.count) raw chars")
-                            .font(.caption2)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                     }
 
                     Text(experimentOutput.isEmpty ? "(empty)" : experimentOutput)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(theme.monoFont(size: 12))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
                         .padding(12)
@@ -1595,10 +1642,10 @@ struct SettingsView: View {
 
                     if experimentRawOutput != experimentOutput {
                         Text("Raw stream")
-                            .font(.caption.weight(.semibold))
+                            .font(theme.textFont(size: 11.5, weight: 600))
                             .foregroundStyle(theme.textSecondary)
                         Text(experimentRawOutput.isEmpty ? "(empty)" : experimentRawOutput)
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(theme.monoFont(size: 12))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
                             .padding(12)
@@ -1654,7 +1701,7 @@ struct SettingsView: View {
 
                 if !appState.transcriptionLabEnabled {
                     Text("Transcripts are always kept here for a year. Audio is not being saved, which costs nothing in disk but means a dictation that comes back wrong cannot be re-checked against what you actually said. Meeting transcripts are saved separately as markdown files, and are still listed below.")
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                 }
 
@@ -1680,13 +1727,13 @@ struct SettingsView: View {
     private var recognizedVoicesSection: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("AF Flow auto-creates reusable voice prints from speaker-tagged lab reruns. Marking more than one voice print as \"This is me\" is allowed.")
-                .font(.callout)
+                .font(theme.bodyFont)
                 .foregroundStyle(theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let recognizedVoicesErrorMessage {
                 Text(recognizedVoicesErrorMessage)
-                    .font(.callout)
+                    .font(theme.bodyFont)
                     .foregroundStyle(theme.statusLive)
             }
 
@@ -1725,14 +1772,14 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Recent recordings")
-                    .font(.title3.weight(.semibold))
+                    .font(theme.textFont(size: 15, weight: 600))
                 Spacer()
                 if !transcriptionLabController.entries.isEmpty {
                     Button("Clear History", role: .destructive) {
                         showClearHistoryConfirmation = true
                     }
                     .buttonStyle(.borderless)
-                    .font(.caption)
+                    .font(theme.captionFont)
                 }
             }
             .alert("Clear All History?", isPresented: $showClearHistoryConfirmation) {
@@ -1778,7 +1825,7 @@ struct SettingsView: View {
                                 copyTranscriptionLabTranscript(for: entry)
                             } label: {
                                 Image(systemName: "square.on.square")
-                                    .font(.callout)
+                                    .font(theme.bodyFont)
                             }
                             .buttonStyle(.borderless)
                             .help("Copy this transcript")
@@ -1789,7 +1836,7 @@ struct SettingsView: View {
                                 transcriptionLabController.deleteEntry(entry.id, using: appState.transcriptionLabStore)
                             } label: {
                                 Image(systemName: "trash")
-                                    .font(.callout)
+                                    .font(theme.bodyFont)
                                     .foregroundStyle(theme.textSecondary)
                             }
                             .buttonStyle(.borderless)
@@ -1834,7 +1881,7 @@ struct SettingsView: View {
 
             if let errorMessage = transcriptionLabController.errorMessage {
                 Text(errorMessage)
-                    .font(.callout)
+                    .font(theme.bodyFont)
                     .foregroundStyle(theme.statusLive)
             }
         }
@@ -1857,9 +1904,9 @@ struct SettingsView: View {
         } content: {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Original model and options")
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
                 Text("Originally transcribed with \(originalSpeechModelName).")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
             }
 
@@ -1878,7 +1925,7 @@ struct SettingsView: View {
             } options: {
                 HStack(alignment: .center, spacing: 12) {
                     Text("Rerun transcription options")
-                        .font(.subheadline.weight(.medium))
+                        .font(theme.textFont(size: 13, weight: 500))
 
                     Picker("Speech Model", selection: $transcriptionLabController.selectedSpeechModelID) {
                         ForEach(ModelManager.availableModels) { model in
@@ -1912,7 +1959,7 @@ struct SettingsView: View {
 
                     if let duration = transcriptionLabController.experimentTranscriptionDuration {
                         Text(formattedStageDuration(duration))
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
@@ -1946,11 +1993,11 @@ struct SettingsView: View {
         } content: {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Original model and options")
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
                 Text(entry.speakerFilteringRan
                      ? "Speaker tagging ran with \(originalSpeechModelName)."
                      : "Speaker tagging was off for the original transcription.")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
             }
 
@@ -1964,7 +2011,7 @@ struct SettingsView: View {
                     TranscriptionLabDiarizationSummaryView(visualization: originalVisualization)
                 } else {
                     Text("No original speaker tagging data was captured for this recording.")
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                 }
             } options: {
@@ -1972,7 +2019,7 @@ struct SettingsView: View {
                     transcriptionLabSpeakerIdentitiesSection
 
                     Text("Rerun speaker tagging options")
-                        .font(.subheadline.weight(.medium))
+                        .font(theme.textFont(size: 13, weight: 500))
 
                     HStack(alignment: .center, spacing: 12) {
                         Toggle(
@@ -1984,7 +2031,7 @@ struct SettingsView: View {
 
                         if !selectedModelSupportsSpeakerTagging {
                             Text("Speaker tagging is available only for FluidAudio models.")
-                                .font(.caption)
+                                .font(theme.captionFont)
                                 .foregroundStyle(theme.textSecondary)
                         }
 
@@ -2013,7 +2060,7 @@ struct SettingsView: View {
                     if let duration = transcriptionLabController.experimentTranscriptionDuration,
                        transcriptionLabController.experimentDiarizationVisualization != nil {
                         Text(formattedStageDuration(duration))
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
@@ -2039,7 +2086,7 @@ struct SettingsView: View {
         if transcriptionLabController.speakerProfilesInDisplayOrder.isEmpty == false {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Speaker identities")
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
 
                 ForEach(transcriptionLabController.speakerProfilesInDisplayOrder, id: \.speakerID) { profile in
                     TranscriptionLabSpeakerProfileEditor(
@@ -2072,7 +2119,7 @@ struct SettingsView: View {
             }
         } else if transcriptionLabController.diarizationVisualization != nil {
             Text("Run speaker tagging again on this recording to attach editable speaker names and reusable voice prints.")
-                .font(.caption)
+                .font(theme.captionFont)
                 .foregroundStyle(theme.textSecondary)
         }
     }
@@ -2088,9 +2135,9 @@ struct SettingsView: View {
         } content: {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Original model and options")
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
                 Text("Originally cleaned with \(entry.cleanupModelName).")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
             }
 
@@ -2109,12 +2156,12 @@ struct SettingsView: View {
             } options: {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Rerun cleanup options")
-                        .font(.subheadline.weight(.medium))
+                        .font(theme.textFont(size: 13, weight: 500))
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .center, spacing: 12) {
                             Text("Cleanup prompt")
-                                .font(.caption.weight(.medium))
+                                .font(theme.textFont(size: 11.5, weight: 500))
                                 .foregroundStyle(theme.textSecondary)
 
                             Spacer()
@@ -2144,7 +2191,7 @@ struct SettingsView: View {
                         .disabled(entry.windowContext == nil || transcriptionLabController.runningStage != nil)
 
                         Text("Clean with")
-                            .font(.caption.weight(.medium))
+                            .font(theme.textFont(size: 11.5, weight: 500))
                             .foregroundStyle(theme.textSecondary)
 
                         Picker("Cleanup model", selection: $transcriptionLabController.selectedCleanupModelKind) {
@@ -2193,7 +2240,7 @@ struct SettingsView: View {
 
                     if let duration = transcriptionLabController.experimentCleanupDuration {
                         Text(formattedStageDuration(duration))
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
@@ -2241,16 +2288,16 @@ struct SettingsView: View {
     private var addCorrectionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Add a word correction")
-                .font(.subheadline.weight(.medium))
+                .font(theme.textFont(size: 13, weight: 500))
 
             Text("If a word is consistently misheard, add it here. Correction hints are added to the cleanup prompt.")
-                .font(.caption)
+                .font(theme.captionFont)
                 .foregroundStyle(theme.textSecondary)
 
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Misheard as:")
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                     TextField("e.g. open claw", text: $correctionWrong)
                         .textFieldStyle(.roundedBorder)
@@ -2263,7 +2310,7 @@ struct SettingsView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Should be:")
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                     TextField("e.g. OpenClaw", text: $correctionRight)
                         .textFieldStyle(.roundedBorder)
@@ -2296,15 +2343,15 @@ struct SettingsView: View {
     private func addExampleSection(for entry: TranscriptionLabEntry) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Add an example to the cleanup prompt")
-                .font(.subheadline.weight(.medium))
+                .font(theme.textFont(size: 13, weight: 500))
 
             Text("If the cleanup got it wrong, add an example so it handles similar cases correctly in the future.")
-                .font(.caption)
+                .font(theme.captionFont)
                 .foregroundStyle(theme.textSecondary)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Input (what was said):")
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
                 BorderedTextEditor(
                     text: $exampleInput,
                     minimumHeight: 50,
@@ -2315,7 +2362,7 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Output (what it should be):")
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
                 BorderedTextEditor(
                     text: $exampleOutput,
                     minimumHeight: 50,
@@ -2365,7 +2412,7 @@ struct SettingsView: View {
                 Image(systemName: "flask")
                     .foregroundStyle(theme.accent)
                 Text("Experimental")
-                    .font(.caption.bold())
+                    .font(theme.textFont(size: 11.5, weight: 700))
                     .foregroundStyle(theme.accent)
             }
             .padding(.horizontal, 4)
@@ -2378,7 +2425,7 @@ struct SettingsView: View {
                     )
 
                     Text("When enabled, AF Flow transcribes video calls on this Mac: your voice from the microphone, and the other participants from the Mac's audio output. Nothing is sent anywhere, and no Google or Zoom account is connected.")
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
 
                     if appState.meetingTranscriptEnabled {
@@ -2399,7 +2446,7 @@ struct SettingsView: View {
                         }
 
                         Text("Keeps the current meeting window above other windows only while an active meeting is recording.")
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
@@ -2410,10 +2457,10 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Text("Save directory:")
-                                .font(.body)
+                                .font(theme.bodyFont)
 
                             Text(meetingDirectoryBookmark?.path ?? MeetingTranscriptSettings.defaultSaveDirectory().path)
-                                .font(.caption)
+                                .font(theme.captionFont)
                                 .foregroundStyle(theme.textSecondary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -2445,7 +2492,7 @@ struct SettingsView: View {
                         }
 
                         Text("Meetings are saved as Markdown files organized in date folders. Generated 2nd Brain files are saved under the same folder in wikis/.")
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
@@ -2453,11 +2500,11 @@ struct SettingsView: View {
                 SettingsCard("Summary Prompt") {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("This prompt is used to generate a summary after a meeting ends. The transcript is sent to your local cleanup model.")
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
 
                         TextEditor(text: $appState.meetingSummaryPrompt)
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(theme.monoFont(size: 12))
                             .frame(height: 100)
                             .padding(4)
                             .background(RoundedRectangle(cornerRadius: 6).stroke(appTheme.separator))
@@ -2466,7 +2513,7 @@ struct SettingsView: View {
                             Button("Reset to Default") {
                                 appState.meetingSummaryPrompt = MeetingSummaryGenerator.finalSummaryPrompt
                             }
-                            .font(.caption)
+                            .font(theme.captionFont)
                         }
                     }
                 }
@@ -2516,18 +2563,20 @@ private struct TranscriptionLabSpeakerProfileEditor: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
                 Text(profile.speakerID)
-                    .font(.caption.weight(.medium))
+                    .font(theme.textFont(size: 11.5, weight: 500))
                     .foregroundStyle(theme.textSecondary)
 
                 if profile.recognizedVoiceID != nil {
                     Text("Reusable voice print")
-                        .font(.caption2.weight(.semibold))
+                        .font(theme.textFont(size: 11.5, weight: 600))
                         .foregroundStyle(theme.textSecondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
+                            // A passive chip takes the state tint, because a
+                            // ground fill on the ground is nothing at all.
                             Capsule(style: .continuous)
-                                .fill(theme.controlBackground)
+                                .fill(theme.hoverFill)
                         )
                 }
 
@@ -2563,7 +2612,7 @@ private struct TranscriptionLabSpeakerProfileEditor: View {
             if recognizedVoiceOptions.isEmpty == false || profile.recognizedVoiceID != nil {
                 HStack(alignment: .center, spacing: 10) {
                     Text("Matched to")
-                        .font(.caption.weight(.medium))
+                        .font(theme.textFont(size: 11.5, weight: 500))
                         .foregroundStyle(theme.textSecondary)
                         .frame(width: 82, alignment: .leading)
 
@@ -2589,7 +2638,7 @@ private struct TranscriptionLabSpeakerProfileEditor: View {
                             onRecognizedVoiceChange(nil)
                         }
                         .buttonStyle(.bordered)
-                        .font(.caption)
+                        .font(theme.captionFont)
                     }
 
                     Spacer()
@@ -2599,7 +2648,7 @@ private struct TranscriptionLabSpeakerProfileEditor: View {
             if profile.evidenceTranscript.isEmpty == false {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Tagged transcript evidence")
-                        .font(.caption.weight(.medium))
+                        .font(theme.textFont(size: 11.5, weight: 500))
                         .foregroundStyle(theme.textSecondary)
 
                     ReadOnlyTextPane(
@@ -2613,7 +2662,7 @@ private struct TranscriptionLabSpeakerProfileEditor: View {
 
             if profile.recognizedVoiceID == nil {
                 Text("This speaker only has a recording-local label because AF Flow could not build a reusable voice print from this sample.")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
             } else if showsGlobalUpdateButton {
                 Button("Update global voice print") {
@@ -2621,7 +2670,7 @@ private struct TranscriptionLabSpeakerProfileEditor: View {
                     onUpdateGlobalVoice()
                 }
                 .buttonStyle(.bordered)
-                .font(.caption)
+                .font(theme.captionFont)
             }
         }
         .padding(14)
@@ -2704,15 +2753,15 @@ private struct RecognizedVoiceProfileEditor: View {
 
             HStack(alignment: .center, spacing: 12) {
                 Text("Updated \(profile.updatedAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
 
                 Text("\(profile.updateCount) matches")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
 
                 Text(linkedSpeakerPrintCountText)
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
 
                 Spacer()
@@ -2721,7 +2770,7 @@ private struct RecognizedVoiceProfileEditor: View {
             if profile.evidenceTranscript.isEmpty == false {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Latest transcript evidence")
-                        .font(.caption.weight(.medium))
+                        .font(theme.textFont(size: 11.5, weight: 500))
                         .foregroundStyle(theme.textSecondary)
 
                     ReadOnlyTextPane(
@@ -2736,7 +2785,7 @@ private struct RecognizedVoiceProfileEditor: View {
             DisclosureGroup(isExpanded: $showsLinkedSpeakerProfiles) {
                 if linkedSpeakerProfiles.isEmpty {
                     Text("No saved recording speaker prints are linked to this voice.")
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                         .padding(.top, 4)
                 } else {
@@ -2754,7 +2803,7 @@ private struct RecognizedVoiceProfileEditor: View {
                 }
             } label: {
                 Text("Linked speaker prints")
-                    .font(.caption.weight(.medium))
+                    .font(theme.textFont(size: 11.5, weight: 500))
             }
         }
         .padding(16)
@@ -2805,10 +2854,10 @@ private struct RecognizedVoiceLinkedSpeakerProfileRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(profile.speakerID)
-                    .font(.caption.weight(.medium))
+                    .font(theme.textFont(size: 11.5, weight: 500))
 
                 Text(profile.entryID.uuidString.prefix(8))
-                    .font(.caption2)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
 
                 Spacer()
@@ -2820,7 +2869,7 @@ private struct RecognizedVoiceLinkedSpeakerProfileRow: View {
 
             if profile.evidenceTranscript.isEmpty == false {
                 Text(profile.evidenceTranscript)
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2842,6 +2891,7 @@ private extension TranscriptionLabSpeakerProfile {
 }
 
 private struct SettingsCard<Content: View>: View {
+    @Environment(\.appTheme) private var theme
     let title: String
     @ViewBuilder let content: Content
 
@@ -2853,7 +2903,7 @@ private struct SettingsCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(title)
-                .font(.title3.weight(.semibold))
+                .font(theme.textFont(size: 15, weight: 600))
 
             content
         }
@@ -2862,6 +2912,7 @@ private struct SettingsCard<Content: View>: View {
 }
 
 private struct SettingsField<Content: View>: View {
+    @Environment(\.appTheme) private var theme
     let title: String
     @ViewBuilder let content: Content
 
@@ -2873,7 +2924,7 @@ private struct SettingsField<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.subheadline.weight(.medium))
+                .font(theme.textFont(size: 13, weight: 500))
             content
         }
     }
@@ -2897,7 +2948,7 @@ private struct ThemeSwatch: View {
                             HStack(spacing: 5) {
                                 Circle().fill(theme.accent).frame(width: 8, height: 8)
                                 RoundedRectangle(cornerRadius: theme.id == .windows95 ? 0 : 3)
-                                    .fill(theme.textBackground.opacity(0.85))
+                                    .fill(theme.hoverFill)
                                     .frame(width: 52, height: 8)
                             }
                             .padding(8)
@@ -2909,10 +2960,10 @@ private struct ThemeSwatch: View {
                 }
 
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(theme.textFont(size: 11.5, weight: 600))
                     .foregroundStyle(.primary)
                 Text(subtitle)
-                    .font(.caption2)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2946,9 +2997,9 @@ private struct ModelExperimentRunCard: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(run.modelDisplayName)
-                        .font(.subheadline.weight(.semibold))
+                        .font(theme.textFont(size: 13, weight: 600))
                     Text(run.sourceName)
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -2958,13 +3009,13 @@ private struct ModelExperimentRunCard: View {
                     Text("\(run.tokenCount) token\(run.tokenCount == 1 ? "" : "s")")
                     Text(Self.durationText(run.duration))
                 }
-                .font(.caption.monospacedDigit())
+                .font(theme.monoFont(size: 11.5))
                 .foregroundStyle(theme.textSecondary)
             }
 
             HStack(spacing: 6) {
                 Text("Rating")
-                    .font(.caption.weight(.semibold))
+                    .font(theme.textFont(size: 11.5, weight: 600))
                     .foregroundStyle(theme.textSecondary)
                 ForEach(1...5, id: \.self) { value in
                     Button {
@@ -2980,7 +3031,7 @@ private struct ModelExperimentRunCard: View {
                     Button("Clear") {
                         onRate(nil)
                     }
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .buttonStyle(.plain)
                     .foregroundStyle(theme.textSecondary)
                 }
@@ -2988,12 +3039,12 @@ private struct ModelExperimentRunCard: View {
 
             if let errorMessage = run.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.statusLive)
             }
 
             Text(run.output.isEmpty ? "(empty)" : run.output)
-                .font(.system(size: 12, design: .monospaced))
+                .font(theme.monoFont(size: 12))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .padding(10)
@@ -3034,7 +3085,7 @@ private struct PermissionStatusRow: View {
             Image(systemName: isGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundStyle(isGranted ? theme.statusReady : theme.statusLive)
             Text(title)
-                .font(.callout)
+                .font(theme.bodyFont)
             Spacer()
             if !isGranted {
                 Button("Grant") { action() }
@@ -3055,12 +3106,12 @@ private struct CorrectionsEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.subheadline.weight(.medium))
+                .font(theme.textFont(size: 13, weight: 500))
 
             BorderedTextEditor(text: text, minimumHeight: 96, maximumHeight: 160, monospaced: false)
 
             Text(prompt)
-                .font(.caption)
+                .font(theme.captionFont)
                 .foregroundStyle(theme.textSecondary)
         }
         .padding(.vertical, 2)
@@ -3089,25 +3140,25 @@ private struct CompactTranscriptionLabEntryRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(entry.createdAt, style: .time)
-                        .font(.subheadline.weight(.semibold))
+                        .font(theme.textFont(size: 13, weight: 600))
                     Text(entry.createdAt, style: .date)
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                 }
 
                 Text(titleText)
-                    .font(.body)
+                    .font(theme.bodyFont)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             VStack(alignment: .trailing, spacing: 8) {
                 Text(String(format: "%.1fs", entry.audioDuration))
-                    .font(.caption.weight(.medium))
+                    .font(theme.textFont(size: 11.5, weight: 500))
                     .foregroundStyle(theme.textSecondary)
 
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(theme.textFont(size: 11.5, weight: 600))
                     .foregroundStyle(theme.textSecondary)
             }
         }
@@ -3251,7 +3302,7 @@ private struct TranscriptionLabWorkshopSummary: View {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 16) {
                     Text("Transcript workshop")
-                        .font(.title3.weight(.semibold))
+                        .font(theme.textFont(size: 15, weight: 600))
 
                     Spacer(minLength: 16)
 
@@ -3260,7 +3311,7 @@ private struct TranscriptionLabWorkshopSummary: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Transcript workshop")
-                        .font(.title3.weight(.semibold))
+                        .font(theme.textFont(size: 15, weight: 600))
 
                     statusPills
                 }
@@ -3344,7 +3395,7 @@ private struct TranscriptionLabMetadataLine: View {
                 }
             }
         }
-        .font(.caption)
+        .font(theme.captionFont)
         .foregroundStyle(theme.textSecondary)
     }
 
@@ -3360,6 +3411,7 @@ private struct TranscriptionLabMetadataLine: View {
 }
 
 private struct TranscriptionLabStatusPill: View {
+    @Environment(\.appTheme) private var theme
     let title: String
     let systemImage: String
     let tint: Color
@@ -3372,7 +3424,7 @@ private struct TranscriptionLabStatusPill: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
         }
-        .font(.caption.weight(.medium))
+        .font(theme.textFont(size: 11.5, weight: 500))
         .foregroundStyle(tint)
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
@@ -3391,7 +3443,7 @@ private struct TranscriptionLabSettingsNotice: View {
                 .foregroundStyle(theme.textSecondary)
 
             Text("Changes you make here update app settings and become the defaults for future recordings.")
-                .font(.callout)
+                .font(theme.bodyFont)
                 .foregroundStyle(theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -3399,7 +3451,11 @@ private struct TranscriptionLabSettingsNotice: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(theme.controlBackground)
+                .fill(theme.textBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(theme.separator, lineWidth: 1)
+                )
         )
     }
 }
@@ -3438,7 +3494,7 @@ private struct TranscriptionLabSourceRecordingSummary: View {
     private var sourceSummary: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Source recording")
-                .font(.subheadline.weight(.semibold))
+                .font(theme.textFont(size: 13, weight: 600))
 
             TranscriptionLabMetadataLine(items: [
                 TranscriptionLabMetadataItem("Recorded", entry.createdAt.formatted(date: .abbreviated, time: .shortened)),
@@ -3521,12 +3577,12 @@ private struct TranscriptionLabStageHeaderButton<SummaryContent: View>: View {
         Button(action: action) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(theme.textFont(size: 11.5, weight: 600))
                     .foregroundStyle(theme.textSecondary)
                     .frame(width: 12)
 
                 Text(title)
-                    .font(.title3.weight(.semibold))
+                    .font(theme.textFont(size: 15, weight: 600))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
@@ -3534,7 +3590,7 @@ private struct TranscriptionLabStageHeaderButton<SummaryContent: View>: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     summary
                 }
-                .font(.caption)
+                .font(theme.captionFont)
                 .foregroundStyle(theme.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -3588,7 +3644,7 @@ private struct TranscriptionLabOutputComparison<
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(originalTitle)
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
                 originalContent
             }
 
@@ -3598,13 +3654,13 @@ private struct TranscriptionLabOutputComparison<
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(newTitle)
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
 
                 if hasNewOutput {
                     newOutputContent
                 } else {
                     Text(placeholder)
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                 }
             }
@@ -3613,6 +3669,7 @@ private struct TranscriptionLabOutputComparison<
 }
 
 private struct TranscriptionLabResultStack<SupplementaryContent: View>: View {
+    @Environment(\.appTheme) private var theme
     let rawTitle: String
     let rawText: String
     let correctedTitle: String
@@ -3654,13 +3711,13 @@ private struct TranscriptionLabResultStack<SupplementaryContent: View>: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(rawTitle)
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
                 ReadOnlyTextPane(text: rawText, minimumHeight: 72, maximumHeight: 180, monospaced: false)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(correctedTitle)
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
                 ReadOnlyTextPane(text: correctedText, minimumHeight: 72, maximumHeight: 180, monospaced: false)
             }
         }
@@ -3675,11 +3732,11 @@ private struct TranscriptionLabMetadataRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(label)
-                .font(.caption.weight(.medium))
+                .font(theme.textFont(size: 11.5, weight: 500))
                 .foregroundStyle(theme.textSecondary)
                 .frame(width: 92, alignment: .leading)
             Text(value)
-                .font(.callout)
+                .font(theme.bodyFont)
         }
     }
 }
@@ -3695,7 +3752,7 @@ private struct TranscriptionLabMetadataSummary: View {
             Text(SpeechModelCatalog.model(named: entry.speechModelID)?.statusName ?? entry.speechModelID)
             Text(entry.cleanupModelName)
         }
-        .font(.caption)
+        .font(theme.captionFont)
         .foregroundStyle(theme.textSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -3751,12 +3808,12 @@ private struct TranscriptionLabDiarizationSummaryView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 12) {
                 Text("Speaker tagging")
-                    .font(.subheadline.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
 
                 Spacer()
 
                 Text(summaryText)
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
             }
 
@@ -3769,7 +3826,7 @@ private struct TranscriptionLabDiarizationSummaryView: View {
                             .frame(width: segmentWidth(for: span, totalWidth: geometry.size.width))
                             .overlay {
                                 Text(span.displayName)
-                                    .font(.caption2.weight(.semibold))
+                                    .font(theme.textFont(size: 11.5, weight: 600))
                                     .foregroundStyle(span.isIncludedInTranscript ? Color.white : Color.primary)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.65)
@@ -3799,11 +3856,11 @@ private struct TranscriptionLabDiarizationSummaryView: View {
 
                                 if let speakerStatus = speakerStatusText(for: speakerID) {
                                     Text(speakerStatus)
-                                        .font(.caption2.weight(.semibold))
+                                        .font(theme.textFont(size: 11.5, weight: 600))
                                         .foregroundStyle(theme.textSecondary)
                                 }
                             }
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
@@ -3840,7 +3897,7 @@ private struct TranscriptionLabDiarizationSummaryView: View {
 
                 Spacer()
             }
-            .font(.caption)
+            .font(theme.captionFont)
             .foregroundStyle(theme.textSecondary)
         }
     }

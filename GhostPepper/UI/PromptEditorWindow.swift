@@ -114,14 +114,14 @@ struct PromptEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Cleanup Prompt")
-                .font(.headline)
+                .font(theme.bodyStrongFont)
 
             Text("This prompt is sent to the local LLM to clean up your transcribed speech.")
-                .font(.caption)
+                .font(theme.captionFont)
                 .foregroundStyle(theme.textSecondary)
 
             TextEditor(text: $appState.cleanupPrompt)
-                .font(.body)
+                .font(theme.bodyFont)
                 .frame(minHeight: 250)
 
             HStack {
@@ -151,10 +151,10 @@ private struct CleanupTranscriptView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Cleanup Transcript")
-                    .font(.headline)
+                    .font(theme.bodyStrongFont)
 
                 Text("This shows the exact content sent to the cleanup model for the current lab rerun and the exact raw text it returned.")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
 
                 transcriptSection(
@@ -190,10 +190,10 @@ private struct CleanupTranscriptView: View {
     private func transcriptSection(title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.subheadline.weight(.medium))
+                .font(theme.textFont(size: 13, weight: 500))
 
             Text(text)
-                .font(.body)
+                .font(theme.bodyFont)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -172,10 +172,10 @@ struct WelcomeStep: View {
                 .cornerRadius(24)
 
             Text("AF Flow")
-                .font(.system(size: 28, weight: .bold))
+                .font(theme.textFont(size: 28, weight: 700))
 
             Text("Sovereign personal intelligence\nfor your Mac")
-                .font(.title3)
+                .font(theme.textFont(size: 15, weight: 600))
                 .foregroundStyle(theme.textSecondary)
                 .multilineTextAlignment(.center)
 
@@ -184,7 +184,7 @@ struct WelcomeStep: View {
                     Image(systemName: "lock.shield.fill")
                         .foregroundStyle(theme.accent)
                     Text("All open-source models. Voice-to-text, meeting transcription, your second brain, and Q&A run under your control.")
-                        .font(.callout)
+                        .font(theme.bodyFont)
                         .foregroundStyle(theme.textSecondary)
                 }
 
@@ -192,15 +192,17 @@ struct WelcomeStep: View {
                     Image(systemName: "externaldrive.fill")
                         .foregroundStyle(theme.accent)
                     Text("No accounts required. Your notes, transcripts, and wiki stay on this Mac.")
-                        .font(.callout)
+                        .font(theme.bodyFont)
                         .foregroundStyle(theme.textSecondary)
                 }
             }
             .padding()
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(theme.statusReady.opacity(0.08))
-                    .strokeBorder(theme.statusReady.opacity(0.2))
+                    // Design 5.11: the success tint becomes the accent at 8%
+                    // with a plain hairline, not a tint of itself as a border.
+                    .fill(theme.accent.opacity(0.08))
+                    .strokeBorder(theme.separator)
             )
             .padding(.horizontal, 24)
 
@@ -208,7 +210,7 @@ struct WelcomeStep: View {
 
             Button(action: onContinue) {
                 Text("Get Started")
-                    .font(.headline)
+                    .font(theme.bodyStrongFont)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
             }
@@ -297,12 +299,12 @@ struct SetupStep: View {
     var body: some View {
         VStack(spacing: 0) {
             Text("Setup 🌶️")
-                .font(.system(size: 24, weight: .bold))
+                .font(theme.textFont(size: 24, weight: 700))
                 .padding(.top, 24)
                 .padding(.bottom, 8)
 
             Text("Grant permissions. AF Flow chooses the local models.")
-                .font(.callout)
+                .font(theme.bodyFont)
                 .foregroundStyle(theme.textSecondary)
                 .padding(.bottom, 16)
 
@@ -360,13 +362,13 @@ struct SetupStep: View {
                         // Sound level meter
                         HStack(spacing: 4) {
                             Image(systemName: "mic.fill")
-                                .font(.caption)
+                                .font(theme.captionFont)
                                 .foregroundStyle(theme.textSecondary)
 
                             GeometryReader { geo in
                                 ZStack(alignment: .leading) {
                                     RoundedRectangle(cornerRadius: 3)
-                                        .fill(theme.controlBackground)
+                                        .fill(theme.hoverFill)
                                     RoundedRectangle(cornerRadius: 3)
                                         .fill(micLevel.level > 0.7 ? theme.statusLive : micLevel.level > 0.3 ? theme.accent : theme.statusReady)
                                         .frame(width: geo.size.width * CGFloat(micLevel.level))
@@ -376,7 +378,7 @@ struct SetupStep: View {
                             .frame(height: 8)
 
                             Text("Sound check")
-                                .font(.caption2)
+                                .font(theme.captionFont)
                                 .foregroundStyle(theme.textSecondary)
                         }
                     }
@@ -436,7 +438,7 @@ struct SetupStep: View {
                     onContinue()
                 }) {
                     Text("Continue")
-                        .font(.headline)
+                        .font(theme.bodyStrongFont)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
@@ -519,15 +521,15 @@ struct SetupRow<Actions: View>: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.title2)
+                .font(theme.textFont(size: 17, weight: 600))
                 .frame(width: 32)
                 .foregroundStyle(isComplete ? theme.statusReady : theme.textSecondary)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.body.weight(.medium))
+                    .font(theme.textFont(size: 13, weight: 500))
                 Text(subtitle)
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
             }
 
@@ -536,7 +538,7 @@ struct SetupRow<Actions: View>: View {
             if isComplete {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(theme.statusReady)
-                    .font(.title3)
+                    .font(theme.textFont(size: 15, weight: 600))
             } else {
                 actions()
             }
@@ -544,7 +546,8 @@ struct SetupRow<Actions: View>: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(theme.controlBackground)
+                .fill(theme.textBackground)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(theme.separator, lineWidth: 1))
         )
     }
 }
@@ -564,14 +567,15 @@ private struct OnboardingModelSummary: View {
             }
 
             Text("AF Flow picks these during onboarding. Advanced model controls live in Settings.")
-                .font(.caption2)
+                .font(theme.captionFont)
                 .foregroundStyle(theme.textSecondary)
                 .padding(.top, 4)
         }
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(theme.controlBackground)
+                .fill(theme.textBackground)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(theme.separator, lineWidth: 1))
         )
     }
 }
@@ -589,18 +593,18 @@ private struct OnboardingModelRow: View {
                 .frame(width: 14, height: 14)
 
             Text(label)
-                .font(.caption.weight(.medium))
+                .font(theme.textFont(size: 11.5, weight: 500))
                 .foregroundStyle(theme.textSecondary)
                 .frame(width: 50, alignment: .leading)
 
             Text(name)
-                .font(.caption)
+                .font(theme.captionFont)
                 .lineLimit(1)
 
             Spacer()
 
             Text(statusText)
-                .font(.caption2)
+                .font(theme.captionFont)
                 .foregroundStyle(theme.textSecondary)
         }
     }
@@ -611,7 +615,7 @@ private struct OnboardingModelRow: View {
         case .loaded:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(theme.statusReady)
-                .font(.caption)
+                .font(theme.captionFont)
         case .loading:
             ProgressView()
                 .controlSize(.mini)
@@ -627,11 +631,11 @@ private struct OnboardingModelRow: View {
         case .notLoaded:
             Image(systemName: "circle")
                 .foregroundStyle(theme.textSecondary)
-                .font(.caption)
+                .font(theme.captionFont)
         case .systemManaged:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(theme.statusReady)
-                .font(.caption)
+                .font(theme.captionFont)
         }
     }
 
@@ -762,11 +766,11 @@ struct TryItStep: View {
     var body: some View {
         VStack(spacing: 20) {
             Text("Try It")
-                .font(.system(size: 24, weight: .bold))
+                .font(theme.textFont(size: 24, weight: 700))
                 .padding(.top, 24)
 
             Text("Hold **Right Command + Right Option** and say something")
-                .font(.callout)
+                .font(theme.bodyFont)
                 .foregroundStyle(theme.textSecondary)
 
             HStack(spacing: 6) {
@@ -794,13 +798,14 @@ struct TryItStep: View {
                 } else if let text = controller.transcribedText {
                     VStack(spacing: 8) {
                         Text("\"\(text)\"")
-                            .font(.body)
+                            .font(theme.bodyFont)
                             .italic()
                             .padding()
                             .frame(maxWidth: .infinity)
                             .background(
                                 RoundedRectangle(cornerRadius: 10)
-                                    .fill(theme.controlBackground)
+                                    .fill(theme.textBackground)
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(theme.separator, lineWidth: 1))
                             )
                             .padding(.horizontal, 24)
 
@@ -808,13 +813,13 @@ struct TryItStep: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(theme.statusReady)
                             Text("It works! Your words will be pasted wherever your cursor is.")
-                                .font(.callout)
+                                .font(theme.bodyFont)
                                 .foregroundStyle(theme.statusReady)
                         }
                     }
                 } else if controller.monitorStartFailed {
                     Text("Could not start hotkey monitor.\nPlease verify Accessibility is enabled in System Settings.")
-                        .font(.callout)
+                        .font(theme.bodyFont)
                         .foregroundStyle(theme.statusLive)
                         .multilineTextAlignment(.center)
                 } else {
@@ -838,7 +843,7 @@ struct TryItStep: View {
                     controller.advance(onAdvance: onContinue)
                 }) {
                     Text("Continue")
-                        .font(.headline)
+                        .font(theme.bodyStrongFont)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                 }
@@ -861,15 +866,19 @@ struct KeyCap: View {
 
     var body: some View {
         Text(label)
-            .font(.system(size: 12, weight: highlighted ? .semibold : .regular))
+            .font(theme.textFont(size: 12, weight: highlighted ? 600 : 400))
             .foregroundStyle(highlighted ? .white : theme.textSecondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 8)
                     .fill(highlighted
                         ? (isActive ? theme.statusLive : theme.accent)
-                        : theme.controlBackground)
+                        : theme.textBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(highlighted ? Color.clear : theme.separator, lineWidth: 1)
+                    )
             )
             .animation(.easeInOut(duration: 0.2), value: isActive)
     }
@@ -887,39 +896,39 @@ struct DoneStep: View {
             Spacer()
 
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 48))
+                .font(theme.textFont(size: 48))
                 .foregroundStyle(theme.statusReady)
 
             Text("You're All Set!")
-                .font(.system(size: 28, weight: .bold))
+                .font(theme.textFont(size: 28, weight: 700))
 
             Text("AF Flow lives in your menu bar")
-                .font(.callout)
+                .font(theme.bodyFont)
                 .foregroundStyle(theme.textSecondary)
 
             // Menu bar mockup
             HStack(spacing: 10) {
                 Spacer()
                 Image(systemName: "moon.fill")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Image(systemName: "display")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Image("MenuBarIcon")
                     .renderingMode(.template)
                     .foregroundStyle(theme.accent)
                 Image(systemName: "wifi")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Image(systemName: "battery.75percent")
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .foregroundStyle(theme.textSecondary)
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Text(Date(), format: .dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
@@ -927,13 +936,13 @@ struct DoneStep: View {
             .padding(.horizontal, 12)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(theme.controlBackground)
+                    .fill(theme.hoverFill)
             )
             .padding(.horizontal, 40)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("From the menu bar you can:")
-                    .font(.callout)
+                    .font(theme.bodyFont)
                     .foregroundStyle(theme.textSecondary)
                 BulletPoint("Switch your microphone")
                 BulletPoint("Change your recording shortcuts")
@@ -956,7 +965,7 @@ struct DoneStep: View {
                             .controlSize(.small)
                     }
                     Text(isCompleting ? "Finishing Setup..." : "Start Using AF Flow")
-                        .font(.headline)
+                        .font(theme.bodyStrongFont)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
@@ -980,7 +989,7 @@ struct BulletPoint: View {
             Text("•")
                 .foregroundStyle(theme.textSecondary)
             Text(text)
-                .font(.callout)
+                .font(theme.bodyFont)
                 .foregroundStyle(theme.textSecondary)
         }
     }

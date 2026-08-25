@@ -3,6 +3,7 @@ import SwiftUI
 
 /// AF Flow logo view — uses the character image, falls back to emoji.
 private struct PepperLogo: View {
+    @Environment(\.appTheme) private var theme
     var size: CGFloat = 32
 
     var body: some View {
@@ -13,7 +14,7 @@ private struct PepperLogo: View {
                 .frame(width: size, height: size)
         } else {
             Text("🌶️")
-                .font(.system(size: size * 0.7))
+                .font(theme.textFont(size: size * 0.7))
         }
     }
 }
@@ -29,6 +30,7 @@ private struct PepperLogo: View {
 /// re-attachable in one line, which is not what "removed" means (LOOP.md
 /// section 3).
 struct ContextBubbleView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var session: PepperChatSession
     var onMinimize: () -> Void
     var onOpenInMeetings: ((URL) -> Void)?
@@ -76,13 +78,13 @@ struct ContextBubbleView: View {
 
             if let rendered = try? AttributedString(markdown: message.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
                 Text(rendered)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(theme.textFont(size: 14, weight: 500))
                     .foregroundColor(panelText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
             } else {
                 Text(message.text)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(theme.textFont(size: 14, weight: 500))
                     .foregroundColor(panelText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
@@ -95,7 +97,7 @@ struct ContextBubbleView: View {
                         session.markActionResponded(messageID: message.id)
                     }) {
                         Text(action.acceptLabel)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(theme.textFont(size: 13, weight: 600))
                             .foregroundColor(appTheme.accentText)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
@@ -108,7 +110,7 @@ struct ContextBubbleView: View {
                         session.markActionResponded(messageID: message.id)
                     }) {
                         Text(action.declineLabel)
-                            .font(.system(size: 13))
+                            .font(theme.textFont(size: 13))
                             .foregroundColor(subduedPanelText)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)

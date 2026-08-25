@@ -52,19 +52,19 @@ struct UsageReportView: View {
     private var summaryHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(snapshot.window.title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(theme.textFont(size: 11, weight: 600))
                 .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(snapshot.totalWindowed)")
-                    .font(.system(size: 26, weight: .semibold))
+                    .font(theme.textFont(size: 26, weight: 600))
                 Text("uses")
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundStyle(theme.textSecondary)
             }
             if snapshot.window != .lifetime {
                 Text("\(snapshot.totalLifetime) lifetime")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
             }
         }
@@ -73,12 +73,12 @@ struct UsageReportView: View {
     private var chart: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("By feature · \(snapshot.window.title.lowercased())")
-                .font(.system(size: 11, weight: .semibold))
+                .font(theme.textFont(size: 11, weight: 600))
                 .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
             if snapshot.totalWindowed == 0 && snapshot.totalLifetime == 0 {
                 Text("No usage tracked yet. Run dictation, record a meeting, build a People index, or ask a Q&A question, and counts show up here.")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                     .padding(.vertical, 8)
             } else {
@@ -91,7 +91,7 @@ struct UsageReportView: View {
                     .annotation(position: .top, alignment: .center) {
                         if row.windowed > 0 {
                             Text("\(row.windowed)")
-                                .font(.system(size: 9, weight: .medium))
+                                .font(theme.textFont(size: 9, weight: 500))
                                 .foregroundStyle(theme.textSecondary)
                         }
                     }
@@ -110,16 +110,16 @@ struct UsageReportView: View {
             ForEach(snapshot.rows) { row in
                 HStack(spacing: 6) {
                     Text(row.event.shortLabel)
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .foregroundColor(.primary)
                         .frame(width: 70, alignment: .leading)
                     if snapshot.window == .lifetime {
                         Text("\(row.lifetime) lifetime")
-                            .font(.system(size: 10))
+                            .font(theme.textFont(size: 10))
                             .foregroundStyle(theme.textSecondary)
                     } else {
                         Text("\(row.windowed) in window · \(row.lifetime) lifetime")
-                            .font(.system(size: 10))
+                            .font(theme.textFont(size: 10))
                             .foregroundStyle(theme.textSecondary)
                     }
                     Spacer()
@@ -133,7 +133,7 @@ struct UsageReportView: View {
         VStack(alignment: .leading, spacing: 6) {
             Divider()
             Text("Feature requests")
-                .font(.system(size: 11, weight: .semibold))
+                .font(theme.textFont(size: 11, weight: 600))
                 .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
 
@@ -153,25 +153,25 @@ struct UsageReportView: View {
                   : "Asks the selected cleanup model to write a short note about what to focus on next.")
 
             Text("Uses the cleanup-model picker (\(cleanupManager.selectedCleanupModelDisplayName)). No cloud calls.")
-                .font(.system(size: 10))
+                .font(theme.textFont(size: 10))
                 .foregroundStyle(theme.textSecondary)
 
             if cleanupManager.selectedCleanupModelKind == .qwen35_0_8b_q4_k_m {
                 Text("Tip: 0.8B can mis-rank tiny tables. Switch to Qwen 3.5 2B or larger for better prose.")
-                    .font(.system(size: 10))
+                    .font(theme.textFont(size: 10))
                     .foregroundColor(theme.accent.opacity(0.85))
             }
 
             if let generationError {
                 Text(generationError)
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundColor(theme.statusLive.opacity(0.85))
                     .padding(.top, 4)
             }
 
             if !generatedNote.isEmpty {
                 Text(generatedNote)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .textSelection(.enabled)
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)

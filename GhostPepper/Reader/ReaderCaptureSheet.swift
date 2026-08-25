@@ -15,15 +15,15 @@ struct ReaderCaptureSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Image(systemName: "newspaper")
-                    .font(.system(size: 16))
+                    .font(theme.textFont(size: 16))
                     .foregroundStyle(theme.accent)
                 Text("New Reader")
-                    .font(.headline)
+                    .font(theme.bodyStrongFont)
                 Spacer()
             }
 
             Text("Paste a URL. The article will be saved as a note.")
-                .font(.callout)
+                .font(theme.bodyFont)
                 .foregroundStyle(theme.textSecondary)
 
             TextField("https://example.com/article", text: $urlInput)
@@ -34,7 +34,7 @@ struct ReaderCaptureSheet: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.statusLive)
             }
 

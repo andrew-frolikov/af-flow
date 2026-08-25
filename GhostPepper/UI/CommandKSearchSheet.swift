@@ -60,17 +60,17 @@ struct CommandKSearchSheet: View {
     private var searchField: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 14))
+                .font(theme.textFont(size: 14))
                 .foregroundStyle(theme.textSecondary)
             TextField(onAttach == nil ? "Search 2nd Brain, people, meetings, notes…" : "Attach context: search 2nd Brain, people, meetings, notes…", text: $query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 16))
+                .font(theme.textFont(size: 16))
                 .focused($fieldFocused)
                 .onSubmit { activateSelected() }
             if !query.isEmpty {
                 Button(action: { query = "" }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .foregroundStyle(theme.textSecondary)
                 }
                 .buttonStyle(.plain)
@@ -79,7 +79,7 @@ struct CommandKSearchSheet: View {
             keyHint("⏎")
             Button(action: { isPresented = false }) {
                 Text("ESC")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(theme.monoFont(size: 10))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(theme.hoverFill)
@@ -95,7 +95,7 @@ struct CommandKSearchSheet: View {
 
     private func keyHint(_ glyph: String) -> some View {
         Text(glyph)
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .font(theme.monoFont(size: 10))
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .background(theme.hoverFill)
@@ -108,11 +108,11 @@ struct CommandKSearchSheet: View {
         if results.totalCount == 0 {
             VStack(spacing: 6) {
                 Image(systemName: query.isEmpty ? "magnifyingglass" : "questionmark.circle")
-                    .font(.system(size: 28))
+                    .font(theme.textFont(size: 28))
                     .foregroundStyle(theme.textSecondary)
                 Text(query.isEmpty ? "Type to search across 2nd Brain, people, meetings, and notes."
                                    : "No matches for \"\(query)\"")
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .foregroundStyle(theme.textSecondary)
             }
             .frame(maxWidth: .infinity)
@@ -146,7 +146,7 @@ struct CommandKSearchSheet: View {
     private func section(title: String, icon: String, items: [CommandKItem]) -> some View {
         if !items.isEmpty {
             Text("\(title) (\(items.count))")
-                .font(.system(size: 10, weight: .semibold))
+                .font(theme.textFont(size: 10, weight: 600))
                 .textCase(.uppercase)
                 .foregroundStyle(theme.textSecondary)
                 .padding(.horizontal, 16)
@@ -164,22 +164,22 @@ struct CommandKSearchSheet: View {
         return Button(action: { activate(item) }) {
             HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundStyle(isSelected ? theme.textPrimary : theme.textSecondary)
                     .frame(width: 16)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
-                        .font(.system(size: 13))
+                        .font(theme.textFont(size: 13))
                     if let subtitle = item.subtitle {
                         Text(subtitle)
-                            .font(.system(size: 11))
+                            .font(theme.textFont(size: 11))
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
                 Spacer()
                 if isSelected {
                     Image(systemName: "return")
-                        .font(.system(size: 10))
+                        .font(theme.textFont(size: 10))
                         .foregroundStyle(theme.textSecondary)
                 }
             }

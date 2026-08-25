@@ -49,7 +49,7 @@ struct AFFlowHomeView: View {
             // this says what is missing instead of overruling it.
             if let permissionWarning = appState.permissionWarning {
                 Text(permissionWarning)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundStyle(theme.textSecondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -60,20 +60,20 @@ struct AFFlowHomeView: View {
             instruction
 
             Text("Release, and your words land where the cursor is")
-                .font(.system(size: 13.5))
+                .font(theme.textFont(size: 13.5))
                 .foregroundColor(theme.textPrimary)
                 .padding(.top, 14)
 
             if !toggleToTalk.isEmpty {
                 Text("\(toggleToTalk) keeps it running hands-free")
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundColor(theme.textSecondary)
                     .padding(.top, 18)
             }
 
             if let error = appState.errorMessage, !error.isEmpty {
                 Text(error)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundColor(theme.statusLive)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 28)
@@ -109,12 +109,12 @@ struct AFFlowHomeView: View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
                 Text("Hold")
-                    .font(.custom("Georgia", size: 23))
+                    .font(theme.displayFont)
                     .foregroundColor(theme.textPrimary)
                 Keycap(text: pushToTalk)
             }
             Text("and speak")
-                .font(.custom("Georgia", size: 23))
+                .font(theme.displayFont)
                 .foregroundColor(theme.textPrimary)
         }
     }
@@ -160,7 +160,7 @@ struct AFFlowHomeView: View {
         let text: String
         var body: some View {
             Text(text.isEmpty ? "no shortcut set" : text)
-                .font(.system(size: 15, weight: .medium))
+                .font(theme.textFont(size: 15, weight: 500))
                 .foregroundColor(theme.textPrimary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
@@ -191,7 +191,7 @@ struct AFFlowHomeView: View {
             HStack(spacing: 8) {
                 Circle().fill(tint.dot).frame(width: 7, height: 7)
                 Text(status.rawValue.replacingOccurrences(of: "...", with: ""))
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
             }
             .foregroundColor(tint.text)
             .padding(.horizontal, 15)
@@ -209,10 +209,10 @@ struct AFFlowHomeView: View {
         var body: some View {
             VStack(spacing: 3) {
                 Text(label)
-                    .font(.system(size: 10.5))
+                    .font(theme.textFont(size: 10.5))
                     .foregroundColor(theme.textSecondary)
                 Text(value)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.textFont(size: 12, weight: 500))
                     .foregroundColor(tint ?? theme.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)

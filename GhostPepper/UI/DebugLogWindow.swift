@@ -4,6 +4,7 @@ import AppKit
 /// No longer `private`: since 2026-08-24 this is a SECTION of AF Flow's one
 /// window, not the content of a floating panel of its own.
 struct DebugLogWindowView: View {
+    @Environment(\.appTheme) private var theme
     @ObservedObject var debugLogStore: DebugLogStore
     @State private var shouldFollowTail = true
 
@@ -38,13 +39,13 @@ struct DebugLogWindowView: View {
                         LazyVStack(alignment: .leading, spacing: 12) {
                             if debugLogStore.entries.isEmpty {
                                 Text("No debug events yet.")
-                                    .font(.system(.caption, design: .monospaced))
+                                    .font(theme.monoFont())
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .textSelection(.enabled)
                             } else {
                                 ForEach(debugLogStore.entries) { entry in
                                     Text(formattedText(for: entry))
-                                        .font(.system(.caption, design: .monospaced))
+                                        .font(theme.monoFont())
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .textSelection(.enabled)
                                         .id(entry.id)

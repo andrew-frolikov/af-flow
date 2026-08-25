@@ -29,20 +29,20 @@ struct MeetingHistorySection: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Meetings")
-                    .font(.title3.weight(.semibold))
+                    .font(theme.textFont(size: 15, weight: 600))
                 Spacer()
                 Button {
                     load()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.caption)
+                        .font(theme.captionFont)
                 }
                 .buttonStyle(.borderless)
                 .help("Re-read the meetings folder")
             }
 
             Text("Saved as markdown next to your notes. Deleting one here is not offered on purpose: these are files, and Finder is where you delete files.")
-                .font(.caption)
+                .font(theme.captionFont)
                 .foregroundStyle(theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -62,7 +62,7 @@ struct MeetingHistorySection: View {
                     ForEach(filteredGroups) { group in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(group.date)
-                                .font(.caption.weight(.semibold))
+                                .font(theme.textFont(size: 11.5, weight: 600))
                                 .foregroundStyle(theme.textSecondary)
 
                             ForEach(group.entries) { entry in
@@ -140,7 +140,7 @@ private struct MeetingHistoryRow: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: entry.isGranola ? "square.and.arrow.down" : "waveform.and.mic")
-                        .font(.callout)
+                        .font(theme.bodyFont)
                         .foregroundStyle(theme.textSecondary)
                     Text(entry.name)
                         .lineLimit(1)
@@ -157,7 +157,7 @@ private struct MeetingHistoryRow: View {
                 copyTranscript()
             } label: {
                 Image(systemName: didCopy ? "checkmark" : "square.on.square")
-                    .font(.callout)
+                    .font(theme.bodyFont)
             }
             .buttonStyle(.borderless)
             .help("Copy this transcript")
@@ -166,7 +166,7 @@ private struct MeetingHistoryRow: View {
                 NSWorkspace.shared.activateFileViewerSelecting([entry.fileURL])
             } label: {
                 Image(systemName: "folder")
-                    .font(.callout)
+                    .font(theme.bodyFont)
                     .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.borderless)

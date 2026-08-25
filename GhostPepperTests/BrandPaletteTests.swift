@@ -289,6 +289,66 @@ final class BrandPaletteTests: XCTestCase {
                           "secondary on --outer: if this now passes, --outer could be used")
     }
 
+    // MARK: - 4. The brand faces actually loaded
+
+    /// **A silent fallback to the system face must not pass for the brand.**
+    ///
+    /// `BrandFonts` falls back to `.system` when a file is missing, which is the
+    /// right runtime behaviour and the wrong thing to ship unnoticed. This test
+    /// is the only thing standing between "we bundled Inter" and San Francisco
+    /// wearing its name.
+    func testBothBrandFacesLoadedFromTheBundle() {
+        XCTAssertTrue(
+            BrandFonts.bothFacesLoaded,
+            "Fraunces or Inter did not load from the app bundle, so the app is silently running on the system face"
+        )
+    }
+
+    /// Inter's weight axis is unreachable by family name: asking a name-resolved
+    /// Inter for regular, medium and semibold returns three identical fonts.
+    /// Loading by URL and instancing the `wght` axis is what makes the ladder's
+    /// three weights real, and this asserts they are actually distinct.
+    func testIntersThreeWeightsAreActuallyDifferent() {
+        let advances = BrandFonts.interAdvances()
+        XCTAssertEqual(advances.count, 3, "Inter did not produce three weights")
+        guard advances.count == 3 else { return }
+        XCTAssertGreaterThan(advances[1], advances[0],
+                             "medium is not wider than regular, so the wght axis was not applied")
+        XCTAssertGreaterThan(advances[2], advances[1],
+                             "semibold is not wider than medium, so the wght axis was not applied")
+    }
+
+    /// The shipped Fraunces cut, identified by measurement rather than by name.
+    /// 96.05 is the advance of "AF" at 72pt in `Fraunces-opsz9-wght500.ttf`,
+    /// measured on this Mac. The design document originally recorded 89.62,
+    /// which is the VARIABLE font at weight 500 and a different file.
+    func testTheShippedFrauncesIsTheOneTheMarkIsBuiltFrom() {
+        guard let advance = BrandFonts.frauncesAdvanceOfAFAt72() else {
+            XCTFail("Fraunces did not load"); return
+        }
+        XCTAssertEqual(Double(advance), 96.05, accuracy: 0.05,
+                       "the loaded Fraunces is not the cut the mark is built from")
+    }
+
+    /// The ladder's floor. Fraunces below 17pt muddies, and anything smaller is
+    /// Inter, so asking for a smaller display size must clamp rather than
+    /// quietly render an illegible serif.
+    func testTheFrauncesFloorHolds() {
+        XCTAssertEqual(String(describing: BrandFonts.display(size: 10)),
+                       String(describing: BrandFonts.display(size: 17)),
+                       "a display size below the 17pt floor did not clamp")
+    }
+
+    /// The novelty skins must not pick up the brand faces, for the same reason
+    /// they must not pick up pine.
+    func testNoveltySkinsKeepTheSystemFace() {
+        for id in AppThemeID.allCases where id != .current {
+            let t = AppTheme(id: id)
+            XCTAssertEqual(String(describing: t.bodyFont), String(describing: Font.system(size: 13)),
+                           "\(id.rawValue) is using the brand text face")
+        }
+    }
+
     /// The arithmetic itself is checked against two ratios the canon publishes
     /// independently, so a bug in the formula cannot silently pass everything.
     /// These two ARE literals on purpose: they are the calibration.

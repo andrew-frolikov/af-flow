@@ -37,14 +37,14 @@ struct ModelsSidebarView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text("Models")
-                .font(.system(size: 13, weight: .semibold))
+                .font(theme.textFont(size: 13, weight: 600))
                 .foregroundStyle(theme.textSecondary)
             Spacer()
             Button(action: {
                 refreshTick += 1
             }) {
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 10))
+                    .font(theme.textFont(size: 10))
                     .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.borderless)
@@ -233,7 +233,7 @@ struct ModelsSidebarView: View {
         VStack(alignment: .leading, spacing: 4) {
             Divider()
             Text("AF Flow runs 100% on-device.")
-                .font(.system(size: 10, weight: .medium))
+                .font(theme.textFont(size: 10, weight: 500))
                 .foregroundStyle(theme.textSecondary)
         }
         .padding(.top, 4)
@@ -284,7 +284,7 @@ struct ModelsSidebarView: View {
     private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(theme.textFont(size: 11, weight: 600))
                 .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
             VStack(alignment: .leading, spacing: 6) {
@@ -315,17 +315,17 @@ private struct FunctionRowPicker<Picker: View>: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 11))
+                .font(theme.textFont(size: 11))
                 .foregroundStyle(theme.textSecondary)
                 .frame(width: 14, alignment: .leading)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(title)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(theme.textFont(size: 12, weight: 500))
                         .foregroundColor(.primary)
                     Text(location == .local ? "local" : "cloud")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(theme.textFont(size: 9, weight: 500))
                         .foregroundColor(location == .local ? theme.statusReady : theme.accent)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
@@ -334,7 +334,7 @@ private struct FunctionRowPicker<Picker: View>: View {
                 }
                 if isEmpty {
                     Text(emptyMessage)
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .foregroundStyle(theme.textSecondary)
                 } else {
                     picker()
@@ -358,22 +358,22 @@ private struct FunctionRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 11))
+                .font(theme.textFont(size: 11))
                 .foregroundStyle(theme.textSecondary)
                 .frame(width: 14, alignment: .leading)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.textFont(size: 12, weight: 500))
                     .foregroundColor(.primary)
                 HStack(spacing: 4) {
                     Text(modelLabel)
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .foregroundColor(available ? theme.textSecondary : theme.statusLive.opacity(0.8))
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(location == .local ? "local" : "cloud")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(theme.textFont(size: 9, weight: 500))
                         .foregroundColor(location == .local ? theme.statusReady : theme.accent)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
@@ -417,11 +417,11 @@ private struct LocalModelRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(title)
-                        .font(.system(size: 12, weight: isActive ? .semibold : .regular))
+                        .font(theme.textFont(size: 12, weight: isActive ? 600 : 400))
                         .foregroundColor(isDownloaded ? theme.textPrimary : theme.textSecondary)
                     if isActive {
                         Text("active")
-                            .font(.system(size: 9, weight: .medium))
+                            .font(theme.textFont(size: 9, weight: 500))
                             .foregroundStyle(theme.accent)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
@@ -430,17 +430,17 @@ private struct LocalModelRow: View {
                     }
                     if !isDownloaded && progress == nil {
                         Text("not downloaded")
-                            .font(.system(size: 9))
+                            .font(theme.textFont(size: 9))
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
                 Text(subtitle)
-                    .font(.system(size: 10))
+                    .font(theme.textFont(size: 10))
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(capabilities.joined(separator: " · "))
-                    .font(.system(size: 10, weight: .medium))
+                    .font(theme.textFont(size: 10, weight: 500))
                     .foregroundColor(.secondary.opacity(0.85))
                 if let progress {
                     progressView(progress)
@@ -457,7 +457,7 @@ private struct LocalModelRow: View {
         if progress != nil, let onCancel {
             Button(action: onCancel) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .foregroundStyle(theme.textSecondary)
                     .symbolRenderingMode(.hierarchical)
             }
@@ -472,7 +472,7 @@ private struct LocalModelRow: View {
         } else if let onDownload, !isDownloaded {
             Button(action: onDownload) {
                 Image(systemName: "icloud.and.arrow.down")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.borderless)
@@ -481,7 +481,7 @@ private struct LocalModelRow: View {
         } else if let onDelete {
             Button(action: onDelete) {
                 Image(systemName: "trash")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.borderless)
@@ -499,16 +499,16 @@ private struct LocalModelRow: View {
                     .progressViewStyle(.linear)
                     .frame(maxWidth: 140)
                 Text("\(Int(value * 100))%")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(theme.textFont(size: 9, weight: 500))
                     .foregroundStyle(theme.textSecondary)
             }
         case .downloading(nil):
             Text("Preparing…")
-                .font(.system(size: 10))
+                .font(theme.textFont(size: 10))
                 .foregroundStyle(theme.textSecondary)
         case .loading:
             Text("Loading…")
-                .font(.system(size: 10))
+                .font(theme.textFont(size: 10))
                 .foregroundStyle(theme.textSecondary)
         }
     }

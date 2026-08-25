@@ -37,9 +37,9 @@ struct BuildIndexSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Image(systemName: kind.iconSystemName)
-                    .font(.system(size: 16))
+                    .font(theme.textFont(size: 16))
                 Text("Build \(kind.displayName) index")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(theme.textFont(size: 16, weight: 600))
                 Spacer()
             }
 
@@ -68,7 +68,7 @@ struct BuildIndexSheet: View {
             HStack(spacing: 8) {
                 ProgressView().scaleEffect(0.7)
                 Text("Checking what needs building…")
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .foregroundStyle(theme.textSecondary)
             }
             HStack {
@@ -85,14 +85,14 @@ struct BuildIndexSheet: View {
             VStack(alignment: .leading, spacing: 12) {
                 if estimate.nothingToDo {
                     Text("**Index is up to date**. Every meeting is already covered by an existing entry, so there is nothing to do.")
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .foregroundStyle(theme.textSecondary)
                         .padding(8)
                         .background(theme.statusReady.opacity(0.1))
                         .cornerRadius(6)
                 } else if estimate.isResume {
                     Text("**Resuming existing index**: \(estimate.existingEntryCount) entries on disk, \(estimate.alreadyProcessedCount) of \(estimate.totalMeetingCount) meetings already covered. This run will only process the remaining \(estimate.unprocessedCount).")
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .foregroundStyle(theme.textSecondary)
                         .padding(8)
                         .background(theme.accent.opacity(0.1))
@@ -106,9 +106,9 @@ struct BuildIndexSheet: View {
                     // can never reach (hard rule 1) and which would have been the
                     // wrong currency anyway (hard rule 9, costs in CAD).
                     Text("**\(estimate.unprocessedCount)** meetings to process on-device with \(estimate.modelDisplayName). Free, CAD 0.")
-                        .font(.system(size: 13))
+                        .font(theme.textFont(size: 13))
                     Text("Runs in the background on the local model. You can hit Stop at any time; the build resumes where it left off.")
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .foregroundStyle(theme.textSecondary)
                 }
 
@@ -134,7 +134,7 @@ struct BuildIndexSheet: View {
             HStack(spacing: 8) {
                 ProgressView().scaleEffect(0.7)
                 Text(statusLine.isEmpty ? "Building…" : statusLine)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -144,11 +144,11 @@ struct BuildIndexSheet: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("\(meetingsProcessed) of \(totalMeetings) meetings")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(theme.monoFont(size: 11))
                             .foregroundStyle(theme.textSecondary)
                         Spacer()
                         Text("\(Int(progressFraction * 100))%")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(theme.monoFont(size: 11))
                             .foregroundStyle(theme.textSecondary)
                     }
                     ProgressView(value: progressFraction)
@@ -161,7 +161,7 @@ struct BuildIndexSheet: View {
                 Label("\(entriesWritten) entries written", systemImage: "doc.text")
                 Label("On device, CAD 0", systemImage: "bolt.circle")
             }
-            .font(.system(size: 11, design: .monospaced))
+            .font(theme.monoFont(size: 11))
             .foregroundStyle(theme.textSecondary)
 
             HStack {
@@ -184,15 +184,15 @@ struct BuildIndexSheet: View {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(theme.statusReady)
                 Text("Built \(entriesWritten) entries")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(theme.textFont(size: 13, weight: 500))
             }
             if totalMeetings > 0 {
                 Text("\(meetingsProcessed) of \(totalMeetings) meetings covered")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
             }
             Text("Ran entirely on this Mac. Total cost CAD 0.")
-                .font(.system(size: 11))
+                .font(theme.textFont(size: 11))
                 .foregroundStyle(theme.textSecondary)
             HStack {
                 Spacer()
@@ -210,11 +210,11 @@ struct BuildIndexSheet: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(theme.statusLive)
                 Text("Build failed")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(theme.textFont(size: 13, weight: 500))
             }
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundStyle(theme.textSecondary)
                     .textSelection(.enabled)
             }

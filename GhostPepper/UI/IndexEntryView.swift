@@ -58,7 +58,7 @@ struct IndexEntryView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(entry.canonicalName)
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(theme.textFont(size: 24, weight: 600))
                 Spacer()
                 refreshAffordance
             }
@@ -66,7 +66,7 @@ struct IndexEntryView: View {
                 Label(entry.kind.displayName, systemImage: entry.kind.iconSystemName)
                 Text("Updated \(formatted(entry.lastUpdated))")
             }
-            .font(.system(size: 11))
+            .font(theme.textFont(size: 11))
             .foregroundStyle(theme.textSecondary)
         }
     }
@@ -83,12 +83,12 @@ struct IndexEntryView: View {
             Button(action: onRefresh) {
                 HStack(spacing: 5) {
                     Text(displayModel(gen.model))
-                        .font(.system(size: 11, weight: .medium))
+                        .font(theme.textFont(size: 11, weight: 500))
                     Text("generated")
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .foregroundStyle(theme.textSecondary)
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10))
+                        .font(theme.textFont(size: 10))
                         .foregroundStyle(theme.textSecondary)
                 }
                 .padding(.horizontal, 10)
@@ -100,7 +100,7 @@ struct IndexEntryView: View {
         } else {
             Button(action: onRefresh) {
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
             }
             .buttonStyle(.bordered)
             .help("Refresh this entry by asking the agent")
@@ -114,11 +114,11 @@ struct IndexEntryView: View {
     private var aliasesRow: some View {
         HStack(spacing: 6) {
             Text("Also known as")
-                .font(.system(size: 11, weight: .medium))
+                .font(theme.textFont(size: 11, weight: 500))
                 .foregroundStyle(theme.textSecondary)
             ForEach(entry.aliases, id: \.self) { alias in
                 Text(alias)
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(theme.hoverFill))
@@ -147,7 +147,7 @@ struct IndexEntryView: View {
                 .textSelection(.enabled)
         case .paragraph(let text):
             inlineText(text)
-                .font(.system(size: 14))
+                .font(theme.textFont(size: 14))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
@@ -156,10 +156,10 @@ struct IndexEntryView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("•")
-                            .font(.system(size: 14))
+                            .font(theme.textFont(size: 14))
                             .foregroundStyle(theme.textSecondary)
                         inlineText(item)
-                            .font(.system(size: 14))
+                            .font(theme.textFont(size: 14))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
@@ -168,7 +168,7 @@ struct IndexEntryView: View {
             }
         case .codeBlock(let text):
             Text(text)
-                .font(.system(.caption, design: .monospaced))
+                .font(theme.monoFont())
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(theme.hoverFill)
@@ -220,16 +220,16 @@ struct IndexEntryView: View {
     private var sourcesSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Source meetings")
-                .font(.system(size: 12, weight: .semibold))
+                .font(theme.textFont(size: 12, weight: 600))
                 .foregroundStyle(theme.textSecondary)
                 .textCase(.uppercase)
             ForEach(entry.sourceMeetings, id: \.self) { path in
                 Button(action: { onOpenMeeting(path) }) {
                     HStack(spacing: 4) {
                         Image(systemName: "doc.text")
-                            .font(.system(size: 11))
+                            .font(theme.textFont(size: 11))
                         Text(path)
-                            .font(.system(size: 12))
+                            .font(theme.textFont(size: 12))
                     }
                     .foregroundStyle(theme.accent)
                 }

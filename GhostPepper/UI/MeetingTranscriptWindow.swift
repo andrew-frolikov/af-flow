@@ -2980,21 +2980,21 @@ struct MeetingRootView: View {
                         ProgressView().scaleEffect(0.5)
                     }
                     Text(qaStatusLine.isEmpty ? "" : qaStatusLine)
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
                     if let usage = qaThread.last?.usage {
                         Text(runningCostText(usage))
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(theme.monoFont(size: 11))
                             .foregroundStyle(theme.textSecondary)
                             .help("\(usage.inputTokens) in / \(usage.outputTokens) out · \(usage.cacheReadTokens) cache read / \(usage.cacheWriteTokens) cache write")
                     }
                     if !qaTranscript.events.isEmpty {
                         Button(action: { qaTraceExpanded.toggle() }) {
                             Label(qaTraceExpanded ? "Hide trace" : "Show trace", systemImage: qaTraceExpanded ? "chevron.down" : "chevron.right")
-                                .font(.system(size: 11))
+                                .font(theme.textFont(size: 11))
                                 .labelStyle(.titleAndIcon)
                         }
                         .buttonStyle(.borderless)
@@ -3008,7 +3008,7 @@ struct MeetingRootView: View {
                             currentQATask?.cancel()
                         }
                         .buttonStyle(.borderless)
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                     }
                 }
                 .padding(.horizontal, 16)
@@ -3021,7 +3021,7 @@ struct MeetingRootView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(Array(qaTranscript.events.enumerated()), id: \.offset) { _, event in
                             Text(formatTraceLine(event))
-                                .font(.system(.caption, design: .monospaced))
+                                .font(theme.monoFont())
                                 .foregroundStyle(theme.textSecondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
@@ -3070,12 +3070,12 @@ struct MeetingRootView: View {
                             if isApplyingDossier {
                                 ProgressView().scaleEffect(0.5)
                                 Text("Merging into \(pending.slug).md…")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(theme.textFont(size: 12, weight: 500))
                             } else {
                                 Image(systemName: "square.and.arrow.down")
-                                    .font(.system(size: 11))
+                                    .font(theme.textFont(size: 11))
                                 Text("Apply to \(pending.slug).md")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(theme.textFont(size: 12, weight: 500))
                             }
                         }
                     }
@@ -3084,13 +3084,13 @@ struct MeetingRootView: View {
                     .disabled(isApplyingDossier)
 
                     Button("Discard") { state.pendingDossierApply = nil }
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .disabled(isApplyingDossier)
 
                     Spacer()
 
                     Text("Merges with existing dossier (LLM call). Aliases & sources stay.")
-                        .font(.system(size: 10))
+                        .font(theme.textFont(size: 10))
                         .foregroundStyle(theme.textSecondary)
                 }
                 .padding(.horizontal, 16)
@@ -3125,12 +3125,12 @@ struct MeetingRootView: View {
             Divider()
             HStack(spacing: 8) {
                 Image(systemName: "cpu")
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundStyle(theme.textSecondary)
 
                 TextField(qaPlaceholder, text: $qaQuestion)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .onSubmit { askAcrossMeetings() }
                     .disabled(qaIsLoading)
                     .onChange(of: qaQuestion) { _, newValue in
@@ -3146,7 +3146,7 @@ struct MeetingRootView: View {
                 } else if !qaQuestion.isEmpty {
                     Button(action: { askAcrossMeetings() }) {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 16))
+                            .font(theme.textFont(size: 16))
                             .foregroundStyle(theme.accent)
                     }
                     .buttonStyle(.plain)
@@ -3156,9 +3156,9 @@ struct MeetingRootView: View {
                     Button(action: { startNewQAConversation() }) {
                         HStack(spacing: 3) {
                             Image(systemName: "plus.message")
-                                .font(.system(size: 11))
+                                .font(theme.textFont(size: 11))
                             Text("New")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(theme.textFont(size: 11, weight: 500))
                         }
                         .foregroundStyle(theme.textSecondary)
                     }
@@ -3179,10 +3179,10 @@ struct MeetingRootView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 6) {
                 Text("›")
-                    .font(.system(.callout, design: .monospaced))
+                    .font(theme.monoFont())
                     .foregroundStyle(theme.textSecondary)
                 Text(turn.question)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.textFont(size: 12, weight: 500))
                     .foregroundStyle(theme.textSecondary)
                     .textSelection(.enabled)
             }
@@ -3190,7 +3190,7 @@ struct MeetingRootView: View {
                 HStack(spacing: 6) {
                     ProgressView().scaleEffect(0.5)
                     Text(qaStatusLine.isEmpty ? "Thinking…" : qaStatusLine)
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .foregroundStyle(theme.textSecondary)
                 }
             } else if !turn.answer.isEmpty {
@@ -3199,7 +3199,7 @@ struct MeetingRootView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let usage = turn.usage {
                     Text(usageFooterText(usage))
-                        .font(.system(size: 10))
+                        .font(theme.textFont(size: 10))
                         .foregroundStyle(theme.textSecondary)
                 }
             }
@@ -3437,11 +3437,11 @@ struct MeetingRootView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(minimizedWikiGenerationTitle(for: run))
-                    .font(.system(size: 13, weight: .bold))
+                    .font(theme.textFont(size: 13, weight: 700))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(run.status)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(theme.monoFont(size: 11))
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -3508,7 +3508,7 @@ struct MeetingRootView: View {
                 .frame(width: size, height: size)
         } else {
             Image(systemName: "brain.head.profile")
-                .font(.system(size: size * 0.62, weight: .semibold))
+                .font(theme.textFont(size: size * 0.62, weight: 600))
                 .foregroundStyle(theme.accent)
                 .frame(width: size, height: size)
         }
@@ -4018,7 +4018,7 @@ struct MeetingRootView: View {
         HStack(spacing: 0) {
             Button(action: { state.showSidebar.toggle() }) {
                 Image(systemName: "sidebar.left")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.textFont(size: 12, weight: 500))
                     .foregroundColor(state.showSidebar ? appTheme.accent : theme.textSecondary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
@@ -4075,7 +4075,7 @@ struct MeetingRootView: View {
                         }
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(theme.textFont(size: 11, weight: 500))
                             .foregroundStyle(theme.textSecondary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
@@ -4090,7 +4090,7 @@ struct MeetingRootView: View {
 
             Button(action: { state.showModelsSidebar.toggle() }) {
                 Image(systemName: "sidebar.right")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.textFont(size: 12, weight: 500))
                     .foregroundColor(state.showModelsSidebar ? appTheme.accent : theme.textSecondary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
@@ -4159,7 +4159,7 @@ struct MeetingRootView: View {
     private var brainBuildRow: some View {
         HStack(spacing: 8) {
             Image(systemName: "brain.head.profile")
-                .font(.system(size: 11))
+                .font(theme.textFont(size: 11))
                 .foregroundStyle(theme.textSecondary)
             switch brainBuildStatus {
             case .notBuilt(let meetings) where meetings > 0:
@@ -4169,9 +4169,9 @@ struct MeetingRootView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text("Build 2nd Brain")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(theme.textFont(size: 12, weight: 500))
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(theme.textFont(size: 10, weight: 600))
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
@@ -4182,7 +4182,7 @@ struct MeetingRootView: View {
                 .disabled(state.isGeneratingMeetingWiki)
                 .help("Build generated 2nd Brain pages for the next 50 unprocessed meetings or notes.")
                 Text("\(meetings) meetings available")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
             case .built(let pageCount):
                 Button {
@@ -4191,9 +4191,9 @@ struct MeetingRootView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text("Update 2nd Brain")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(theme.textFont(size: 12, weight: 500))
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(theme.textFont(size: 10, weight: 600))
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
@@ -4204,7 +4204,7 @@ struct MeetingRootView: View {
                 .disabled(state.isGeneratingMeetingWiki)
                 .help("Update the 2nd Brain by adding the next 50 unprocessed meetings or notes.")
                 Text("\(pageCount) pages")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
             case .notBuilt, .none:
                 EmptyView()
@@ -4283,16 +4283,16 @@ private struct HomeTabView: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: isActive ? "house.fill" : "house")
-                .font(.system(size: 11))
+                .font(theme.textFont(size: 11))
                 .foregroundColor(isActive ? theme.accent : theme.textSecondary)
             Text("Home")
-                .font(.system(size: 12))
+                .font(theme.textFont(size: 12))
                 .foregroundColor(isActive ? theme.textPrimary : theme.textSecondary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(isActive ? theme.textBackground : Color.clear)
+        .background(isActive ? theme.hoverFill : Color.clear)
         .overlay(alignment: .bottom) {
             if isActive {
                 Rectangle().fill(theme.accent).frame(height: 2)
@@ -4317,13 +4317,13 @@ private struct FileTabView: View {
                 Circle().fill(theme.statusLive).frame(width: 6, height: 6)
             }
             Text(tab.transcript.meetingName)
-                .font(.system(size: 12))
+                .font(theme.textFont(size: 12))
                 .foregroundColor(isActive ? theme.textPrimary : theme.textSecondary)
                 .lineLimit(1)
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(theme.textFont(size: 8, weight: 700))
                     .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.plain)
@@ -4331,7 +4331,7 @@ private struct FileTabView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(isActive ? theme.textBackground : Color.clear)
+        .background(isActive ? theme.hoverFill : Color.clear)
         .overlay(alignment: .bottom) {
             if isActive {
                 Rectangle().fill(theme.accent).frame(height: 2)
@@ -4352,16 +4352,16 @@ private struct IndexTabView: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: tab.content.iconSystemName)
-                .font(.system(size: 10))
+                .font(theme.textFont(size: 10))
                 .foregroundColor(isActive ? theme.accent : theme.textSecondary)
             Text(tab.content.title)
-                .font(.system(size: 12))
+                .font(theme.textFont(size: 12))
                 .foregroundColor(isActive ? theme.textPrimary : theme.textSecondary)
                 .lineLimit(1)
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(theme.textFont(size: 8, weight: 700))
                     .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.plain)
@@ -4369,7 +4369,7 @@ private struct IndexTabView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(isActive ? theme.textBackground : Color.clear)
+        .background(isActive ? theme.hoverFill : Color.clear)
         .overlay(alignment: .bottom) {
             if isActive {
                 Rectangle().fill(theme.accent).frame(height: 2)
@@ -4393,7 +4393,7 @@ struct NavTabContentView: View {
             HStack(spacing: 6) {
                 Button(action: { tab.goBack() }) {
                     Label("Back", systemImage: "chevron.left")
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.borderless)
@@ -4670,18 +4670,18 @@ private struct SecondBrainLintSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: run.errorMessage == nil ? "checklist" : "exclamationmark.triangle")
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(theme.textFont(size: 24, weight: 600))
                     .foregroundStyle(run.errorMessage == nil ? theme.accent : theme.statusLive)
                     .frame(width: 34, height: 34)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Linting 2nd Brain")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(theme.textFont(size: 18, weight: 600))
                     Text("Generated pages only")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(theme.textFont(size: 12, weight: 500))
                         .foregroundStyle(theme.textSecondary)
                     Text(run.status)
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .foregroundColor(run.errorMessage == nil ? theme.textSecondary : theme.statusLive)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -4691,10 +4691,10 @@ private struct SecondBrainLintSheet: View {
 
                 VStack(alignment: .trailing, spacing: 5) {
                     Text("\(run.scannedPages)/\(max(run.totalPages, run.scannedPages)) pages")
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(theme.monoFont(size: 12))
                         .foregroundStyle(theme.textSecondary)
                     Text("\(run.proposals.count) proposals · \(run.acceptedCount) accepted")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(theme.textFont(size: 11, weight: 500))
                         .foregroundStyle(theme.textSecondary)
                 }
 
@@ -4720,7 +4720,7 @@ private struct SecondBrainLintSheet: View {
     private var leftRail: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Lint progress")
-                .font(.system(size: 12, weight: .semibold))
+                .font(theme.textFont(size: 12, weight: 600))
                 .foregroundStyle(theme.textSecondary)
 
             lintProgressRow(title: "Pages", value: "\(run.scannedPages) of \(max(run.totalPages, run.scannedPages))", isActive: run.isRunning)
@@ -4731,7 +4731,7 @@ private struct SecondBrainLintSheet: View {
             Divider()
 
             Text("Checks")
-                .font(.system(size: 12, weight: .semibold))
+                .font(theme.textFont(size: 12, weight: 600))
                 .foregroundStyle(theme.textSecondary)
 
             checkCard(title: "Duplicate entities", status: run.isRunning ? "scanning..." : "complete")
@@ -4751,7 +4751,7 @@ private struct SecondBrainLintSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             if run.isRunning || run.proposals.isEmpty {
                 Text(run.isRunning ? "Scanning pages" : "Result")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(theme.textFont(size: 15, weight: 600))
                 terminalView
             }
 
@@ -4759,9 +4759,9 @@ private struct SecondBrainLintSheet: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Review proposed changes")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(theme.textFont(size: 16, weight: 600))
                         Text("\(run.proposals.count) merge proposal\(run.proposals.count == 1 ? "" : "s") · \(run.acceptedCount) accepted")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(theme.monoFont(size: 11))
                             .foregroundStyle(theme.textSecondary)
                     }
                     Spacer()
@@ -4791,14 +4791,14 @@ private struct SecondBrainLintSheet: View {
             if let error = run.errorMessage {
                 resultCard(title: "Error", systemImage: "exclamationmark.triangle", tint: theme.statusLive) {
                     Text(error)
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .foregroundStyle(theme.statusLive)
                         .textSelection(.enabled)
                 }
             } else if let result = run.resultMessage {
                 resultCard(title: "Result", systemImage: "checkmark.circle", tint: theme.statusReady) {
                     Text(result)
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .textSelection(.enabled)
                 }
             }
@@ -4809,7 +4809,7 @@ private struct SecondBrainLintSheet: View {
     private var terminalView: some View {
         ScrollView {
             Text(run.trace.isEmpty ? "[status] Preparing lint scan..." : run.trace)
-                .font(.system(size: 12, design: .monospaced))
+                .font(theme.monoFont(size: 12))
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -4824,9 +4824,9 @@ private struct SecondBrainLintSheet: View {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(proposal.kind.rawValue): \(proposal.sourceTitle)")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(theme.textFont(size: 13, weight: 600))
                     Text("\(proposal.categoryLabel) · \(proposal.confidence) confidence")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(theme.monoFont(size: 11))
                         .foregroundStyle(confidenceColor(proposal.confidence))
                 }
                 Spacer()
@@ -4848,32 +4848,33 @@ private struct SecondBrainLintSheet: View {
             }
 
             Text("Merge into: \(proposal.targetTitle)")
-                .font(.system(size: 12, weight: .medium))
+                .font(theme.textFont(size: 12, weight: 500))
             Text(proposal.reason)
-                .font(.system(size: 12))
+                .font(theme.textFont(size: 12))
                 .foregroundStyle(theme.textSecondary)
             Text("\(relativePath(proposal.sourceURL)) -> \(relativePath(proposal.targetURL))")
-                .font(.system(size: 10, design: .monospaced))
+                .font(theme.monoFont(size: 10))
                 .foregroundStyle(theme.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.controlBackground)
+        .background(theme.textBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.separator, lineWidth: 1))
     }
 
     private func lintProgressRow(title: String, value: String, isActive: Bool) -> some View {
         HStack(spacing: 8) {
             Image(systemName: isActive ? "circle.dotted" : "checkmark.circle")
-                .font(.system(size: 11, weight: .semibold))
+                .font(theme.textFont(size: 11, weight: 600))
                 .foregroundStyle(isActive ? theme.accent : theme.textSecondary)
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(theme.textFont(size: 12, weight: 600))
             Spacer()
             Text(value)
-                .font(.system(size: 12, design: .monospaced))
+                .font(theme.monoFont(size: 12))
                 .foregroundStyle(theme.textSecondary)
         }
     }
@@ -4881,15 +4882,16 @@ private struct SecondBrainLintSheet: View {
     private func checkCard(title: String, status: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(theme.textFont(size: 12, weight: 600))
             Text(status)
-                .font(.system(size: 11, design: .monospaced))
+                .font(theme.monoFont(size: 11))
                 .foregroundStyle(theme.textSecondary)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.controlBackground)
+        .background(theme.textBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.separator, lineWidth: 1))
     }
 
     private func resultCard<Content: View>(
@@ -4900,14 +4902,15 @@ private struct SecondBrainLintSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 13, weight: .semibold))
+                .font(theme.textFont(size: 13, weight: 600))
                 .foregroundStyle(tint)
             content()
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.controlBackground)
+        .background(theme.textBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.separator, lineWidth: 1))
     }
 
     private func confidenceColor(_ confidence: String) -> Color {
@@ -4957,32 +4960,32 @@ private struct WikiGenerationConsoleSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: run.errorMessage == nil ? "brain.head.profile" : "exclamationmark.triangle")
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(theme.textFont(size: 24, weight: 600))
                     .foregroundStyle(run.errorMessage == nil ? theme.accent : theme.statusLive)
                     .frame(width: 34, height: 34)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Adding to 2nd Brain")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(theme.textFont(size: 18, weight: 600))
                     Text(run.meetingTitle)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(theme.textFont(size: 12, weight: 500))
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(run.status)
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .foregroundColor(run.errorMessage == nil ? theme.textSecondary : theme.statusLive)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if run.isRunning {
                         Text(activeProcessingText)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(theme.textFont(size: 11, weight: 500))
                             .foregroundStyle(theme.textSecondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
                         if let next = nextSourceSummaryText {
                             Text(next)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(theme.textFont(size: 11, weight: 500))
                                 .foregroundStyle(theme.accent.opacity(0.9))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -4994,19 +4997,19 @@ private struct WikiGenerationConsoleSheet: View {
 
 	                VStack(alignment: .trailing, spacing: 5) {
 	                    Text(tokenCounterText)
-	                        .font(.system(size: 12, design: .monospaced))
+	                        .font(theme.monoFont(size: 12))
 	                        .foregroundStyle(theme.textSecondary)
 	                    if let selected = run.selectedFunction {
 	                        Text(throughputText(for: selected))
-	                            .font(.system(size: 10, design: .monospaced))
+	                            .font(theme.monoFont(size: 10))
 	                            .foregroundStyle(theme.textSecondary)
 	                    }
 	                    Text("\(run.modelCallsCompleted)/\(run.modelCallTotal) model calls")
-	                        .font(.system(size: 11, weight: .medium))
+	                        .font(theme.textFont(size: 11, weight: 500))
 	                        .foregroundStyle(theme.textSecondary)
                     if run.isRunning, run.activeOutputTokenEstimate > 0 {
                         Text("current call ~\(run.activeOutputTokenEstimate) out")
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(theme.monoFont(size: 10))
                             .foregroundStyle(theme.textSecondary)
                     }
                 }
@@ -5030,7 +5033,7 @@ private struct WikiGenerationConsoleSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(run.isBatch ? "Batch progress" : "Meeting progress")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(theme.textFont(size: 12, weight: 600))
                     .foregroundStyle(theme.textSecondary)
 
                 progressRow(
@@ -5070,7 +5073,7 @@ private struct WikiGenerationConsoleSheet: View {
             Divider()
 
             Text("Steps")
-                .font(.system(size: 12, weight: .semibold))
+                .font(theme.textFont(size: 12, weight: 600))
                 .foregroundStyle(theme.textSecondary)
 
             ScrollView {
@@ -5086,7 +5089,7 @@ private struct WikiGenerationConsoleSheet: View {
 
                     if run.functions.isEmpty {
                         Text("The first model call will appear here.")
-                            .font(.system(size: 12))
+                            .font(theme.textFont(size: 12))
                             .foregroundStyle(theme.textSecondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 8)
@@ -5109,9 +5112,9 @@ private struct WikiGenerationConsoleSheet: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(selected.name)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(theme.textFont(size: 15, weight: 600))
                         Text(functionStatusText(selected))
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(theme.monoFont(size: 11))
                             .foregroundStyle(theme.textSecondary)
                     }
                     Spacer()
@@ -5119,7 +5122,7 @@ private struct WikiGenerationConsoleSheet: View {
                         showPrompt.toggle()
                     } label: {
                         Label(showPrompt ? "Hide prompt" : "Show prompt", systemImage: showPrompt ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 12))
+                            .font(theme.textFont(size: 12))
                     }
                     .buttonStyle(.borderless)
                 }
@@ -5130,7 +5133,7 @@ private struct WikiGenerationConsoleSheet: View {
                 }
             } else {
                 Text("Starting...")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(theme.textFont(size: 15, weight: 600))
             }
 
             if let draft = run.reviewDraft {
@@ -5144,7 +5147,7 @@ private struct WikiGenerationConsoleSheet: View {
 	            } else if let error = run.errorMessage {
 	                resultCard(title: "Error", systemImage: "exclamationmark.triangle", tint: theme.statusLive) {
 	                    Text(error)
-	                        .font(.system(size: 12))
+	                        .font(theme.textFont(size: 12))
                         .foregroundStyle(theme.statusLive)
                         .textSelection(.enabled)
                 }
@@ -5152,14 +5155,14 @@ private struct WikiGenerationConsoleSheet: View {
                 resultCard(title: "Result", systemImage: "checkmark.circle", tint: theme.statusReady) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(result.gitMessage)
-                            .font(.system(size: 12))
+                            .font(theme.textFont(size: 12))
                             .textSelection(.enabled)
 
                         HStack {
                             Button(openOverviewButtonTitle, action: onOpenOverview)
                                 .buttonStyle(.borderedProminent)
                             Text("Saved \(run.savedRelativePaths.count) files")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(theme.textFont(size: 11, weight: 500))
                                 .foregroundStyle(theme.textSecondary)
                             Spacer()
                         }
@@ -5183,9 +5186,9 @@ private struct WikiGenerationConsoleSheet: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Review before saving")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(theme.textFont(size: 16, weight: 600))
                     Text("\(draft.entities.count) entities · \(draft.topics.count) topics · \(draft.claimCount) claims · source \(draft.meetingPath)")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(theme.monoFont(size: 11))
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -5210,7 +5213,7 @@ private struct WikiGenerationConsoleSheet: View {
                             }
                             if draft.entities.isEmpty {
                                 Text("(none)")
-                                    .font(.system(size: 12, design: .monospaced))
+                                    .font(theme.monoFont(size: 12))
                                     .foregroundStyle(theme.textSecondary)
                             }
                         }
@@ -5223,7 +5226,7 @@ private struct WikiGenerationConsoleSheet: View {
                             }
                             if draft.topics.isEmpty {
                                 Text("(none)")
-                                    .font(.system(size: 12, design: .monospaced))
+                                    .font(theme.monoFont(size: 12))
                                     .foregroundStyle(theme.textSecondary)
                             }
                         }
@@ -5236,7 +5239,7 @@ private struct WikiGenerationConsoleSheet: View {
                             }
                             if draft.claimCount == 0 {
                                 Text("(none)")
-                                    .font(.system(size: 12, design: .monospaced))
+                                    .font(theme.monoFont(size: 12))
                                     .foregroundStyle(theme.textSecondary)
                             }
                         }
@@ -5261,11 +5264,11 @@ private struct WikiGenerationConsoleSheet: View {
             HStack(spacing: 8) {
                 pepperCharacter(size: 18)
                 Text("AF Flow Import")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(theme.textFont(size: 11, weight: 700))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("background")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(theme.monoFont(size: 10))
                     .foregroundStyle(.white.opacity(0.84))
             }
             .padding(.horizontal, 8)
@@ -5276,9 +5279,9 @@ private struct WikiGenerationConsoleSheet: View {
                 pepperCharacter(size: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(run.nextSourceReviewDraft == nil ? "Pre-loading next meeting" : "Ready for entity approval")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(theme.textFont(size: 13, weight: 600))
                     Text(title)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(theme.textFont(size: 11, weight: 500))
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -5294,13 +5297,13 @@ private struct WikiGenerationConsoleSheet: View {
             }
 
             Text(run.nextSourceStatus ?? "Queued for background pre-load")
-                .font(.system(size: 11, design: .monospaced))
+                .font(theme.monoFont(size: 11))
                 .foregroundStyle(theme.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
             Text(nextPreloadTerminalText(title: title))
-                .font(.system(size: 10, design: .monospaced))
+                .font(theme.monoFont(size: 10))
                 .foregroundStyle(Color.white.opacity(0.82))
                 .lineLimit(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -5345,7 +5348,7 @@ private struct WikiGenerationConsoleSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 13, weight: .semibold))
+                .font(theme.textFont(size: 13, weight: 600))
                 .foregroundStyle(theme.textSecondary)
             content()
         }
@@ -5399,11 +5402,11 @@ private struct WikiGenerationConsoleSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(isMerged ? "Merge Entity:" : isDiscarded ? "Discard Entity:" : "New Entity:")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(theme.textFont(size: 13, weight: 600))
                             .foregroundStyle(isDiscarded ? theme.textSecondary : theme.textPrimary)
                         TextField("Entity name", text: proposedName)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(theme.textFont(size: 13, weight: 600))
                             .foregroundStyle(isDiscarded ? theme.textSecondary : theme.textPrimary)
                             .disabled(isDiscarded || isMerged)
                             .frame(minWidth: 120, maxWidth: 260, alignment: .leading)
@@ -5418,7 +5421,7 @@ private struct WikiGenerationConsoleSheet: View {
                         .frame(width: 118)
                         .disabled(isDiscarded || isMerged)
                         Text(entity.resolutionLabel)
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(theme.monoFont(size: 10))
                             .foregroundStyle(theme.textSecondary)
                         confidenceBadge(entity.confidence)
                     }
@@ -5453,7 +5456,7 @@ private struct WikiGenerationConsoleSheet: View {
 
             if !entity.context.isEmpty {
                 Text(entity.context)
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
             }
@@ -5461,10 +5464,10 @@ private struct WikiGenerationConsoleSheet: View {
             if !entity.sourceSnippet.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Source context")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(theme.textFont(size: 10, weight: 600))
                         .foregroundStyle(theme.textSecondary)
                     Text(entity.sourceSnippet)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(theme.monoFont(size: 10))
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(4)
                         .textSelection(.enabled)
@@ -5475,7 +5478,7 @@ private struct WikiGenerationConsoleSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text("Merge with")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(theme.textFont(size: 10, weight: 600))
                         .foregroundStyle(theme.textSecondary)
                     Picker("Merge with", selection: mergeSelection) {
                         Text("Select existing entity").tag("__none__")
@@ -5503,14 +5506,14 @@ private struct WikiGenerationConsoleSheet: View {
 
                 if isMerged {
                     Text("Selected merge target: \(mergeTarget)")
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(theme.monoFont(size: 10))
                         .foregroundStyle(theme.textSecondary)
                 }
 
                 if !entity.suggestedMatches.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Suggested matches")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(theme.textFont(size: 10, weight: 600))
                             .foregroundStyle(theme.textSecondary)
                         ForEach(entity.suggestedMatches, id: \.self) { match in
                             Button {
@@ -5524,7 +5527,7 @@ private struct WikiGenerationConsoleSheet: View {
                                         .foregroundStyle(theme.textSecondary)
                                         .lineLimit(1)
                                 }
-                                .font(.system(size: 10))
+                                .font(theme.textFont(size: 10))
                             }
                             .buttonStyle(.plain)
                             .disabled(isDiscarded)
@@ -5579,17 +5582,17 @@ private struct WikiGenerationConsoleSheet: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Text(isConnected ? "Connect Topic:" : isDiscarded ? "Discard Topic:" : "Keep Topic:")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(theme.textFont(size: 13, weight: 600))
                             .foregroundStyle(isDiscarded ? theme.textSecondary : theme.textPrimary)
                         TextField("Topic", text: topicTitle)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(theme.textFont(size: 13, weight: 600))
                             .disabled(isDiscarded || isConnected)
                             .frame(minWidth: 140, maxWidth: 320, alignment: .leading)
                     }
                     if topic.indexCandidate {
                         Text(topic.suggestedCanonicalTopic?.isEmpty == false ? "suggested reusable topic -> \(topic.suggestedCanonicalTopic!)" : "suggested reusable topic")
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(theme.monoFont(size: 10))
                             .foregroundStyle(theme.accent)
                             .lineLimit(1)
                     }
@@ -5622,13 +5625,13 @@ private struct WikiGenerationConsoleSheet: View {
             }
             if !topic.description.isEmpty {
                 Text(topic.description)
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
             }
             HStack(spacing: 8) {
                 Text("Connect to")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(theme.textFont(size: 10, weight: 600))
                     .foregroundStyle(theme.textSecondary)
                 Picker("Connect topic to", selection: connectSelection) {
                     Text("Just this meeting").tag("__none__")
@@ -5650,14 +5653,14 @@ private struct WikiGenerationConsoleSheet: View {
                 .disabled(isDiscarded)
                 if isConnected {
                     Text(connectTarget)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(theme.monoFont(size: 10))
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                 }
             }
             if !topic.indexReason.isEmpty || (isConnected && topic.indexReason.isEmpty) {
                 Text(topic.indexReason.isEmpty ? "Connected during review." : topic.indexReason)
-                    .font(.system(size: 10))
+                    .font(theme.textFont(size: 10))
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
             }
@@ -5716,23 +5719,23 @@ private struct WikiGenerationConsoleSheet: View {
                     .padding(.top, 3)
                 VStack(alignment: .leading, spacing: 5) {
                     Text(isConnected ? "Connect Claim" : isDiscarded ? "Discard Claim" : "Keep Claim")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(theme.textFont(size: 11, weight: 600))
                         .foregroundStyle(isDiscarded ? theme.textSecondary : theme.textPrimary)
                     confidenceBadge(claim.confidence)
                     if claim.indexCandidate, !claim.indexReason.isEmpty {
                         Text(claim.indexReason)
-                            .font(.system(size: 10))
+                            .font(theme.textFont(size: 10))
                             .foregroundStyle(theme.textSecondary)
                             .lineLimit(2)
                     }
                     TextField("Claim", text: claimText, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .lineLimit(2...4)
                         .disabled(isDiscarded)
                     if !claim.sourceContext.isEmpty {
                         Text(claim.sourceContext)
-                            .font(.system(size: 10))
+                            .font(theme.textFont(size: 10))
                             .foregroundStyle(theme.textSecondary)
                             .lineLimit(2)
                     }
@@ -5769,7 +5772,7 @@ private struct WikiGenerationConsoleSheet: View {
 
             HStack(spacing: 8) {
                 Text("Connect to")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(theme.textFont(size: 10, weight: 600))
                     .foregroundStyle(theme.textSecondary)
                 Picker("Merge claim with", selection: mergeSelection) {
                     Text("Just this meeting").tag("__none__")
@@ -5794,14 +5797,14 @@ private struct WikiGenerationConsoleSheet: View {
 
             if isConnected {
                 Text("Selected claim index target: \(mergeTarget)")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(theme.monoFont(size: 10))
                     .foregroundStyle(theme.textSecondary)
             }
 
             if !claim.suggestedMatches.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Suggested claims")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(theme.textFont(size: 10, weight: 600))
                         .foregroundStyle(theme.textSecondary)
                     ForEach(claim.suggestedMatches, id: \.self) { match in
                         Button {
@@ -5815,7 +5818,7 @@ private struct WikiGenerationConsoleSheet: View {
                                     .foregroundStyle(theme.textSecondary)
                                     .lineLimit(1)
                             }
-                            .font(.system(size: 10))
+                            .font(theme.textFont(size: 10))
                         }
                         .buttonStyle(.plain)
                         .disabled(isDiscarded)
@@ -5844,7 +5847,7 @@ private struct WikiGenerationConsoleSheet: View {
         ScrollViewReader { proxy in
             ScrollView {
                 Text(run.terminalText)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(theme.monoFont(size: 12))
                     .foregroundStyle(Color.white.opacity(0.88))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -5876,15 +5879,15 @@ private struct WikiGenerationConsoleSheet: View {
 
                     VStack(alignment: .leading, spacing: 5) {
                         Text(run.reviewDraft == nil ? "Pre-loading..." : "Approve imported entities")
-                            .font(.system(size: 23, weight: .semibold))
+                            .font(theme.textFont(size: 23, weight: 600))
                             .foregroundStyle(.black)
                         Text(activeProcessingText)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(theme.textFont(size: 12, weight: 500))
                             .foregroundStyle(.black.opacity(0.74))
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Text(run.status)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(theme.monoFont(size: 11))
                             .foregroundStyle(.black.opacity(0.7))
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -5894,14 +5897,14 @@ private struct WikiGenerationConsoleSheet: View {
 
                     VStack(alignment: .trailing, spacing: 4) {
                         Text(tokenCounterText)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .font(theme.monoFont(size: 12))
                             .foregroundStyle(.black)
                         Text(sourceProgressText)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(theme.monoFont(size: 11))
                             .foregroundStyle(.black.opacity(0.68))
                         if let selected = run.selectedFunction {
                             Text(throughputText(for: selected))
-                                .font(.system(size: 10, design: .monospaced))
+                                .font(theme.monoFont(size: 10))
                                 .foregroundStyle(.black.opacity(0.68))
                         }
                     }
@@ -5947,15 +5950,15 @@ private struct WikiGenerationConsoleSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(theme.textFont(size: 22, weight: 600))
                     .foregroundStyle(theme.statusLive)
                 Text("Import stopped")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(theme.textFont(size: 17, weight: 700))
                     .foregroundStyle(.black)
                 Spacer()
             }
             Text(run.errorMessage ?? "Unknown error")
-                .font(.system(size: 12, design: .monospaced))
+                .font(theme.monoFont(size: 12))
                 .foregroundStyle(theme.statusLive)
                 .textSelection(.enabled)
             terminalView
@@ -5970,16 +5973,16 @@ private struct WikiGenerationConsoleSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: nextSourceInlineIcon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(theme.textFont(size: 13, weight: 600))
                     .foregroundStyle(nextSourceInlineTint)
                     .frame(width: 18)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(nextSourceInlineTitle)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(theme.textFont(size: 12, weight: 700))
                         .foregroundStyle(.black)
                     if let title = run.nextSourceTitle {
                         Text(title)
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(theme.monoFont(size: 10))
                             .foregroundStyle(.black.opacity(0.64))
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -5992,13 +5995,13 @@ private struct WikiGenerationConsoleSheet: View {
                 }
                 if let tokens = run.nextSourceInputTokens {
                     Text("~\(tokens.formatted()) in")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .font(theme.monoFont(size: 10))
                         .foregroundStyle(.black.opacity(0.68))
                 }
             }
 
             Text(nextPreloadTerminalText(title: run.nextSourceTitle ?? "next meeting"))
-                .font(.system(size: 10, design: .monospaced))
+                .font(theme.monoFont(size: 10))
                 .foregroundStyle(Color.white.opacity(0.84))
                 .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -6016,16 +6019,16 @@ private struct WikiGenerationConsoleSheet: View {
         HStack(spacing: 8) {
             pepperCharacter(size: 20)
             Text("AF Flow Import")
-                .font(.system(size: 12, weight: .bold))
+                .font(theme.textFont(size: 12, weight: 700))
                 .foregroundStyle(.white)
             Spacer()
             Text(run.isBatch ? "next 50" : "meeting")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(theme.monoFont(size: 11))
                 .foregroundStyle(.white.opacity(0.88))
             if let onMinimize, !run.isBatch {
                 Button(action: onMinimize) {
                     Text("Minimize")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(theme.textFont(size: 11, weight: 700))
                         .foregroundStyle(.black)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 2)
@@ -6036,7 +6039,7 @@ private struct WikiGenerationConsoleSheet: View {
             }
             Button(action: run.isRunning ? onCancel : onClose) {
                 Text(run.isRunning ? "Stop" : "Close")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(theme.textFont(size: 11, weight: 700))
                     .foregroundStyle(.black)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 2)
@@ -6060,7 +6063,7 @@ private struct WikiGenerationConsoleSheet: View {
                     .truncationMode(.middle)
             }
         }
-        .font(.system(size: 11, design: .monospaced))
+        .font(theme.monoFont(size: 11))
         .foregroundStyle(.black.opacity(0.72))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -6077,7 +6080,7 @@ private struct WikiGenerationConsoleSheet: View {
                 .frame(width: size, height: size)
         } else {
             Image(systemName: "brain.head.profile")
-                .font(.system(size: size * 0.62, weight: .semibold))
+                .font(theme.textFont(size: size * 0.62, weight: 600))
                 .foregroundStyle(theme.accent)
                 .frame(width: size, height: size)
         }
@@ -6233,7 +6236,7 @@ private struct WikiGenerationConsoleSheet: View {
         if !cleaned.isEmpty {
             let color: Color = cleaned == "high" ? theme.statusReady : cleaned == "medium" ? theme.accent : theme.statusLive
             Text("\(cleaned) confidence")
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .font(theme.monoFont(size: 9))
                 .foregroundStyle(color)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
@@ -6245,10 +6248,10 @@ private struct WikiGenerationConsoleSheet: View {
     private func promptBlock(title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(theme.textFont(size: 11, weight: 600))
                 .foregroundStyle(theme.textSecondary)
             Text(text)
-                .font(.system(size: 10, design: .monospaced))
+                .font(theme.monoFont(size: 10))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -6262,13 +6265,13 @@ private struct WikiGenerationConsoleSheet: View {
             && !value.hasPrefix("0 of")
         return HStack {
             Image(systemName: isActive ? "circle.dotted" : (isComplete ? "checkmark.circle" : "circle"))
-                .font(.system(size: 11, weight: .semibold))
+                .font(theme.textFont(size: 11, weight: 600))
                 .foregroundStyle(isActive ? theme.accent : (isComplete ? Color.secondary : theme.hoverFill))
             Text(title)
-                .font(.system(size: 12, weight: .medium))
+                .font(theme.textFont(size: 12, weight: 500))
             Spacer()
             Text(value)
-                .font(.system(size: 11, design: .monospaced))
+                .font(theme.monoFont(size: 11))
                 .foregroundStyle(theme.textSecondary)
         }
     }
@@ -6278,15 +6281,15 @@ private struct WikiGenerationConsoleSheet: View {
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: function.isFinished ? "checkmark.circle.fill" : "waveform")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(theme.textFont(size: 11, weight: 600))
                     .foregroundStyle(function.isFinished ? theme.statusReady : theme.accent)
                 Text(function.name)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(theme.textFont(size: 12, weight: 600))
                     .lineLimit(1)
                 Spacer()
             }
             Text(function.isFinished ? "\(function.inputTokens) in / \(function.outputTokens) out" : function.output.isEmpty ? function.modelStatus : "streaming...")
-                .font(.system(size: 10, design: .monospaced))
+                .font(theme.monoFont(size: 10))
                 .foregroundStyle(theme.textSecondary)
         }
         .padding(10)
@@ -6306,7 +6309,7 @@ private struct WikiGenerationConsoleSheet: View {
                 Image(systemName: systemImage)
                     .foregroundStyle(tint)
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(theme.textFont(size: 13, weight: 600))
             }
             content()
         }
@@ -6321,7 +6324,7 @@ private struct WikiGenerationConsoleSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(run.savedRelativePaths, id: \.self) { path in
                     Text(path)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(theme.monoFont(size: 11))
                         .foregroundStyle(theme.textSecondary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -6388,7 +6391,7 @@ private struct GeneratedWikiPageView: View {
                             .textSelection(.enabled)
                         Spacer()
                     }
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundStyle(theme.statusLive)
                     .padding(10)
                     .background(theme.statusLive.opacity(0.10))
@@ -6464,10 +6467,10 @@ private struct GeneratedWikiPageView: View {
                     HStack(spacing: 8) {
                         TextField("Page name", text: $renameDraft)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 24, weight: .semibold))
+                            .font(theme.textFont(size: 24, weight: 600))
                             .padding(.vertical, 3)
                             .padding(.horizontal, 8)
-                            .background(theme.textBackground)
+                            .background(theme.hoverFill)
                             .cornerRadius(6)
                         Button("Save name") {
                             do {
@@ -6493,7 +6496,7 @@ private struct GeneratedWikiPageView: View {
                 } else {
                     HStack(spacing: 8) {
                         Text(page.title)
-                            .font(.system(size: 24, weight: .semibold))
+                            .font(theme.textFont(size: 24, weight: 600))
                         if canRename {
                             Button {
                                 renameDraft = page.title
@@ -6502,7 +6505,7 @@ private struct GeneratedWikiPageView: View {
                                 Label("Rename", systemImage: "pencil.line")
                             }
                             .buttonStyle(.borderless)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(theme.textFont(size: 12, weight: 500))
                             .help("Rename this 2nd Brain entity and keep the old name as an alias")
                         }
                     }
@@ -6540,13 +6543,13 @@ private struct GeneratedWikiPageView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                .font(.system(size: 11))
+                .font(theme.textFont(size: 11))
                 .foregroundStyle(theme.textSecondary)
             }
             Spacer()
             HStack(spacing: 8) {
                 Text(isAutosaving || hasUnsavedChanges ? "Saving..." : "Saved")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(theme.textFont(size: 11, weight: 500))
                     .foregroundStyle(isAutosaving || hasUnsavedChanges ? theme.statusBusy : theme.textSecondary)
                 if hasUnsavedChanges {
                     Button("Revert") {
@@ -6568,10 +6571,10 @@ private struct GeneratedWikiPageView: View {
     private var editor: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Page body")
-                .font(.system(size: 12, weight: .semibold))
+                .font(theme.textFont(size: 12, weight: 600))
                 .foregroundStyle(theme.textSecondary)
             TextEditor(text: $draftBody)
-                .font(.system(size: 15))
+                .font(theme.textFont(size: 15))
                 .scrollContentBackground(.hidden)
                 .padding(14)
                 .frame(minHeight: 640)
@@ -6592,11 +6595,11 @@ private struct GeneratedWikiPageView: View {
             Image(systemName: "clock.arrow.circlepath")
             VStack(alignment: .leading, spacing: 2) {
                 Text(page.pendingGeneratedUpdate ? "User edits preserved" : "User-edited page")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(theme.textFont(size: 12, weight: 600))
                 Text(page.pendingGeneratedUpdate
                     ? "AF Flow saved the generated update in local history instead of overwriting this page."
                     : "This 2nd Brain page has been edited since AF Flow last generated it.")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
             }
             Spacer()
         }
@@ -6611,9 +6614,9 @@ private struct GeneratedWikiPageView: View {
                 Image(systemName: "doc.text.magnifyingglass")
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Generated overview")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(theme.textFont(size: 12, weight: 600))
                     Text("Source of truth: \(source)")
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -6645,11 +6648,12 @@ private struct GeneratedWikiPageView: View {
                     onCommit: { finishEditingBlock(index) },
                     onCancel: { cancelEditingBlock() }
                 )
-                    .font(.system(size: 14))
+                    .font(theme.textFont(size: 14))
                     .padding(10)
                     .frame(minHeight: block.editHeight)
                     .background(theme.textBackground)
                     .cornerRadius(6)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(theme.separator, lineWidth: 1))
                     .onChange(of: editingBlockText) { _, newValue in
                         let currentBlocks = EditableMarkdownBlock.split(draftBody)
                         let nextBody = Self.replacingBlock(at: index, in: currentBlocks, with: newValue)
@@ -6661,7 +6665,7 @@ private struct GeneratedWikiPageView: View {
                     .foregroundStyle(theme.accent.opacity(0.85))
                     .allowsHitTesting(false)
                 Text("Editing")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(theme.textFont(size: 10, weight: 600))
                     .foregroundStyle(theme.accent)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
@@ -6679,7 +6683,7 @@ private struct GeneratedWikiPageView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if recentlySavedBlockIndex == index {
                     Text("Saved")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(theme.textFont(size: 10, weight: 600))
                         .foregroundStyle(theme.statusReady)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
@@ -6793,7 +6797,7 @@ private struct GeneratedWikiPageView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .paragraph(let text):
             inlineText(text)
-                .font(.system(size: 14))
+                .font(theme.textFont(size: 14))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         case .bulletList(let items):
@@ -6801,12 +6805,12 @@ private struct GeneratedWikiPageView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("•")
-                            .font(.system(size: 14))
+                            .font(theme.textFont(size: 14))
                             .foregroundStyle(theme.textSecondary)
                         if let sourceMeeting = Self.sourceMeetingPath(in: item) {
                             Button(action: { onOpenSourceMeeting(sourceMeeting) }) {
                                 Text(sourceMeeting)
-                                    .font(.system(size: 14, design: .monospaced))
+                                    .font(theme.monoFont(size: 14))
                                     .foregroundStyle(theme.accent)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -6814,7 +6818,7 @@ private struct GeneratedWikiPageView: View {
                             .help("Open source meeting")
                         } else {
                             inlineText(item)
-                                .font(.system(size: 14))
+                                .font(theme.textFont(size: 14))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -6823,7 +6827,7 @@ private struct GeneratedWikiPageView: View {
             }
         case .codeBlock(let text):
             Text(text)
-                .font(.system(.caption, design: .monospaced))
+                .font(theme.monoFont())
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(theme.hoverFill)
@@ -7196,9 +7200,9 @@ private struct SecondBrainDashboardView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Label("2nd Brain", systemImage: "brain.head.profile")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(theme.textFont(size: 16, weight: 600))
                 Text("\(graph.nodes.count) pages · \(graph.edges.count) links")
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
                 Button(action: onBuildNextBatch) {
@@ -7238,11 +7242,11 @@ private struct SecondBrainDashboardView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Graph")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(theme.textFont(size: 13, weight: 600))
                                 .foregroundStyle(theme.textSecondary)
                             Spacer()
                             Text("\(graph.nodes.count) nodes")
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(theme.monoFont(size: 11))
                                 .foregroundStyle(theme.textSecondary)
                         }
 
@@ -7294,11 +7298,11 @@ private struct SecondBrainDashboardView: View {
         }.prefix(12)
         VStack(alignment: .leading, spacing: 8) {
             Text("Hubs")
-                .font(.system(size: 13, weight: .semibold))
+                .font(theme.textFont(size: 13, weight: 600))
                 .foregroundStyle(theme.textSecondary)
             if hubs.isEmpty {
                 Text("No 2nd Brain pages yet.")
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundStyle(theme.textSecondary)
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 8)], spacing: 8) {
@@ -7306,14 +7310,14 @@ private struct SecondBrainDashboardView: View {
                         Button(action: { onOpenPageInNewTab(node.url) }) {
                             HStack(spacing: 8) {
                                 Image(systemName: node.icon)
-                                    .font(.system(size: 12))
+                                    .font(theme.textFont(size: 12))
                                     .foregroundStyle(node.isHub ? theme.accent : theme.textSecondary)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(node.title)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(theme.textFont(size: 12, weight: 500))
                                         .lineLimit(1)
                                     Text("\(node.degree) links · \(node.folderTitle)")
-                                        .font(.system(size: 10))
+                                        .font(theme.textFont(size: 10))
                                         .foregroundStyle(theme.textSecondary)
                                 }
                                 Spacer()
@@ -7366,16 +7370,17 @@ private struct SecondBrainGraphView: View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
                 .fill(theme.textBackground)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.separator, lineWidth: 1))
 
             if graph.nodes.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "point.3.connected.trianglepath.dotted")
-                        .font(.system(size: 28))
+                        .font(theme.textFont(size: 28))
                         .foregroundStyle(theme.textSecondary)
                     Text("No 2nd Brain graph yet")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(theme.textFont(size: 13, weight: 600))
                     Text("Add meetings to the 2nd Brain to create pages and links.")
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .foregroundStyle(theme.textSecondary)
                 }
             } else {
@@ -8017,18 +8022,18 @@ private struct SecondBrainGraphNodeView: View {
                 Circle()
                     .stroke(node.isHub ? theme.accent.opacity(0.9) : theme.separator, lineWidth: node.isHub ? 2 : 1)
                 Image(systemName: node.icon)
-                    .font(.system(size: max(10, node.radius * 0.42), weight: .semibold))
+                    .font(theme.textFont(size: max(10, node.radius * 0.42), weight: 600))
                     .foregroundStyle(node.isHub ? theme.accent : theme.textSecondary)
             }
             .frame(width: node.radius * 2, height: node.radius * 2)
 
             Text(node.title)
-                .font(.system(size: 10, weight: node.isHub ? .semibold : .regular))
+                .font(theme.textFont(size: 10, weight: node.isHub ? 600 : 400))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .frame(width: 110)
             Text("\(node.degree)")
-                .font(.system(size: 9, design: .monospaced))
+                .font(theme.monoFont(size: 9))
                 .foregroundStyle(theme.textSecondary)
         }
         .contentShape(Rectangle())
@@ -8055,14 +8060,14 @@ private struct SecondBrainGraphNodeView: View {
     private var nodeHoverLabel: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(node.title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(theme.textFont(size: 11, weight: 600))
                 .lineLimit(1)
             Text("\(node.type.replacingOccurrences(of: "_", with: " ").capitalized) · \(node.folderTitle)")
-                .font(.system(size: 9))
+                .font(theme.textFont(size: 9))
                 .foregroundStyle(theme.textSecondary)
                 .lineLimit(1)
             Text("\(node.degree) links")
-                .font(.system(size: 9, design: .monospaced))
+                .font(theme.monoFont(size: 9))
                 .foregroundStyle(theme.textSecondary)
         }
         .padding(.horizontal, 9)
@@ -8386,10 +8391,10 @@ private struct AirtableTablePreviewView: View {
                 Image(systemName: "tablecells")
                     .foregroundStyle(theme.accent)
                 Text(table.name)
-                    .font(.title3.weight(.semibold))
+                    .font(theme.textFont(size: 15, weight: 600))
                 Spacer()
                 Text("\(table.rows.count) records")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
             }
             .padding(.horizontal, 18)
@@ -8400,12 +8405,12 @@ private struct AirtableTablePreviewView: View {
                     GridRow {
                         ForEach(Array(table.headers.enumerated()), id: \.offset) { _, header in
                             Text(header.isEmpty ? "Untitled" : header)
-                                .font(.caption.weight(.semibold))
+                                .font(theme.textFont(size: 11.5, weight: 600))
                                 .foregroundStyle(theme.textSecondary)
                                 .lineLimit(1)
                                 .frame(minWidth: 140, maxWidth: 240, alignment: .leading)
                                 .padding(8)
-                                .background(theme.controlBackground)
+                                .background(theme.hoverFill)
                         }
                     }
 
@@ -8413,7 +8418,7 @@ private struct AirtableTablePreviewView: View {
                         GridRow {
                             ForEach(table.headers.indices, id: \.self) { index in
                                 Text(index < row.count ? row[index] : "")
-                                    .font(.caption)
+                                    .font(theme.captionFont)
                                     .lineLimit(3)
                                     .frame(minWidth: 140, maxWidth: 240, alignment: .leading)
                                     .padding(8)
@@ -8439,13 +8444,13 @@ private struct ActiveTabRecordingIndicator: View {
                 HStack(spacing: 6) {
                     Circle().fill(theme.statusLive).frame(width: 8, height: 8)
                     LiveDurationView(startDate: tab.transcript.startDate)
-                        .font(.system(.caption, design: .monospaced))
+                        .font(theme.monoFont())
                         .foregroundStyle(theme.textSecondary)
                 }
 
                 Button(action: { Task { await session.stop() } }) {
                     Text("Stop recording")
-                        .font(.caption.weight(.medium))
+                        .font(theme.textFont(size: 11.5, weight: 500))
                         .foregroundColor(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
@@ -8507,7 +8512,7 @@ struct MeetingTabContentView: View {
                         HStack(spacing: 8) {
                             TextField("Untitled", text: $tab.transcript.meetingName)
                                 .textFieldStyle(.plain)
-                                .font(.system(size: 28, weight: .bold))
+                                .font(theme.textFont(size: 28, weight: 700))
                                 .foregroundColor(.primary)
                                 .onSubmit { state.renameActiveTab() }
 
@@ -8515,14 +8520,14 @@ struct MeetingTabContentView: View {
                                 Button(action: { tab.session?.refreshTitleAndAttendees() }) {
                                     HStack(spacing: 3) {
                                         Image(systemName: "sparkle.magnifyingglass")
-                                            .font(.system(size: 11))
+                                            .font(theme.textFont(size: 11))
                                         Text("Detect")
-                                            .font(.caption)
+                                            .font(theme.captionFont)
                                     }
                                     .foregroundStyle(theme.textSecondary)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    .background(theme.controlBackground)
+                                    .background(theme.hoverFill)
                                     .cornerRadius(6)
                                 }
                                 .buttonStyle(.plain)
@@ -8532,12 +8537,12 @@ struct MeetingTabContentView: View {
 
                         HStack(spacing: 8) {
                             Text(dateSubtitle)
-                                .font(.callout)
+                                .font(theme.bodyFont)
                                 .foregroundStyle(theme.textSecondary)
 
                             if tab.transcript.importedFrom != nil {
                                 Text("Imported from \(tab.transcript.importedFrom!.capitalized)")
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(theme.textFont(size: 10, weight: 500))
                                     .foregroundStyle(theme.accent)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 2)
@@ -8550,16 +8555,16 @@ struct MeetingTabContentView: View {
                         if !tab.transcript.attendees.isEmpty {
                             HStack(spacing: 6) {
                                 Image(systemName: "person.2")
-                                    .font(.system(size: 10))
+                                    .font(theme.textFont(size: 10))
                                     .foregroundStyle(theme.textSecondary)
                                 ForEach(tab.transcript.attendees, id: \.self) { attendee in
                                     Text(attendee.name)
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(theme.textFont(size: 11, weight: 500))
                                         .foregroundColor(attendee.declined ? theme.statusLive : theme.textPrimary)
                                         .strikethrough(attendee.declined)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 3)
-                                        .background(theme.controlBackground)
+                                        .background(theme.hoverFill)
                                         .cornerRadius(10)
                                         .help(attendee.declined ? "Declined" : "")
                                 }
@@ -8575,7 +8580,7 @@ struct MeetingTabContentView: View {
                             generateWiki()
                         }) {
                             Label(state.isGeneratingMeetingWiki ? "Adding…" : "Add to Brain", systemImage: "sparkles.rectangle.stack")
-                                .font(.caption.weight(.medium))
+                                .font(theme.textFont(size: 11.5, weight: 500))
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
@@ -8704,7 +8709,7 @@ struct MeetingTabContentView: View {
                 ForEach(availableContentTabs, id: \.self) { ct in
                     Button(action: { selectedContentTab = ct }) {
                         Text(ct.label)
-                            .font(.system(size: 13, weight: selectedContentTab == ct ? .semibold : .regular))
+                            .font(theme.textFont(size: 13, weight: selectedContentTab == ct ? 600 : 400))
                             .foregroundColor(selectedContentTab == ct ? theme.accent : theme.textSecondary)
                             .padding(.bottom, 10)
                             .overlay(alignment: .bottom) {
@@ -8730,32 +8735,32 @@ struct MeetingTabContentView: View {
 
     private var searchBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(theme.textSecondary).font(.caption)
+            Image(systemName: "magnifyingglass").foregroundStyle(theme.textSecondary).font(theme.captionFont)
             TextField("Search...", text: $searchText)
-                .textFieldStyle(.plain).font(.system(size: 13)).focused($searchFocused)
+                .textFieldStyle(.plain).font(theme.textFont(size: 13)).focused($searchFocused)
                 .onSubmit { advanceMatch(forward: true) }
             if !searchText.isEmpty {
                 Text(matchCount == 0 ? "no matches" : "\(currentMatchIndex + 1) / \(matchCount)")
-                    .font(.caption.monospacedDigit())
+                    .font(theme.monoFont(size: 11.5))
                     .foregroundStyle(theme.textSecondary)
                 Button(action: { advanceMatch(forward: false) }) {
-                    Image(systemName: "chevron.up").font(.caption)
+                    Image(systemName: "chevron.up").font(theme.captionFont)
                 }
                 .buttonStyle(.plain)
                 .disabled(matchCount == 0)
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 Button(action: { advanceMatch(forward: true) }) {
-                    Image(systemName: "chevron.down").font(.caption)
+                    Image(systemName: "chevron.down").font(theme.captionFont)
                 }
                 .buttonStyle(.plain)
                 .disabled(matchCount == 0)
                 .keyboardShortcut("g", modifiers: [.command])
                 Button(action: { searchText = "" }) {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(theme.textSecondary).font(.caption)
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(theme.textSecondary).font(theme.captionFont)
                 }.buttonStyle(.plain)
             }
             Button(action: { showSearch = false; searchText = "" }) {
-                Text("Done").font(.caption).foregroundStyle(theme.textSecondary)
+                Text("Done").font(theme.captionFont).foregroundStyle(theme.textSecondary)
             }.buttonStyle(.plain)
         }
         .padding(.horizontal, 52).padding(.vertical, 8)
@@ -8776,11 +8781,11 @@ struct MeetingTabContentView: View {
 
     private var noAudioWarning: some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.statusBusy).font(.caption)
-            Text("No audio detected. Check your microphone.").font(.caption)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.statusBusy).font(theme.captionFont)
+            Text("No audio detected. Check your microphone.").font(theme.captionFont)
             Spacer()
             Button("Open Settings") { state.onOpenSettings?() }
-                .font(.caption.weight(.medium)).buttonStyle(.borderedProminent).tint(theme.accent).controlSize(.small)
+                .font(theme.textFont(size: 11.5, weight: 500)).buttonStyle(.borderedProminent).tint(theme.accent).controlSize(.small)
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(theme.statusBusy.opacity(0.1))
@@ -8788,8 +8793,8 @@ struct MeetingTabContentView: View {
 
     private func saveFailureWarning(_ message: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.statusLive).font(.caption)
-            Text(message).font(.caption)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.statusLive).font(theme.captionFont)
+            Text(message).font(theme.captionFont)
             Spacer()
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
@@ -8798,8 +8803,8 @@ struct MeetingTabContentView: View {
 
     private func captureDegradedWarning(_ message: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "waveform.slash").foregroundStyle(theme.statusBusy).font(.caption)
-            Text(message).font(.caption)
+            Image(systemName: "waveform.slash").foregroundStyle(theme.statusBusy).font(theme.captionFont)
+            Text(message).font(theme.captionFont)
             Spacer()
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
@@ -8818,8 +8823,16 @@ struct MeetingTabContentView: View {
         }
     }
 
-    private static let notesFont = Font.custom("Georgia", size: 15)
-    private static let articleFont = Font.custom("Georgia", size: 16)
+    /// The long-form reading faces, Inter at the ladder's Reading sizes.
+    ///
+    /// They were Georgia, which is the DISPLAY face's fallback rather than the
+    /// brand's text face. This window is where Andrew reads long transcripts
+    /// and those are Russian more often than not, so it is exactly where the
+    /// Cyrillic rule pays off: Inter covers Cyrillic completely, Fraunces loses
+    /// 13 glyphs in 14. Read from `BrandFonts` rather than the theme because
+    /// these are static and have no view to read an environment from.
+    private static let notesFont = BrandFonts.text(size: 15)
+    private static let articleFont = BrandFonts.text(size: 16)
 
     @ViewBuilder
     private var articleContent: some View {
@@ -8831,9 +8844,9 @@ struct MeetingTabContentView: View {
                     Link(destination: url) {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.up.right.square")
-                                .font(.system(size: 10))
+                                .font(theme.textFont(size: 10))
                             Text(host)
-                                .font(.caption)
+                                .font(theme.captionFont)
                         }
                         .foregroundStyle(theme.accent)
                     }
@@ -8858,7 +8871,7 @@ struct MeetingTabContentView: View {
             }
         } else {
             Text("No article saved.")
-                .font(.callout)
+                .font(theme.bodyFont)
                 .foregroundStyle(theme.textSecondary)
         }
     }
@@ -8933,10 +8946,10 @@ struct MeetingTabContentView: View {
                 if tab.isRecording {
                     HStack(spacing: 8) {
                         ProgressView().scaleEffect(0.6)
-                        Text("Listening, segments appear every ~30 seconds").font(.callout).foregroundStyle(theme.textSecondary)
+                        Text("Listening, segments appear every ~30 seconds").font(theme.bodyFont).foregroundStyle(theme.textSecondary)
                     }.padding(.vertical, 8)
                 } else {
-                    Text("No transcript yet.").font(.callout).foregroundStyle(theme.textSecondary).padding(.vertical, 8)
+                    Text("No transcript yet.").font(theme.bodyFont).foregroundStyle(theme.textSecondary).padding(.vertical, 8)
                 }
             }
             ForEach(filteredSegments) { segment in
@@ -8949,7 +8962,7 @@ struct MeetingTabContentView: View {
                         Circle().fill(theme.hoverFill).frame(width: 4, height: 4)
                         Circle().fill(theme.hoverFill).frame(width: 4, height: 4)
                     }
-                    Text("Listening...").font(.caption).foregroundStyle(theme.textSecondary)
+                    Text("Listening...").font(theme.captionFont).foregroundStyle(theme.textSecondary)
                 }.padding(.top, 4)
             }
         }
@@ -8959,21 +8972,21 @@ struct MeetingTabContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "person.wave.2")
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .foregroundStyle(theme.accent)
                 Text("Speakers")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(theme.textFont(size: 13, weight: 600))
                 Spacer()
                 Button(action: { state.onOpenSettings?() }) {
                     Label("Voice Library", systemImage: "person.crop.circle.badge.checkmark")
-                        .font(.caption)
+                        .font(theme.captionFont)
                 }
                 .buttonStyle(.borderless)
             }
 
             if let speakerReviewError {
                 Text(speakerReviewError)
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.statusLive)
             }
 
@@ -9020,18 +9033,18 @@ struct MeetingTabContentView: View {
         VStack(alignment: .leading, spacing: 24) {
             if tab.isRecording {
                 VStack(spacing: 12) {
-                    Image(systemName: "sparkles").font(.system(size: 32)).foregroundColor(theme.accent.opacity(0.4))
-                    Text("Summary will be generated when the meeting ends").font(.callout).foregroundStyle(theme.textSecondary)
+                    Image(systemName: "sparkles").font(theme.textFont(size: 32)).foregroundColor(theme.accent.opacity(0.4))
+                    Text("Summary will be generated when the meeting ends").font(theme.bodyFont).foregroundStyle(theme.textSecondary)
                 }.frame(maxWidth: .infinity).padding(.vertical, 60)
             } else if tab.transcript.isGeneratingSummary {
                 VStack(spacing: 12) {
                     ProgressView().scaleEffect(0.8)
-                    Text("Generating summary...").font(.callout).foregroundStyle(theme.textSecondary)
+                    Text("Generating summary...").font(theme.bodyFont).foregroundStyle(theme.textSecondary)
                 }.frame(maxWidth: .infinity).padding(.vertical, 60)
             } else if tab.transcript.summary != nil {
                 summaryStats
             } else if tab.transcript.segments.isEmpty {
-                Text("No transcript to summarize.").font(.callout).foregroundStyle(theme.textSecondary).padding(.vertical, 40)
+                Text("No transcript to summarize.").font(theme.bodyFont).foregroundStyle(theme.textSecondary).padding(.vertical, 40)
             } else {
                 summaryStats
             }
@@ -9046,9 +9059,9 @@ struct MeetingTabContentView: View {
                     Button(action: { regenerateSummary() }) {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 10))
+                                .font(theme.textFont(size: 10))
                             Text("Regenerate")
-                                .font(.caption)
+                                .font(theme.captionFont)
                         }
                         .foregroundStyle(theme.accent)
                     }
@@ -9058,9 +9071,9 @@ struct MeetingTabContentView: View {
                     Button(action: { regenerateSummary() }) {
                         HStack(spacing: 4) {
                             Image(systemName: "sparkles")
-                                .font(.system(size: 11))
+                                .font(theme.textFont(size: 11))
                             Text("Generate Summary")
-                                .font(.caption.weight(.medium))
+                                .font(theme.textFont(size: 11.5, weight: 500))
                         }
                         .foregroundColor(.white)
                         .padding(.horizontal, 12)
@@ -9077,9 +9090,9 @@ struct MeetingTabContentView: View {
                 Button(action: { withAnimation(.easeInOut(duration: 0.15)) { showSummaryPrompt.toggle() } }) {
                     HStack(spacing: 4) {
                         Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 10))
+                            .font(theme.textFont(size: 10))
                         Text("Customize")
-                            .font(.caption)
+                            .font(theme.captionFont)
                     }
                     .foregroundColor(showSummaryPrompt ? theme.accent : theme.textSecondary)
                 }
@@ -9092,7 +9105,7 @@ struct MeetingTabContentView: View {
                     // Model picker
                     HStack {
                         Text("Model")
-                            .font(.caption).foregroundStyle(theme.textSecondary)
+                            .font(theme.captionFont).foregroundStyle(theme.textSecondary)
                         Picker("", selection: $selectedModelKind) {
                             ForEach(TextCleanupManager.cleanupGenerationModels, id: \.kind) { model in
                                 Text(model.displayName).tag(model.kind.rawValue)
@@ -9104,21 +9117,22 @@ struct MeetingTabContentView: View {
 
                     // Prompt editor
                     Text("Summary prompt")
-                        .font(.caption).foregroundStyle(theme.textSecondary)
+                        .font(theme.captionFont).foregroundStyle(theme.textSecondary)
 
                     TextEditor(text: $summaryPrompt)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(theme.monoFont(size: 11))
                         .scrollContentBackground(.hidden)
                         .padding(6)
                         .background(theme.textBackground)
                         .cornerRadius(6)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(theme.separator, lineWidth: 1))
                         .frame(height: 120)
 
                     HStack {
                         Button("Reset to Default") {
                             summaryPrompt = MeetingSummaryGenerator.finalSummaryPrompt
                         }
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .buttonStyle(.plain)
                         .foregroundStyle(theme.textSecondary)
 
@@ -9126,8 +9140,9 @@ struct MeetingTabContentView: View {
                     }
                 }
                 .padding(10)
-                .background(theme.controlBackground)
+                .background(theme.textBackground)
                 .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.separator, lineWidth: 1))
             }
 
             // Editable summary (same style as notes); read-only highlighted while searching.
@@ -9181,16 +9196,16 @@ struct MeetingTabContentView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "doc.text")
                         Text(url.lastPathComponent)
-                    }.font(.caption).foregroundStyle(theme.textSecondary)
+                    }.font(theme.captionFont).foregroundStyle(theme.textSecondary)
                 }.buttonStyle(.plain)
             }
             Spacer()
             if !tab.transcript.segments.isEmpty {
-                Text("\(tab.transcript.segments.count) segments").font(.caption).foregroundStyle(theme.textSecondary)
+                Text("\(tab.transcript.segments.count) segments").font(theme.captionFont).foregroundStyle(theme.textSecondary)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 6)
-        .background(theme.textBackground)
+        .background(theme.controlBackground)
         .overlay(alignment: .top) {
             Rectangle().fill(theme.separator.opacity(0.5)).frame(height: 1)
         }
@@ -9265,13 +9280,13 @@ struct MeetingSidebarView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text("Library")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(theme.textFont(size: 13, weight: 600))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
 
                 Button(action: { openMeetingsFolder() }) {
                     Image(systemName: "folder")
-                        .font(.system(size: 12))
+                        .font(theme.textFont(size: 12))
                         .foregroundStyle(theme.textSecondary)
                 }
                 .buttonStyle(.borderless)
@@ -9287,15 +9302,15 @@ struct MeetingSidebarView: View {
             // Search field
             HStack(spacing: 4) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 10))
+                    .font(theme.textFont(size: 10))
                     .foregroundStyle(theme.textSecondary)
                 TextField("Search library", text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                 if !searchText.isEmpty {
                     Button(action: { searchText = "" }) {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 10))
+                            .font(theme.textFont(size: 10))
                             .foregroundStyle(theme.textSecondary)
                     }
                     .buttonStyle(.borderless)
@@ -9317,13 +9332,13 @@ struct MeetingSidebarView: View {
 
                     if meetingGroups.isEmpty && airtableGroups.isEmpty && filteredWikiFolders.allSatisfy({ $0.items.isEmpty }) && !searchText.isEmpty {
                         Text(searchText.isEmpty ? "No past meetings or 2nd Brain pages" : "No matches")
-                            .font(.caption).foregroundStyle(theme.textSecondary)
+                            .font(theme.captionFont).foregroundStyle(theme.textSecondary)
                             .padding(.horizontal, 16).padding(.top, 8)
                     }
 
                     if !meetingGroups.isEmpty {
                         Text("Meetings")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(theme.textFont(size: 10, weight: 600))
                             .foregroundStyle(theme.textSecondary)
                             .padding(.horizontal, 16)
                             .padding(.top, 12)
@@ -9332,7 +9347,7 @@ struct MeetingSidebarView: View {
 
                     ForEach(meetingGroups, id: \.date) { group in
                         Text(group.date)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(theme.textFont(size: 10, weight: 600))
                             .foregroundStyle(theme.textSecondary)
                             .padding(.horizontal, 16)
                             .padding(.top, 10).padding(.bottom, 2)
@@ -9342,10 +9357,10 @@ struct MeetingSidebarView: View {
                             Button(action: { state.openFile(entry.fileURL) }) {
                                 HStack(spacing: 6) {
                                     Image(systemName: entry.isGranola ? "square.and.arrow.down.on.square" : "doc.text")
-                                        .font(.system(size: 10))
+                                        .font(theme.textFont(size: 10))
                                         .foregroundColor(isOpen ? appTheme.accent : (entry.isGranola ? appTheme.statusReady.opacity(0.7) : appTheme.textSecondary))
                                     Text(entry.name)
-                                        .font(.system(size: 12))
+                                        .font(theme.textFont(size: 12))
                                         .foregroundColor(isOpen ? appTheme.accent : appTheme.textPrimary)
                                         .lineLimit(1)
                                 }
@@ -9458,7 +9473,7 @@ struct MeetingSidebarView: View {
             if expandedLibraryFolders.contains("airtable") {
                 if airtableGroups.isEmpty {
                     Text("No Airtable imports")
-                        .font(.system(size: 11))
+                        .font(theme.textFont(size: 11))
                         .foregroundStyle(theme.textSecondary)
                         .padding(.leading, 34)
                         .padding(.trailing, 12)
@@ -9489,24 +9504,24 @@ struct MeetingSidebarView: View {
         }) {
             HStack(spacing: 6) {
                 Image(systemName: expandedLibraryFolders.contains(id) ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(theme.textFont(size: 8, weight: 600))
                     .foregroundStyle(theme.textSecondary)
                     .frame(width: 10)
                 Image(systemName: icon)
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(theme.textFont(size: 12, weight: 600))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text("(\(count))")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
                 Button(action: openAction) {
                     Image(systemName: "folder")
-                        .font(.system(size: 10))
+                        .font(theme.textFont(size: 10))
                         .foregroundStyle(theme.textSecondary)
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
@@ -9536,19 +9551,19 @@ struct MeetingSidebarView: View {
         }) {
             HStack(spacing: 6) {
                 Image(systemName: expandedWikiFolders.contains(folder.slug) ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(theme.textFont(size: 8, weight: 600))
                     .foregroundStyle(theme.textSecondary)
                     .frame(width: 10)
                 Image(systemName: folder.iconSystemName)
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Text(folder.title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.textFont(size: 12, weight: 500))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text("(\(folder.items.count))")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
@@ -9569,10 +9584,10 @@ struct MeetingSidebarView: View {
         return Button(action: { state.openGeneratedWikiPage(item.fileURL) }) {
             HStack(spacing: 6) {
                 Image(systemName: item.type == "meeting_overview" ? "doc.richtext" : "doc.text")
-                    .font(.system(size: 10))
+                    .font(theme.textFont(size: 10))
                     .foregroundColor(isOpen ? appTheme.accent : appTheme.textSecondary)
                 Text(item.title)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundColor(isOpen ? appTheme.accent : appTheme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -9607,19 +9622,19 @@ struct MeetingSidebarView: View {
         }) {
             HStack(spacing: 6) {
                 Image(systemName: expandedAirtableFolders.contains(group.date) ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(theme.textFont(size: 8, weight: 600))
                     .foregroundStyle(theme.textSecondary)
                     .frame(width: 10)
                 Image(systemName: "tray.full")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Text(title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.textFont(size: 12, weight: 500))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text("(\(group.entries.count))")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
@@ -9635,10 +9650,10 @@ struct MeetingSidebarView: View {
         Button(action: { state.openFile(entry.fileURL) }) {
             HStack(spacing: 6) {
                 Image(systemName: "tablecells")
-                    .font(.system(size: 10))
+                    .font(theme.textFont(size: 10))
                     .foregroundColor(appTheme.statusReady.opacity(0.75))
                 Text(entry.name)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -9666,12 +9681,12 @@ struct MeetingSidebarView: View {
         Button(action: { state.showNewWikiSheet = true }) {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.accent)
                 Text(state.wikiProposals.count == 1
                      ? "Suggested 2nd Brain: \(state.wikiProposals[0].spec.displayName)"
                      : "\(state.wikiProposals.count) suggested 2nd Brains")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.textFont(size: 12, weight: 500))
                     .foregroundStyle(theme.accent)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -9694,15 +9709,15 @@ struct MeetingSidebarView: View {
         return Button(action: { state.openIndexList(kind: kind) }) {
             HStack(spacing: 6) {
                 Image(systemName: kind.iconSystemName)
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundColor(isOpen ? appTheme.accent : appTheme.textSecondary)
                 Text(kind.displayName)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.textFont(size: 12, weight: 500))
                     .foregroundColor(isOpen ? appTheme.accent : appTheme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text("(\(count))")
-                    .font(.system(size: 11))
+                    .font(theme.textFont(size: 11))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
@@ -9730,25 +9745,29 @@ private struct ConsentDialogView: View {
         VStack(spacing: 20) {
             // Header
             Image(systemName: "mic.badge.xmark")
-                .font(.system(size: 36))
+                .font(theme.textFont(size: 36))
                 .foregroundStyle(theme.statusLive)
                 .padding(.top, 8)
 
             Text("Let participants know")
-                .font(.title3.bold())
+                .font(theme.textFont(size: 15, weight: 700))
 
             Text("Before recording, share this with your meeting participants:")
-                .font(.callout)
+                .font(theme.bodyFont)
                 .foregroundStyle(theme.textSecondary)
                 .multilineTextAlignment(.center)
 
             // Message to copy
             VStack(spacing: 8) {
                 Text(Self.consentMessage)
-                    .font(.system(size: 13))
+                    .font(theme.textFont(size: 13))
                     .padding(12)
                     .frame(maxWidth: .infinity)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(theme.controlBackground))
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(theme.textBackground)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.separator, lineWidth: 1))
+                    )
 
                 Button(action: {
                     NSPasteboard.general.clearContents()
@@ -9760,7 +9779,7 @@ private struct ConsentDialogView: View {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         Text(copied ? "Copied!" : "Copy to clipboard")
                     }
-                    .font(.caption.weight(.medium))
+                    .font(theme.textFont(size: 11.5, weight: 500))
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(theme.accent)
@@ -9771,11 +9790,11 @@ private struct ConsentDialogView: View {
             if let recordingStartError = state.recordingStartError {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 13))
+                        .font(theme.textFont(size: 13))
                         .foregroundStyle(theme.statusLive)
                         .padding(.top, 1)
                     Text(recordingStartError)
-                        .font(.caption)
+                        .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -9788,7 +9807,7 @@ private struct ConsentDialogView: View {
             VStack(spacing: 12) {
                 Button(action: { state.confirmRecording() }) {
                     Text("I've informed participants. Start recording")
-                        .font(.callout.weight(.medium))
+                        .font(theme.textFont(size: 13, weight: 500))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -9798,7 +9817,7 @@ private struct ConsentDialogView: View {
 
                 Button(action: { state.cancelRecording() }) {
                     Text("Cancel")
-                        .font(.callout)
+                        .font(theme.bodyFont)
                         .foregroundStyle(theme.textSecondary)
                 }
                 .buttonStyle(.plain)
@@ -9807,7 +9826,7 @@ private struct ConsentDialogView: View {
             // Don't ask again
             Toggle(isOn: $skipConsent) {
                 Text("Don't ask again (my jurisdiction doesn't require consent)")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
             }
             .toggleStyle(.checkbox)
@@ -9825,6 +9844,7 @@ private struct ConsentDialogView: View {
 /// across multiple rows (e.g. one per Q&A turn) without shared state. The text
 /// is supplied as a closure so it's evaluated lazily at click time.
 private struct CopyButton: View {
+    @Environment(\.appTheme) private var theme
     let text: () -> String
     var label: String = "Copy"
     @State private var copied = false
@@ -9837,7 +9857,7 @@ private struct CopyButton: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
         }) {
             Label(copied ? "Copied!" : label, systemImage: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 11))
+                .font(theme.textFont(size: 11))
                 .labelStyle(.titleAndIcon)
         }
         .buttonStyle(.borderless)
@@ -9849,7 +9869,7 @@ private struct SummarySectionHeader: View {
     let title: String
     var body: some View {
         Text(title.uppercased())
-            .font(.system(size: 11, weight: .bold))
+            .font(theme.textFont(size: 11, weight: 700))
             .foregroundStyle(theme.textSecondary).tracking(0.5)
     }
 }
@@ -9861,8 +9881,8 @@ private struct StatBlock: View {
     var color: Color = .primary
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.system(size: 22, weight: .bold)).foregroundColor(color)
-            Text(label).font(.caption).foregroundStyle(theme.textSecondary)
+            Text(value).font(theme.textFont(size: 22, weight: 700)).foregroundColor(color)
+            Text(label).font(theme.captionFont).foregroundStyle(theme.textSecondary)
         }
     }
 }
@@ -9888,17 +9908,17 @@ struct TranscriptSegmentRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(segment.formattedTimestamp)
-                .font(.system(.caption, design: .monospaced))
+                .font(theme.monoFont())
                 .foregroundStyle(theme.textSecondary)
                 .frame(width: 48, alignment: .trailing)
             if showSpeakerBadge {
                 Text(segment.speaker.displayName)
-                    .font(.caption2.weight(.semibold)).foregroundColor(.white)
+                    .font(theme.textFont(size: 11.5, weight: 600)).foregroundColor(.white)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Capsule().fill(speakerColor))
             }
             highlightedText
-                .font(.system(size: 14)).lineSpacing(3)
+                .font(theme.textFont(size: 14)).lineSpacing(3)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -9944,7 +9964,7 @@ private struct SpeakerReviewRow: View {
             HStack(alignment: .center, spacing: 8) {
                 TextField("Speaker name", text: $draftName)
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12))
+                    .font(theme.textFont(size: 12))
                     .frame(minWidth: 160, maxWidth: 240)
                     .onSubmit {
                         if canSave {
@@ -9953,7 +9973,7 @@ private struct SpeakerReviewRow: View {
                     }
 
                 Text(statusText)
-                    .font(.caption2.weight(.medium))
+                    .font(theme.textFont(size: 11.5, weight: 500))
                     .foregroundStyle(item.isVoicePrintBacked ? theme.statusReady : theme.textSecondary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
@@ -9963,14 +9983,14 @@ private struct SpeakerReviewRow: View {
                     )
 
                 Text("\(item.segmentCount) \(item.segmentCount == 1 ? "turn" : "turns")")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
 
                 Spacer()
 
                 Button(action: onSave) {
                     Label("Save", systemImage: "checkmark")
-                        .font(.caption.weight(.medium))
+                        .font(theme.textFont(size: 11.5, weight: 500))
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -9979,11 +9999,11 @@ private struct SpeakerReviewRow: View {
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(item.firstTimestamp)
-                    .font(.system(.caption2, design: .monospaced))
+                    .font(theme.monoFont())
                     .foregroundStyle(theme.textSecondary)
                     .frame(width: 42, alignment: .trailing)
                 Text(item.sampleText.isEmpty ? "No transcript sample available." : item.sampleText)
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)

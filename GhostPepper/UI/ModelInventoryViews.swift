@@ -20,7 +20,8 @@ struct ModelInventoryCard: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(theme.controlBackground)
+                .fill(theme.textBackground)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(theme.separator, lineWidth: 1))
         )
     }
 
@@ -81,25 +82,25 @@ private struct ModelInventoryRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(row.name)
-                        .font(.callout)
+                        .font(theme.bodyFont)
                         .foregroundStyle(isDeleting ? theme.textSecondary : theme.textPrimary)
 
                     if row.isSelected {
                         Text("Selected")
-                            .font(.caption2.weight(.semibold))
+                            .font(theme.textFont(size: 11.5, weight: 600))
                             .foregroundStyle(theme.accent)
                     }
                 }
 
                 Text(isDeleting ? "Removing..." : statusText)
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
             }
 
             Spacer()
 
             Text(row.sizeDescription)
-                .font(.caption)
+                .font(theme.captionFont)
                 .foregroundStyle(theme.textSecondary)
 
             if let onDelete {
@@ -119,7 +120,7 @@ private struct ModelInventoryRow: View {
                         }
                     }) {
                         Image(systemName: "trash")
-                            .font(.caption)
+                            .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
                     }
                     .buttonStyle(.borderless)
@@ -170,7 +171,7 @@ private struct ModelInventoryStatusIndicator: View {
                     .foregroundStyle(theme.statusReady)
             }
         }
-        .font(.caption)
+        .font(theme.captionFont)
         .frame(width: 14, height: 14)
     }
 }

@@ -65,16 +65,16 @@ struct AttachmentChip: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: attachment.kindGlyph)
-                .font(.system(size: 10))
+                .font(theme.textFont(size: 10))
                 .foregroundStyle(theme.accent)
             Text(attachment.title)
-                .font(.system(size: 11, weight: .medium))
+                .font(theme.textFont(size: 11, weight: 500))
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Button(action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(theme.textFont(size: 8, weight: 600))
                     .foregroundStyle(theme.textSecondary)
             }
             .buttonStyle(.plain)

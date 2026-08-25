@@ -211,6 +211,7 @@ class RecordingOverlayController {
 }
 
 struct OverlayPillView: View {
+    @Environment(\.appTheme) private var theme
     let message: OverlayMessage
     var onTap: (() -> Void)?
     @AppStorage(AppTheme.storageKey) private var selectedThemeID = AppThemeID.current.rawValue
@@ -257,7 +258,7 @@ struct OverlayPillView: View {
                     .colorScheme(.dark)
             } else if case .learnedCorrection = message {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(theme.textFont(size: 18, weight: 600))
                     .foregroundStyle(appTheme.overlayStatusReady)
             } else {
                 // The pulse means "this is still happening". It used to run on
@@ -278,12 +279,12 @@ struct OverlayPillView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(message.primaryText)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(theme.textFont(size: 13, weight: 600))
                     .foregroundStyle(textColor)
 
                 if let secondaryText = message.secondaryText {
                     Text(secondaryText)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(theme.textFont(size: 12, weight: 500))
                         .foregroundStyle(textColor.opacity(0.8))
                         .lineLimit(2)
                 }

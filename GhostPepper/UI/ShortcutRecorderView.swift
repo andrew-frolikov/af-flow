@@ -37,7 +37,7 @@ struct ShortcutRecorderView: View {
 
             if isRecording {
                 Text("Press the full chord, then release. Press Escape to cancel.")
-                    .font(.caption)
+                    .font(theme.captionFont)
                     .foregroundStyle(theme.textSecondary)
             }
         }
