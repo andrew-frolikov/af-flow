@@ -16,12 +16,14 @@ import SwiftUI
 /// still working on it." So this is deliberately ONE screen with no navigation.
 /// Everything it shows answers "how do I use this", and nothing else is on it.
 ///
-/// **The look is his, not invented here.** The palette, the Georgia-against-ink
-/// pairing and the warm rules are lifted from his own house style at
-/// `AndrewFrolikov OS/Resources/report-style/base.html`, at his instruction to
-/// use his design from the vault as much as possible. Committing to the warm
-/// paper look rather than following the system appearance is a deliberate
-/// choice: it is his brand, and one confident look beats two hedged ones.
+/// **The look is his, not invented here.** As of 2026-08-25 it is the canonical
+/// brand: pine on warm paper, Fraunces for the app's own words and Inter for
+/// everything else, from `AndrewFrolikov OS/Context/brand-visual.md` by way of
+/// `docs/design/af-flow-visual-system.md`. It was a Georgia-against-ink lift
+/// from his report style before that, which is what this paragraph used to
+/// describe. Committing to the paper look rather than following the system
+/// appearance is deliberate: it is his brand, and one confident look beats two
+/// hedged ones.
 struct AFFlowHomeView: View {
     @Environment(\.appTheme) private var theme
     @ObservedObject var appState: AppState
