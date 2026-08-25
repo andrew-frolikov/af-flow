@@ -155,7 +155,7 @@ final class TranscriptionLabStoreCorruptionTests: XCTestCase {
         try store.insert(makeEntry(audioFileName: "first.wav"), audioData: Data([0x01]), stageTimings: timings())
 
         try Data("nonsense".utf8)
-            .write(to: directory.appendingPathComponent("transcription-lab-timings.json"))
+            .write(to: directory.appendingPathComponent("transcription-lab-timings.jsonl"))
 
         let loadedTimings = (try? store.loadStageTimings()) ?? [:]
         XCTAssertTrue(loadedTimings.isEmpty)

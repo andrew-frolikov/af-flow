@@ -5,6 +5,18 @@ struct TranscriptionLabStageTimings: Codable, Equatable {
     let cleanupDuration: TimeInterval?
 }
 
+/// One line of the append-only timings file: an entry id and its two durations.
+///
+/// A separate type from `TranscriptionLabStageTimings` on purpose. The stored
+/// line has to carry the id, because the file is no longer a dictionary keyed by
+/// one; making the id a property of the public timings struct instead would put
+/// a storage detail into the type the UI reads.
+private struct TranscriptionLabStageTimingLine: Codable {
+    let id: String
+    let transcriptionDuration: TimeInterval?
+    let cleanupDuration: TimeInterval?
+}
+
 final class TranscriptionLabStore {
     private static let minimumDisplayableAudioDuration: TimeInterval = 0.05
 
@@ -65,6 +77,11 @@ final class TranscriptionLabStore {
     /// with no scheduler to starve.
     func loadEntries() throws -> [TranscriptionLabEntry] {
         migrateLegacyArchiveIfNeeded()
+        // Reading PRUNES, and pruning removes timings. Without this the prune
+        // would read an empty new file, decline to remove anything, and the
+        // durations of entries it had just dropped would reappear the moment the
+        // migration finally ran on the next read.
+        migrateLegacyStageTimingsIfNeeded()
 
         var entries = readIndexLines()
         // Newest first, and de-duplicated by id: the file is append-only, so a
@@ -105,16 +122,27 @@ final class TranscriptionLabStore {
     /// single JSON array meant one malformed byte cost the whole archive, which
     /// is why this format was chosen over raising the cap on the old one.
     private func readIndexLines() -> [TranscriptionLabEntry] {
-        guard let text = try? String(contentsOf: indexURL, encoding: .utf8) else { return [] }
-        var entries: [TranscriptionLabEntry] = []
-        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
-            guard let data = line.data(using: .utf8),
-                  let entry = try? decoder.decode(TranscriptionLabEntry.self, from: data) else {
-                continue
-            }
-            entries.append(entry)
-        }
-        return entries
+        lineData(of: indexURL).compactMap { try? decoder.decode(TranscriptionLabEntry.self, from: $0) }
+    }
+
+    /// Splits an append-only file into lines AS BYTES, never as a String.
+    ///
+    /// Codex, 2026-08-24: `String(contentsOf:encoding:.utf8)` fails on the whole
+    /// file if a single byte anywhere in it is not valid UTF-8, so one damaged
+    /// byte returned an empty archive — hiding every intact line and defeating
+    /// the exact property this format exists to provide. The comment above
+    /// claimed damage stayed local while the reader could not deliver it.
+    ///
+    /// Splitting the raw `Data` on newlines keeps a damaged line's blast radius
+    /// to that line: the slice fails to decode, is skipped, and its neighbours
+    /// are untouched.
+    private func lineData(of url: URL) -> [Data] {
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        let slices: [Data.SubSequence] = data.split(
+            omittingEmptySubsequences: true,
+            whereSeparator: { (byte: UInt8) in byte == 0x0A }
+        )
+        return slices.map { slice in Data(slice) }
     }
 
     /// Moves his existing JSON-array archive into the append-only format.
@@ -139,7 +167,16 @@ final class TranscriptionLabStore {
             return
         }
 
-        try? writeIndex(entries)
+        // Write first, and only then retire the original. Codex found this shape
+        // on the timings migration on 2026-08-24; it was already here, and it is
+        // worse here, because this file is his transcripts rather than two
+        // durations. A swallowed write failure followed by an unconditional
+        // rename leaves the only copy of his history under a name nothing reads.
+        do {
+            try writeIndex(entries)
+        } catch {
+            return
+        }
         // The original is set aside rather than deleted or left in place. Left in
         // place it would be re-migrated the moment the new index went missing,
         // silently resurrecting entries he had cleared. "migrated", not
@@ -147,29 +184,87 @@ final class TranscriptionLabStore {
         quarantineUnreadableFile(at: legacyIndexURL, marker: "migrated")
     }
 
+    /// Still `throws` although it no longer can: every caller writes `try`, and
+    /// the read path is not where a signature churn earns its diff.
     func loadStageTimings() throws -> [UUID: TranscriptionLabStageTimings] {
-        guard FileManager.default.fileExists(atPath: timingsURL.path) else {
-            return [:]
+        migrateLegacyStageTimingsIfNeeded()
+        return readStageTimingLines()
+    }
+
+    /// Parses the append-only timings file, one record per line.
+    ///
+    /// **A line that will not decode costs that line and nothing else**, exactly
+    /// as `readIndexLines` does for the index next to it. The old single JSON
+    /// dictionary could not offer that: one malformed byte took every duration he
+    /// had, and the whole file was quarantined to keep the bytes recoverable.
+    /// There is nothing to quarantine now, because a damaged line is simply
+    /// skipped and its bytes stay where they are.
+    ///
+    /// The file is append-only, so a re-inserted entry appears more than once and
+    /// the LAST line is the current one. Iterating in file order and overwriting
+    /// is what makes that true.
+    private func readStageTimingLines() -> [UUID: TranscriptionLabStageTimings] {
+        var timings: [UUID: TranscriptionLabStageTimings] = [:]
+        for data in lineData(of: timingsURL) {
+            guard let record = try? decoder.decode(TranscriptionLabStageTimingLine.self, from: data),
+                  let entryID = UUID(uuidString: record.id) else {
+                continue
+            }
+            timings[entryID] = TranscriptionLabStageTimings(
+                transcriptionDuration: record.transcriptionDuration,
+                cleanupDuration: record.cleanupDuration
+            )
+        }
+        return timings
+    }
+
+    /// Moves his existing timings dictionary into the append-only format.
+    ///
+    /// Runs once, and mirrors `migrateLegacyArchiveIfNeeded` deliberately: same
+    /// guard, same quarantine, same "migrated" marker. His 186 entries carry the
+    /// durations the history tab shows, and losing them to a format change would
+    /// be the least important file on disk taking real data with it — which is
+    /// the exact 2026-08-03 failure this store was rebuilt to make impossible.
+    private func migrateLegacyStageTimingsIfNeeded() {
+        let fileManager = FileManager.default
+        guard !fileManager.fileExists(atPath: timingsURL.path),
+              fileManager.fileExists(atPath: legacyTimingsURL.path) else {
+            return
         }
 
+        guard let data = try? Data(contentsOf: legacyTimingsURL),
+              let encodedTimings = try? decoder.decode([String: TranscriptionLabStageTimings].self, from: data) else {
+            // Skipping quietly would empty every duration in the UI while the
+            // file sat on disk looking fine. The bytes are set aside instead.
+            quarantineUnreadableFile(at: legacyTimingsURL)
+            return
+        }
+
+        let timings = Dictionary(uniqueKeysWithValues: encodedTimings.compactMap { key, value -> (UUID, TranscriptionLabStageTimings)? in
+            guard let entryID = UUID(uuidString: key) else {
+                return nil
+            }
+
+            return (entryID, value)
+        })
+        // WRITE FIRST, AND ONLY THEN RETIRE THE ORIGINAL.
+        //
+        // Codex, 2026-08-24: this was `try? write` followed by an unconditional
+        // rename. A write that failed — a full disk, a permissions fault — was
+        // swallowed, the legacy file was renamed anyway, and the only surviving
+        // copy of his durations became a `.migrated-1` file no reader looks at.
+        // The least important file on disk taking real data with it, again.
         do {
-            let data = try Data(contentsOf: timingsURL)
-            let encodedTimings = try decoder.decode([String: TranscriptionLabStageTimings].self, from: data)
-            return Dictionary(uniqueKeysWithValues: encodedTimings.compactMap { key, value in
-                guard let entryID = UUID(uuidString: key) else {
-                    return nil
-                }
-
-                return (entryID, value)
-            })
+            try writeStageTimings(timings)
         } catch {
-            // This file holds two durations per entry and nothing else. It is
-            // purely cosmetic, and it used to be able to delete every transcript
-            // and every WAV: the least important file on disk destroying the most
-            // important data. Losing the timings costs a number in the UI.
-            quarantineUnreadableFile(at: timingsURL)
-            return [:]
+            // The new file is not there. The legacy one is now the only copy, so
+            // it stays exactly where it is and the migration retries next time.
+            return
         }
+        // Set aside rather than deleted or left in place. Left in place it would
+        // be re-migrated the moment the new file went missing, resurrecting
+        // durations for entries he had cleared.
+        quarantineUnreadableFile(at: legacyTimingsURL, marker: "migrated")
     }
 
     /// `audioData` is optional, and the transcript is stored either way.
@@ -190,6 +285,11 @@ final class TranscriptionLabStore {
         }
 
         migrateLegacyArchiveIfNeeded()
+        // BEFORE the append, not after. Appending first would create the new
+        // timings file, and the migration guard would then decline to move his
+        // existing durations across — losing every one of them on the first
+        // dictation after the upgrade, without an error anywhere.
+        migrateLegacyStageTimingsIfNeeded()
 
         // APPEND one line. The old store rewrote every held entry on every
         // insert, which is fine at 50 and quadratic at a year of them: raising
@@ -197,9 +297,21 @@ final class TranscriptionLabStore {
         // slower every single day.
         try appendToIndex(entry)
 
-        var timings = try loadStageTimings()
-        timings[entry.id] = stageTimings
-        try writeStageTimings(timings)
+        // APPEND one line here too, for the same reason and at the same cost.
+        //
+        // This used to load, mutate and rewrite the ENTIRE timings dictionary on
+        // every insert. It went unnoticed because a transcript was only archived
+        // when audio saving was on, which for him was almost never. The 2026-08-24
+        // history fix made every dictation archive a transcript, which put that
+        // whole-file rewrite between his key release and his clipboard:
+        // `archiveRecordingForLab` is awaited BEFORE `textPaster.paste`, and his
+        // latency is already sore at a 1.59 s median and a 4.0 s p90. Codex found
+        // it in round 4 of that session.
+        //
+        // The index was made append-only for exactly this. Leaving the timings on
+        // the old shape meant the cost the restructure removed came back through
+        // the smaller file sitting next to it.
+        try appendStageTiming(stageTimings, for: entry.id)
     }
 
     func deleteEntry(id: UUID) throws {
@@ -239,6 +351,12 @@ final class TranscriptionLabStore {
     }
 
     private var timingsURL: URL {
+        directoryURL.appendingPathComponent("transcription-lab-timings.jsonl")
+    }
+
+    /// His timings as they were stored until 2026-08-24: one JSON dictionary
+    /// keyed by entry id, rewritten whole on every insert.
+    private var legacyTimingsURL: URL {
         directoryURL.appendingPathComponent("transcription-lab-timings.json")
     }
 
@@ -259,25 +377,25 @@ final class TranscriptionLabStore {
         return visibleEntries
     }
 
+    /// Append-only is not append-forever. When retention drops an entry its
+    /// timing goes with it, and the rewrite that does so also collapses the
+    /// duplicate lines a rerun leaves behind. Same job `compactIndex` does for
+    /// the index, on the same schedule, and never on the insert path.
+    ///
+    /// It rewrites ONLY when something was actually removed. A rewrite that
+    /// changes nothing would still discard any damaged line the reader is
+    /// deliberately skipping over, turning a locally damaged file into a quietly
+    /// truncated one.
     private func removeStageTimings(for entryIDs: Set<UUID>) {
-        guard FileManager.default.fileExists(atPath: timingsURL.path),
-              let data = try? Data(contentsOf: timingsURL),
-              var encodedTimings = try? decoder.decode([String: TranscriptionLabStageTimings].self, from: data) else {
-            return
-        }
+        var timings = readStageTimingLines()
+        guard !timings.isEmpty else { return }
 
-        for entryID in entryIDs {
-            encodedTimings.removeValue(forKey: entryID.uuidString)
+        var removedAny = false
+        for entryID in entryIDs where timings.removeValue(forKey: entryID) != nil {
+            removedAny = true
         }
+        guard removedAny else { return }
 
-        let timingPairs: [(UUID, TranscriptionLabStageTimings)] = encodedTimings.compactMap { key, value in
-            guard let entryID = UUID(uuidString: key) else {
-                return nil
-            }
-
-            return (entryID, value)
-        }
-        let timings = Dictionary(uniqueKeysWithValues: timingPairs)
         try? writeStageTimings(timings)
     }
 
@@ -297,18 +415,36 @@ final class TranscriptionLabStore {
     /// Opens for appending rather than reading and rewriting, so the cost of
     /// saving a dictation does not grow with how many he has already made.
     private func appendToIndex(_ entry: TranscriptionLabEntry) throws {
-        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        let line = String(decoding: try encoder.encode(entry), as: UTF8.self) + "\n"
-        guard let data = line.data(using: .utf8) else { return }
+        try appendLine(String(decoding: try encoder.encode(entry), as: UTF8.self), to: indexURL)
+    }
 
-        if !FileManager.default.fileExists(atPath: indexURL.path) {
-            try data.write(to: indexURL, options: .atomic)
+    /// Adds one timing record to the end of the timings file.
+    private func appendStageTiming(_ stageTimings: TranscriptionLabStageTimings, for entryID: UUID) throws {
+        let record = TranscriptionLabStageTimingLine(
+            id: entryID.uuidString,
+            transcriptionDuration: stageTimings.transcriptionDuration,
+            cleanupDuration: stageTimings.cleanupDuration
+        )
+        try appendLine(String(decoding: try encoder.encode(record), as: UTF8.self), to: timingsURL)
+    }
+
+    /// Appends one line to an append-only file, creating it if needed.
+    ///
+    /// Shared by the index and the timings so the two files cannot drift apart
+    /// on the property that matters: the cost of saving a dictation does not
+    /// grow with how many he has already made.
+    private func appendLine(_ line: String, to url: URL) throws {
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        guard let data = (line + "\n").data(using: .utf8) else { return }
+
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try data.write(to: url, options: .atomic)
             return
         }
         // `forUpdating`, not `forWritingTo`: the newline repair below has to READ
         // the last byte, and a write-only handle throws on read. That mistake
         // made every insert fail, which the retention tests caught immediately.
-        let handle = try FileHandle(forUpdating: indexURL)
+        let handle = try FileHandle(forUpdating: url)
         defer { try? handle.close() }
         try handle.seekToEnd()
 
@@ -337,13 +473,27 @@ final class TranscriptionLabStore {
         try? writeIndex(entries)
     }
 
+    /// Rewrites the whole timings file. Only for compaction, deletion and the
+    /// one-off migration, never for a routine insert.
+    ///
+    /// Sorted by id so the bytes are a function of the content alone. A
+    /// dictionary's iteration order is not stable across runs, and an
+    /// append-only file whose rewrites reshuffle everything is one whose
+    /// diffs and recovery-by-hand are needlessly hard to read.
     private func writeStageTimings(_ timings: [UUID: TranscriptionLabStageTimings]) throws {
-        let encodedTimings = Dictionary(uniqueKeysWithValues: timings.map { key, value in
-            (key.uuidString, value)
-        })
-        let timingsData = try encoder.encode(encodedTimings)
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        try timingsData.write(to: timingsURL, options: .atomic)
+        let lines = try timings
+            .sorted { $0.key.uuidString < $1.key.uuidString }
+            .map { entryID, value -> String in
+                let record = TranscriptionLabStageTimingLine(
+                    id: entryID.uuidString,
+                    transcriptionDuration: value.transcriptionDuration,
+                    cleanupDuration: value.cleanupDuration
+                )
+                return String(decoding: try encoder.encode(record), as: UTF8.self)
+            }
+        let text = lines.isEmpty ? "" : lines.joined(separator: "\n") + "\n"
+        try text.write(to: timingsURL, atomically: true, encoding: .utf8)
     }
 
     /// Moves a file that could not be decoded out of the way, keeping its bytes.
@@ -385,6 +535,10 @@ final class TranscriptionLabStore {
         // migration would resurrect everything on the next launch.
         try? FileManager.default.removeItem(at: legacyIndexURL)
         try? FileManager.default.removeItem(at: timingsURL)
+        // The legacy timings dictionary too, for the same reason as the legacy
+        // index above: left behind, the migration would resurrect every duration
+        // he had just cleared on the very next read.
+        try? FileManager.default.removeItem(at: legacyTimingsURL)
         try? FileManager.default.removeItem(at: audioDirectoryURL)
     }
 

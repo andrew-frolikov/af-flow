@@ -195,6 +195,7 @@
 		F84C21AA931175E37108AC37 /* AccessibilityFunctionCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */; };
 		B90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */; };
 		B0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */; };
+		B0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift */; };
 		BFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift */; };
 		BD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift */; };
 		B1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift */; };
@@ -315,6 +316,7 @@
 		CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityFunctionCheckTests.swift; sourceTree = "<group>"; };
 		F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelShapeCensusTests.swift; sourceTree = "<group>"; };
 		F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLabStoreCorruptionTests.swift; sourceTree = "<group>"; };
+		F0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLabTimingsAppendOnlyTests.swift; sourceTree = "<group>"; };
 		FFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeWindowLanguageSummaryTests.swift; sourceTree = "<group>"; };
 		FD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingHistorySectionTests.swift; sourceTree = "<group>"; };
 		F1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiKindStoreTests.swift; sourceTree = "<group>"; };
@@ -950,6 +952,7 @@
 				CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */,
 				F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */,
 				F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */,
+				F0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift */,
 				FFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift */,
 				FD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift */,
 				F1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift */,
@@ -1321,6 +1324,7 @@
 				F84C21AA931175E37108AC37 /* AccessibilityFunctionCheckTests.swift in Sources */,
 				B90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift in Sources */,
 				B0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift in Sources */,
+				B0A1B2C3D4E5F60718293A4B /* TranscriptionLabTimingsAppendOnlyTests.swift in Sources */,
 				BFC6B4C3AA7F21D3869DD464 /* HomeWindowLanguageSummaryTests.swift in Sources */,
 				BD3C3083BADF2F930F3FD0D2 /* MeetingHistorySectionTests.swift in Sources */,
 				B1DB91CFAF632CCCCCDB6468 /* WikiKindStoreTests.swift in Sources */,
