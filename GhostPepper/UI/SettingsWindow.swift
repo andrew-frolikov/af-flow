@@ -1004,6 +1004,7 @@ struct SettingsView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .frame(maxWidth: 560, alignment: .leading)
             }
 
             switch selectedSection {
@@ -1012,12 +1013,18 @@ struct SettingsView: View {
             case .debugLog:
                 DebugLogWindowView(debugLogStore: appState.debugLogStore)
                     .frame(minHeight: 460)
+            // Design 5.2: form content is clamped to 560pt and left aligned,
+            // because a settings row stretched across a 1000pt window is a
+            // line nobody can scan. The clamp is scoped to FORMS: History, the
+            // debug log, the transcription lab and the meeting sections carry
+            // tables and transcripts that genuinely need the width, and the
+            // spec says "form content" for exactly that reason.
             case .general:
-                generalSection
+                generalSection.frame(maxWidth: 560, alignment: .leading)
             case .cleanup:
-                cleanupSection
+                cleanupSection.frame(maxWidth: 560, alignment: .leading)
             case .models:
-                modelsSection
+                modelsSection.frame(maxWidth: 560, alignment: .leading)
             case .modelExperiment:
                 modelExperimentSection
             case .transcriptionLab:
