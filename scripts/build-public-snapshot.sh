@@ -75,14 +75,29 @@ for name in ("scripts/render-af-flow-icon.swift", "scripts/render-af-flow-menuba
                t)
     p.write_text(t)
 
-for name in ("docs/design/af-flow-visual-system.md", "docs/design/af-flow-home-hero.md"):
-    p = pathlib.Path(name)
-    if not p.exists(): continue
-    t = p.read_text()
-    t = re.sub(r'`/Users/[^`]*brand-visual\.md`',
-               "the author's private brand canon, which is not part of this repository", t)
-    t = re.sub(r'from `/Users/[^`]*`', 'from the brand asset directory', t)
-    p.write_text(t)
+# The brand canon and the notes vault live outside this repository. Comments
+# pointing at them are useful in the private repo and are a private folder name
+# in a public one, so the pointer is generalised rather than deleted.
+import os
+for root, dirs, files in os.walk("."):
+    dirs[:] = [d for d in dirs if d != ".git"]
+    for f in files:
+        if not f.endswith((".swift", ".md")): continue
+        p = pathlib.Path(root, f)
+        try: t0 = p.read_text(encoding="utf-8")
+        except Exception: continue
+        t = t0
+        t = re.sub(r'`/Users/[^`]*brand-visual\.md`',
+                   "the author's private brand canon, which is not part of this repository", t)
+        t = re.sub(r'`AndrewFrolikov OS/Context/brand-visual\.md`',
+                   "the author's private brand canon", t)
+        t = re.sub(r'The canon is `/Users/[^`]*`\.',
+                   "The canon is the author's private brand document.", t)
+        t = re.sub(r'from `/Users/[^`]*`', 'from the brand asset directory', t)
+        t = t.replace('"$HOME/Claude/AndrewFrolikov OS/Meetings"', '"$HOME/Notes/Meetings"')
+        t = t.replace('a folder inside `AndrewFrolikov OS`', 'a folder inside the notes vault')
+        if t != t0:
+            p.write_text(t, encoding="utf-8")
 PY
 
 # 4. The public front matter. LICENSE and THIRD-PARTY-NOTICES come across from

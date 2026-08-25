@@ -12,35 +12,47 @@ enum MeetingTranscriptSettings {
         documentsArchiveURL()
     }
 
-    /// The vault folder meetings should live in, if it exists.
+    /// Defaults key holding a home-relative folder the picker should open at.
     ///
-    /// Only a SUGGESTION, used to open the folder picker in the right place.
-    /// AF Flow is sandboxed, so it genuinely cannot write here until Andrew
-    /// selects it himself, and returning a path he has not granted would produce
-    /// silent write failures rather than access.
+    /// Example value: `Documents/Notes/Meetings`.
+    static let suggestedVaultRelativePathKey = "meetingTranscriptSuggestedVaultRelativePath"
+
+    /// A folder the meeting-transcript picker should open at, if one is set.
+    ///
+    /// Only a SUGGESTION. AF Flow is sandboxed, so it genuinely cannot write
+    /// here until the user selects it, and returning a path they have not
+    /// granted would produce silent write failures rather than access.
+    ///
+    /// This used to hardcode one person's notes folder. That is not a default
+    /// anyone else can use, and it put a private folder name into the source, so
+    /// the path now comes from a defaults key and there is no built-in value.
+    /// Unset means no suggestion, and the panel opens wherever macOS chooses,
+    /// which is the behaviour a missing folder already produced.
     static func suggestedVaultDirectory() -> URL? {
+        guard let relative = UserDefaults.standard.string(forKey: suggestedVaultRelativePathKey),
+              !relative.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return nil
+        }
+
         // `FileManager.homeDirectoryForCurrentUser` returns the app's CONTAINER
         // in a sandboxed process, not ~. The first version of this used it, so
         // it looked inside the container, found nothing, and silently opened the
-        // picker wherever macOS felt like. Andrew hit that immediately.
+        // picker wherever macOS felt like. He hit that immediately.
         //
         // `getpwuid` reports the real home regardless of the sandbox. Reading
-        // the folder still requires his grant; this only decides where the
-        // picker starts.
+        // the folder still requires a grant; this only decides where the picker
+        // starts.
         guard let raw = getpwuid(getuid())?.pointee.pw_dir else { return nil }
         let home = URL(fileURLWithPath: String(cString: raw), isDirectory: true)
-
-        let url = home
-            .appendingPathComponent("Claude")
-            .appendingPathComponent("AndrewFrolikov OS")
-            .appendingPathComponent("Meetings")
 
         // Deliberately NOT gated on `fileExists`: a sandboxed process cannot
         // necessarily stat a path it has no grant for, so checking would fail
         // for the same reason the original bug did. An `NSOpenPanel` given a
         // directory that is not there simply opens elsewhere, which is the
         // behaviour we already have to tolerate.
-        return url
+        return relative.split(separator: "/").reduce(home) { url, component in
+            url.appendingPathComponent(String(component), isDirectory: true)
+        }
     }
 
     /// Load the user-chosen save directory, or nil to use the default.
