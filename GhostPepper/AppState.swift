@@ -1617,10 +1617,8 @@ class AppState: ObservableObject {
         }
     }
 
-    private let settingsController = SettingsWindowController()
     private let promptEditorController = PromptEditorController()
     private let cleanupTranscriptWindowController = CleanupTranscriptWindowController()
-    private let debugLogWindowController = DebugLogWindowController()
     private let pepperChatWindowController = PepperChatWindowController()
     /// AF Flow's front door. See `UI/HomeWindow.swift` for why it exists and why
     /// it is not the fork's meeting window.
@@ -1961,8 +1959,16 @@ class AppState: ObservableObject {
         debugLogStore.record(category: .model, message: "Audio engine reset for device change.")
     }
 
-    func showSettings(section: SettingsSection? = nil) {
-        settingsController.show(appState: self, section: section)
+    /// One window since 2026-08-24. These three differ in where they land, and
+    /// in whether they are allowed to come to the front.
+    ///
+    /// Settings and the debug log ACTIVATE, because he reaches them from the menu
+    /// bar while another app is frontmost and a window that opens behind that app
+    /// looks like a menu item that does nothing. Home does not, because it opens
+    /// on launch and on a Dock click, and activating there is what put it over
+    /// his game on 2026-07-21.
+    func showSettings(section: AFFlowSection? = nil) {
+        homeWindowController.show(appState: self, section: section ?? .general, activating: true)
     }
 
     func showPromptEditor() {
@@ -1974,7 +1980,7 @@ class AppState: ObservableObject {
     }
 
     func showDebugLog() {
-        debugLogWindowController.show(debugLogStore: debugLogStore)
+        homeWindowController.show(appState: self, section: .debugLog, activating: true)
     }
 
     private var pepperChatRecorder: AudioRecorder?
@@ -2273,7 +2279,7 @@ class AppState: ObservableObject {
     /// `showMeetingTranscriptWindow()`, so opening a dictation app handed
     /// Andrew the fork's 9850-line meeting and wiki surface instead.
     func showHomeWindow() {
-        homeWindowController.show(appState: self)
+        homeWindowController.show(appState: self, section: .home)
     }
 
     func showMeetingTranscriptWindow() {

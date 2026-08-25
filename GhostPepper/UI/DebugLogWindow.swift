@@ -1,70 +1,9 @@
 import SwiftUI
 import AppKit
 
-final class DebugLogWindowController: NSObject, NSWindowDelegate {
-    private var window: NSPanel?
-    private weak var debugLogStore: DebugLogStore?
-    private var isLiveViewing = false
-
-    func show(debugLogStore: DebugLogStore) {
-        if let window = window {
-            self.debugLogStore = debugLogStore
-            beginLiveViewingIfNeeded()
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let window = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
-            styleMask: [.titled, .closable, .resizable, .utilityWindow],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "AF Flow Debug Log"
-        window.delegate = self
-        window.isReleasedWhenClosed = false
-        window.isFloatingPanel = true
-        window.level = .floating
-        window.hidesOnDeactivate = false
-        window.contentViewController = NSHostingController(
-            rootView: DebugLogWindowView(debugLogStore: debugLogStore)
-        )
-        self.debugLogStore = debugLogStore
-        beginLiveViewingIfNeeded()
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-
-        self.window = window
-    }
-
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        endLiveViewingIfNeeded()
-        sender.orderOut(nil)
-        return false
-    }
-
-    private func beginLiveViewingIfNeeded() {
-        guard !isLiveViewing else {
-            return
-        }
-
-        debugLogStore?.beginLiveViewing()
-        isLiveViewing = true
-    }
-
-    private func endLiveViewingIfNeeded() {
-        guard isLiveViewing else {
-            return
-        }
-
-        debugLogStore?.endLiveViewing()
-        isLiveViewing = false
-    }
-}
-
-private struct DebugLogWindowView: View {
+/// No longer `private`: since 2026-08-24 this is a SECTION of AF Flow's one
+/// window, not the content of a floating panel of its own.
+struct DebugLogWindowView: View {
     @ObservedObject var debugLogStore: DebugLogStore
     @State private var shouldFollowTail = true
 
@@ -143,7 +82,13 @@ private struct DebugLogWindowView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding()
-        .frame(minWidth: 640, minHeight: 420)
+        // No `minWidth`. It was 640, sized for the floating panel this used to
+        // live in; embedded in the detail pane there is about 630 points at the
+        // default window width and about 530 at the minimum, and the enclosing
+        // ScrollView scrolls only vertically — so the old floor clipped the
+        // trailing end of every line. Codex, 2026-08-24. The section sets the
+        // height it wants.
+        .frame(minHeight: 420)
     }
 
     private func formattedText(for entry: DebugLogEntry) -> String {

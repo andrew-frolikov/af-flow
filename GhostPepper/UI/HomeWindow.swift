@@ -37,8 +37,6 @@ struct AFFlowHomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            menuBar
-
             Spacer(minLength: 28)
 
             StatusPill(status: appState.status)
@@ -84,42 +82,26 @@ struct AFFlowHomeView: View {
             Spacer(minLength: 28)
             footer
         }
-        .frame(minWidth: 460, minHeight: 420)
+        // `maxWidth`/`maxHeight` as well as the minimums, and the background
+        // comes AFTER: as a section this has to fill the detail pane, and a view
+        // whose background was sized to its content leaves the rest of the pane
+        // in the shell's colour.
+        .frame(minWidth: 460, maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
         .background(Palette.paper)
     }
 
-    /// The window's own menu, added 2026-07-26 because Andrew opened the new
-    /// home window and said "there is no menu bar, nothing".
+    /// **The three-word menu that used to sit here is gone, 2026-08-24.**
     ///
-    /// Deliberately a single row of three words rather than a sidebar or a
-    /// toolbar with icons. The one-screen rule from the original design still
-    /// holds: this is a way OUT of the screen to the three places that already
-    /// exist, not a navigation layer on top of it. Every item opens a window
-    /// that is already built, so nothing here can be a dead end.
+    /// It existed because this window was one of four: Andrew opened the new home
+    /// window on 2026-07-26 and said "there is no menu bar, nothing", so it got a
+    /// row of words that opened the other three windows. He then asked for the
+    /// opposite of four windows: "I do not want history and other menu options to
+    /// pop up in the different window, let it be in one."
     ///
-    /// The wordmark moved here from the centre of the window. An app's name
-    /// belongs in its chrome, and the middle of the screen is more useful spent
-    /// on the one sentence that says how to use it.
-    private var menuBar: some View {
-        HStack(spacing: 0) {
-            Text("AF FLOW")
-                .font(.custom("Georgia", size: 12))
-                .tracking(3)
-                .foregroundColor(Palette.muted)
-
-            Spacer(minLength: 16)
-
-            MenuItem(title: "Settings") { appState.showSettings() }
-            MenuItem(title: "History") { appState.showSettings(section: .transcriptionLab) }
-            MenuItem(title: "Debug log") { appState.showDebugLog() }
-        }
-        .padding(.leading, 20)
-        .padding(.trailing, 12)
-        .frame(height: 42)
-        .background(Palette.band)
-        .overlay(Palette.line.frame(height: 1), alignment: .bottom)
-    }
-
+    /// Home is a SECTION of that one window now, and the sidebar beside it is the
+    /// navigation. A second navigation layer inside the pane would be two ways to
+    /// reach the same place, which is how they drift apart.
+    ///
     /// The single most important sentence in the app, so it gets the display
     /// face and the keycaps rather than a settings row somewhere.
     private var instruction: some View {
@@ -171,31 +153,6 @@ struct AFFlowHomeView: View {
     }
 
     // MARK: - Pieces
-
-    /// A menu word. Plain by default and tinted with a soft plate on hover, so
-    /// it is obviously clickable on a screen share without three buttons
-    /// shouting at the top of an otherwise quiet window.
-    private struct MenuItem: View {
-        let title: String
-        let action: () -> Void
-        @State private var isHovering = false
-
-        var body: some View {
-            Button(action: action) {
-                Text(title)
-                    .font(.system(size: 12.5))
-                    .foregroundColor(isHovering ? Palette.ink : Palette.inkSoft)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(isHovering ? Palette.card : Color.clear)
-                    )
-            }
-            .buttonStyle(.plain)
-            .onHover { isHovering = $0 }
-        }
-    }
 
     private struct Keycap: View {
         let text: String
@@ -298,28 +255,78 @@ enum AFFlowPalette {
     static let overlayRule = Color(red: 0.290, green: 0.353, blue: 0.435)
 }
 
-/// A small, self-contained window controller.
+/// **AF Flow's one window.**
 ///
-/// Deliberately NOT reusing `MeetingTranscriptWindowController`, which carries
+/// Until 2026-08-24 this owned a 500x440 window showing only the home screen,
+/// and Settings, History and the Debug log were three more `NSWindow`s reached
+/// from a row of words across the top of it. Andrew: "I do not want history and
+/// other menu options to pop up in the different window, let it be in one."
+///
+/// So it hosts `SettingsView` now — the sidebar shell that already existed — with
+/// Home as its first section. `showHomeWindow`, `showSettings` and `showDebugLog`
+/// all arrive here and differ only in which section they land on.
+///
+/// **The meeting transcript viewer is deliberately NOT folded in.** His decision,
+/// because he reads a transcript alongside other things and wants it as a window
+/// he can put somewhere.
+///
+/// Still deliberately NOT `MeetingTranscriptWindowController`, which carries
 /// fourteen closure properties for meetings, wikis, speaker prints and index
-/// building. Borrowing it would tie the front door to the surface being removed
-/// after the demo.
+/// building.
+extension Notification.Name {
+    /// Posted with `object: Bool` when AF Flow's one window becomes visible or
+    /// stops being visible.
+    ///
+    /// **This exists because `orderOut` does not unmount SwiftUI.** Codex,
+    /// 2026-08-24: the debug log streams while it is on screen, and as a section
+    /// its `onDisappear` never fires — the hosting view stays mounted when the
+    /// window is hidden or minimised. `DebugLogStore.recordSensitive` writes his
+    /// RAW transcriptions and OCR context only while a viewer is live, so a
+    /// viewer count stuck above zero means every later dictation persists that to
+    /// disk with nothing on screen. The window's own lifecycle is the only honest
+    /// signal for whether anyone is looking.
+    static let afFlowWindowVisibilityChanged = Notification.Name("afFlowWindowVisibilityChanged")
+}
+
 @MainActor
 final class HomeWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
-    func show(appState: AppState) {
+    /// `activating` is FALSE for Home and TRUE for the places he navigated to on
+    /// purpose, and the split is deliberate.
+    ///
+    /// Home opens on launch and on a Dock click, and `activate(ignoringOtherApps:
+    /// true)` there is what put it "on top of everything, over my game" on
+    /// 2026-07-21. But Settings and the debug log are reached from the menu bar
+    /// while another app is frontmost, and the two controllers deleted here both
+    /// passed `true`: without it those menu items appear to do nothing. Codex
+    /// caught the regression, 2026-08-24.
+    func show(appState: AppState, section: AFFlowSection = .home, activating: Bool = false) {
         if let window {
+            // DEMINIATURIZE FIRST. `makeKeyAndOrderFront` does not restore a
+            // minimised window, so choosing Debug log from the menu bar while it
+            // sits in the Dock would announce the window as visible and take a
+            // live-viewing claim on the log with nothing on screen — the same
+            // privacy leak as round 1, by a different route. Codex, round 4.
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
             window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: false)
+            NSApp.activate(ignoringOtherApps: activating)
+            NotificationCenter.default.post(name: .afFlowWindowVisibilityChanged, object: true)
+            // The window already exists, so the section is changed in place
+            // rather than by rebuilding the view: rebuilding would throw away
+            // every piece of @State in it, including a history entry he had open.
+            NotificationCenter.default.post(name: .showSettingsSection, object: section)
             return
         }
 
-        let hosting = NSHostingController(rootView: AFFlowHomeView(appState: appState))
+        let hosting = NSHostingController(rootView: SettingsView(appState: appState, initialSection: section))
         let created = NSWindow(contentViewController: hosting)
         created.title = "AF Flow"
         created.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        created.setContentSize(NSSize(width: 500, height: 440))
+        created.setContentSize(NSSize(width: 1000, height: 720))
+        created.minSize = NSSize(width: 900, height: 680)
         created.isReleasedWhenClosed = false
         created.center()
         created.delegate = self
@@ -330,12 +337,23 @@ final class HomeWindowController: NSObject, NSWindowDelegate {
         // where it was put.
         window = created
         created.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: false)
+        NSApp.activate(ignoringOtherApps: activating)
+        NotificationCenter.default.post(name: .afFlowWindowVisibilityChanged, object: true)
     }
 
-    func windowWillClose(_ notification: Notification) {
-        // Kept alive rather than torn down, so reopening is instant and the
-        // window remembers where he left it. `isReleasedWhenClosed = false`
-        // above is what makes that safe.
+    /// Hidden, not torn down, so reopening is instant and it remembers where he
+    /// left it and which section he was on.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        NotificationCenter.default.post(name: .afFlowWindowVisibilityChanged, object: false)
+        return false
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        NotificationCenter.default.post(name: .afFlowWindowVisibilityChanged, object: false)
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        NotificationCenter.default.post(name: .afFlowWindowVisibilityChanged, object: true)
     }
 }

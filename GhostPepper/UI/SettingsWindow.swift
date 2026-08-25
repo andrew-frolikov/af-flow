@@ -12,45 +12,6 @@ extension Notification.Name {
     static let indexEntryWritten = Notification.Name("indexEntryWritten")
 }
 
-final class SettingsWindowController: NSObject, NSWindowDelegate {
-    private var window: NSWindow?
-
-    func show(appState: AppState, section: SettingsSection? = nil) {
-        if let window = window {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            if let section {
-                NotificationCenter.default.post(name: .showSettingsSection, object: section)
-            }
-            return
-        }
-
-        let view = SettingsView(appState: appState, initialSection: section ?? .general)
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
-            styleMask: [.titled, .closable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "AF Flow Settings"
-        window.delegate = self
-        window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 900, height: 680)
-        window.contentViewController = NSHostingController(rootView: view)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-
-        self.window = window
-    }
-
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
-        return false
-    }
-}
-
 @MainActor
 final class SettingsDictationTestController: ObservableObject {
     @Published private(set) var isRecording = false
@@ -100,7 +61,16 @@ final class SettingsDictationTestController: ObservableObject {
 
 // MARK: - Settings View
 
-enum SettingsSection: String, CaseIterable, Identifiable {
+/// A destination in AF Flow's one window.
+///
+/// **It stopped being "the settings sections" on 2026-08-24.** Andrew: "I do not
+/// want history and other menu options to pop up in the different window, let it
+/// be in one." Home, Settings, History and the Debug log were four separate
+/// `NSWindow`s; they are one window with a sidebar now, and this enum is what the
+/// sidebar lists. The meeting transcript viewer stays a separate window, his
+/// deliberate choice, because he reads a transcript alongside other things.
+enum AFFlowSection: String, CaseIterable, Identifiable {
+    case home
     case general
     case cleanup
     case models
@@ -108,6 +78,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case transcriptionLab
     case recognizedVoices
     case meetingTranscript
+    case debugLog
 
     var id: String { rawValue }
 
@@ -132,12 +103,21 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     /// microphone and its auto-detect polled his browsers every five seconds.
     /// Both of those are fixed: the "Others" channel is real now, and detection
     /// no longer polls.
-    static var visible: [SettingsSection] {
-        [.general, .cleanup, .models, .transcriptionLab, .meetingTranscript]
+    /// Home leads, because it is the front door and the app opens on it. The
+    /// debug log sits last: it is a diagnostic, not somewhere he works.
+    static var visible: [AFFlowSection] {
+        [.home, .general, .cleanup, .models, .transcriptionLab, .meetingTranscript, .debugLog]
+    }
+
+    /// Sections that draw their own full-bleed layout, so the shell must not put
+    /// its 28pt title and subtitle above them.
+    var drawsItsOwnHeader: Bool {
+        self == .home
     }
 
     var title: String {
         switch self {
+        case .home: "Home"
         case .general: "General"
         case .cleanup: "Cleanup"
         case .models: "Models"
@@ -145,11 +125,13 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .transcriptionLab: "History"
         case .recognizedVoices: "Recognized Voices"
         case .meetingTranscript: "Meeting Transcript"
+        case .debugLog: "Debug log"
         }
     }
 
     var subtitle: String {
         switch self {
+        case .home: "How to dictate, what is bound, and whether the app is ready."
         case .general: "Startup behavior, shortcuts, microphone input, dictation testing, and sound feedback."
         case .cleanup: "Prompt cleanup, correction hints, OCR context, and learning behavior."
         case .models: "Speech and cleanup model downloads and runtime status."
@@ -157,11 +139,13 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .transcriptionLab: "Saved recordings, reruns, and cleanup experiments."
         case .recognizedVoices: "Reusable speaker labels and 'this is me' voice prints."
         case .meetingTranscript: "Auto-detect calls and transcribe meetings locally."
+        case .debugLog: "What the app decided, line by line, as it happened."
         }
     }
 
     var systemImageName: String {
         switch self {
+        case .home: "house"
         case .general: "gearshape"
         case .cleanup: "sparkles"
         case .models: "brain"
@@ -169,6 +153,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .transcriptionLab: "waveform.badge.magnifyingglass"
         case .recognizedVoices: "person.crop.circle.badge.checkmark"
         case .meetingTranscript: "waveform.badge.mic"
+        case .debugLog: "text.alignleft"
         }
     }
 }
@@ -221,7 +206,12 @@ struct SettingsView: View {
     @State private var hasAccessibilityPermission = PermissionChecker.checkAccessibility()
     @State private var hasInputMonitoringPermission = PermissionChecker.checkInputMonitoring()
     @State private var permissionPollTimer: Timer?
-    @State private var selectedSection: SettingsSection
+    @State private var selectedSection: AFFlowSection
+    /// Mirrors whether THIS view holds a live-viewing claim on the debug log, so
+    /// begin and end can never fall out of balance. `DebugLogStore` counts
+    /// viewers, and a count stuck above zero keeps writing his raw transcriptions
+    /// to disk with nothing on screen.
+    @State private var isStreamingDebugLog = false
     @State private var transcriptionLabPreviewSound: NSSound?
     @State private var recognizedVoices: [RecognizedVoiceProfile] = []
     @State private var recognizedVoiceSpeakerProfilesByID: [UUID: [TranscriptionLabSpeakerProfile]] = [:]
@@ -249,7 +239,7 @@ struct SettingsView: View {
         AppTheme.resolve(selectedThemeID)
     }
 
-    init(appState: AppState, initialSection: SettingsSection = .general) {
+    init(appState: AppState, initialSection: AFFlowSection = .general) {
         self.appState = appState
         _selectedSection = State(initialValue: initialSection)
         _dictationTestController = StateObject(
@@ -342,7 +332,7 @@ struct SettingsView: View {
         HSplitView {
             ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(SettingsSection.visible) { section in
+                ForEach(AFFlowSection.visible) { section in
                     Button {
                         selectedSection = section
                     } label: {
@@ -396,40 +386,72 @@ struct SettingsView: View {
                     .frame(width: 1)
             }
 
-            ScrollView {
-                detailContent
-                    .padding(.horizontal, 40)
-                    .padding(.vertical, 32)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            Group {
+                if selectedSection.drawsItsOwnHeader {
+                    // Home paints its own paper background and pins a footer to
+                    // the bottom, so it FILLS the pane and does not scroll. In a
+                    // ScrollView the proposed height is unconstrained, so its
+                    // background would stop at its content height and the rest of
+                    // the pane would show through in the theme colour — a visible
+                    // seam across his front door. Codex, 2026-08-24, round 3.
+                    detailContent
+                } else {
+                    ScrollView {
+                        detailContent
+                            .padding(.horizontal, 40)
+                            .padding(.vertical, 32)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
             }
             .background(appTheme.windowBackground)
         }
         .tint(appTheme.accent)
         .frame(minWidth: 900, minHeight: 680)
         .onAppear {
-            inputDevices = AudioDeviceManager.listInputDevices()
-            selectedDeviceID = AudioDeviceManager.selectedInputDeviceID() ?? AudioDeviceManager.defaultInputDeviceID() ?? 0
-            refreshRequiredPermissions()
-            startPermissionPollingIfNeeded()
-            syncTranscriptionLabRerunDefaults()
-            transcriptionLabController.reloadEntries()
-            reloadRecognizedVoices()
+            loadDataFor(selectedSection)
+            setDebugLogStreaming(selectedSection == .debugLog)
+        }
+        .onDisappear {
+            setDebugLogStreaming(false)
+        }
+        // `orderOut` does not unmount this view, so `onDisappear` alone would
+        // leave the debug log streaming after he closed or minimised the window.
+        .onReceive(NotificationCenter.default.publisher(for: .afFlowWindowVisibilityChanged)) { note in
+            let isWindowVisible = (note.object as? Bool) ?? true
+            setDebugLogStreaming(isWindowVisible && selectedSection == .debugLog)
+
+            // The permission poll is a 2-second timer and the same `orderOut`
+            // problem applies to it. Before 2026-08-24 an ordinary launch mounted
+            // Home alone and never started it; now Home mounts this whole shell.
+            // Codex, round 2 for the hidden-window case and round 4 for this one:
+            // polling only while the window is visible was not enough, because he
+            // leaves the window OPEN. The permission UI lives in General, so that
+            // is the only place worth asking AX and IOHID every two seconds.
+            if isWindowVisible {
+                startPermissionPollingIfNeeded()
+            } else {
+                stopPermissionPolling()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshRequiredPermissions()
         }
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsSection)) { note in
-            if let section = note.object as? SettingsSection {
+            if let section = note.object as? AFFlowSection {
                 selectedSection = section
             }
         }
-        .onChange(of: selectedSection) { _, newSection in
-            if newSection == .transcriptionLab {
-                syncTranscriptionLabRerunDefaults()
-                transcriptionLabController.reloadEntries()
-            } else if newSection == .recognizedVoices {
-                reloadRecognizedVoices()
+        .onChange(of: selectedSection) { oldSection, newSection in
+            // The debug log streams live while it is on screen and stops when it
+            // is not. It used to be a floating panel whose open and close were
+            // the signal; as a section, selecting away IS closing it, and without
+            // this the app would keep streaming forever after one visit.
+            if oldSection == .general {
+                stopPermissionPolling()
             }
+            setDebugLogStreaming(newSection == .debugLog)
+            loadDataFor(newSection)
         }
         .onChange(of: appState.speechModel) { _, _ in
             syncTranscriptionLabRerunDefaults()
@@ -481,7 +503,41 @@ struct SettingsView: View {
         }
     }
 
+    private func stopPermissionPolling() {
+        permissionPollTimer?.invalidate()
+        permissionPollTimer = nil
+    }
+
+    /// Loads only what the section on screen needs.
+    ///
+    /// This was one unconditional `onAppear` that enumerated audio devices,
+    /// decoded the whole transcription index AND its timings, and scanned every
+    /// speaker-profile file. That was fine while it ran only when he opened
+    /// Settings. Since 2026-08-24 Home mounts this shell, so it ran
+    /// synchronously on the main actor at EVERY launch — the same cost-with-a-
+    /// year-of-history shape that was taken off the paste path the same day, put
+    /// back on the launch path. Codex, round 4.
+    private func loadDataFor(_ section: AFFlowSection) {
+        switch section {
+        case .general:
+            inputDevices = AudioDeviceManager.listInputDevices()
+            selectedDeviceID = AudioDeviceManager.selectedInputDeviceID() ?? AudioDeviceManager.defaultInputDeviceID() ?? 0
+            refreshRequiredPermissions()
+            startPermissionPollingIfNeeded()
+        case .transcriptionLab:
+            syncTranscriptionLabRerunDefaults()
+            transcriptionLabController.reloadEntries()
+        case .recognizedVoices:
+            reloadRecognizedVoices()
+        case .home, .cleanup, .models, .modelExperiment, .meetingTranscript, .debugLog:
+            break
+        }
+    }
+
     private func startPermissionPollingIfNeeded() {
+        // Gated on the section, not just on the window: he leaves the window
+        // open, and the permission rows only exist in General.
+        guard selectedSection == .general else { return }
         guard !hasAccessibilityPermission || !hasInputMonitoringPermission else { return }
         guard permissionPollTimer == nil else { return }
         permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
@@ -873,10 +929,24 @@ struct SettingsView: View {
         return formattedStageDuration(duration)
     }
 
+    /// The ONLY place `beginLiveViewing` and `endLiveViewing` are called from,
+    /// and it acts only on a change. Anything else risks an unbalanced count,
+    /// which is a privacy leak rather than a cosmetic bug.
+    private func setDebugLogStreaming(_ shouldStream: Bool) {
+        guard shouldStream != isStreamingDebugLog else { return }
+        isStreamingDebugLog = shouldStream
+        if shouldStream {
+            appState.debugLogStore.beginLiveViewing()
+        } else {
+            appState.debugLogStore.endLiveViewing()
+        }
+    }
+
     @ViewBuilder
     private var detailContent: some View {
         VStack(alignment: .leading, spacing: 28) {
-            if !(selectedSection == .transcriptionLab && transcriptionLabController.selectedEntry != nil) {
+            if !selectedSection.drawsItsOwnHeader,
+               !(selectedSection == .transcriptionLab && transcriptionLabController.selectedEntry != nil) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(selectedSection.title)
                         .font(.system(size: 28, weight: .semibold))
@@ -890,6 +960,11 @@ struct SettingsView: View {
             }
 
             switch selectedSection {
+            case .home:
+                AFFlowHomeView(appState: appState)
+            case .debugLog:
+                DebugLogWindowView(debugLogStore: appState.debugLogStore)
+                    .frame(minHeight: 460)
             case .general:
                 generalSection
             case .cleanup:
