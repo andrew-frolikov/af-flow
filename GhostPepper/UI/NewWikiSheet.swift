@@ -37,7 +37,7 @@ struct NewWikiSheet: View {
 
             proposalsSection
 
-            Divider()
+            Divider().overlay(theme.separator)
 
             customSection
 

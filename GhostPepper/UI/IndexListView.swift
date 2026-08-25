@@ -22,7 +22,7 @@ struct IndexListView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            Divider().overlay(theme.separator)
             if items.isEmpty {
                 emptyState
             } else {
@@ -108,7 +108,7 @@ struct IndexListView: View {
                 } else {
                     ForEach(filtered) { item in
                         row(for: item)
-                        Divider()
+                        Divider().overlay(theme.separator)
                     }
                 }
             }

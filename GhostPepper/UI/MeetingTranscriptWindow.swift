@@ -2970,7 +2970,7 @@ struct MeetingRootView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Status line + trace toggle + Stop button
             if qaIsLoading || !qaTranscript.events.isEmpty || !qaThread.isEmpty {
-                Divider()
+                Divider().overlay(theme.separator)
                 HStack(spacing: 6) {
                     if qaIsLoading {
                         ProgressView().scaleEffect(0.5)
@@ -3033,7 +3033,7 @@ struct MeetingRootView: View {
 
             // Conversation thread
             if !qaThread.isEmpty {
-                Divider()
+                Divider().overlay(theme.separator)
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 14) {
@@ -3059,7 +3059,7 @@ struct MeetingRootView: View {
             // Apply-to-dossier action when the run came from a per-entry refresh.
             let latestAnswer = qaThread.last?.answer ?? ""
             if let pending = state.pendingDossierApply, !latestAnswer.isEmpty, !qaIsLoading {
-                Divider()
+                Divider().overlay(theme.separator)
                 HStack(spacing: 10) {
                     Button(action: { applyDossier(pending: pending) }) {
                         HStack(spacing: 4) {
@@ -3103,7 +3103,7 @@ struct MeetingRootView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Attachment chips (above input row)
             if !qaAttachments.isEmpty {
-                Divider()
+                Divider().overlay(theme.separator)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(qaAttachments) { att in
@@ -3118,7 +3118,7 @@ struct MeetingRootView: View {
             }
 
             // Input row
-            Divider()
+            Divider().overlay(theme.separator)
             HStack(spacing: 8) {
                 Image(systemName: "cpu")
                     .font(theme.textFont(size: 12))
@@ -4403,7 +4403,7 @@ struct NavTabContentView: View {
             .padding(.vertical, 4)
             .background(theme.controlBackground)
 
-            Divider()
+            Divider().overlay(theme.separator)
 
             switch tab.content {
             case .indexEntry(_, _, let entry):
@@ -4650,11 +4650,11 @@ private struct SecondBrainLintSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            Divider().overlay(theme.separator)
             HStack(spacing: 0) {
                 leftRail
                     .frame(width: 280)
-                Divider()
+                Divider().overlay(theme.separator)
                 detailPane
             }
         }
@@ -4724,7 +4724,7 @@ private struct SecondBrainLintSheet: View {
             lintProgressRow(title: "Accepted", value: "\(run.acceptedCount)", isActive: !run.isRunning && run.resultMessage == nil)
             lintProgressRow(title: "Applied", value: "\(run.appliedChanges)", isActive: run.resultMessage != nil)
 
-            Divider()
+            Divider().overlay(theme.separator)
 
             Text("Checks")
                 .font(theme.textFont(size: 12, weight: 600))
@@ -5066,7 +5066,7 @@ private struct WikiGenerationConsoleSheet: View {
 	                )
             }
 
-            Divider()
+            Divider().overlay(theme.separator)
 
             Text("Steps")
                 .font(theme.textFont(size: 12, weight: 600))
@@ -7231,7 +7231,7 @@ private struct SecondBrainDashboardView: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
 
-            Divider()
+            Divider().overlay(theme.separator)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -9289,7 +9289,7 @@ struct MeetingSidebarView: View {
             .padding(.bottom, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Divider().padding(.horizontal, 12).padding(.bottom, 4)
+            Divider().overlay(theme.separator).padding(.horizontal, 12).padding(.bottom, 4)
 
             // Search field
             HStack(spacing: 4) {
@@ -9369,7 +9369,7 @@ struct MeetingSidebarView: View {
                                         inFileViewerRootedAtPath: entry.fileURL.deletingLastPathComponent().path
                                     )
                                 }
-                                Divider()
+                                Divider().overlay(theme.separator)
                                 Button("Delete", role: .destructive) {
                                     deleteEntry(entry)
                                 }
@@ -9777,7 +9777,7 @@ private struct ConsentDialogView: View {
                 .foregroundColor(theme.accent)
             }
 
-            Divider()
+            Divider().overlay(theme.separator)
 
             if let recordingStartError = state.recordingStartError {
                 HStack(alignment: .top, spacing: 8) {

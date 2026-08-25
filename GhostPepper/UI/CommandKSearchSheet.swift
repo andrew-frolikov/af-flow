@@ -31,7 +31,7 @@ struct CommandKSearchSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             searchField
-            Divider()
+            Divider().overlay(theme.separator)
             resultsBody
         }
         .frame(width: 620)

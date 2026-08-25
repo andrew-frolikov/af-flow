@@ -133,7 +133,7 @@ struct UsageReportView: View {
 
     private var generateSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Divider()
+            Divider().overlay(theme.separator)
             Text("Feature requests")
                 .font(theme.eyebrowFont)
                 .foregroundStyle(theme.textSecondary)

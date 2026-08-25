@@ -1272,7 +1272,7 @@ struct SettingsView: View {
                         prompt: "One preferred word or phrase per line"
                     )
 
-                    Divider()
+                    Divider().overlay(theme.separator)
 
                     CorrectionsEditor(
                         title: "Commonly misheard",
@@ -1353,7 +1353,7 @@ struct SettingsView: View {
                         Text("English").tag("en")
                         Text("Russian").tag("ru")
                         Text("Ukrainian").tag("uk")
-                        Divider()
+                        Divider().overlay(theme.separator)
                         Text("Spanish").tag("es")
                         Text("French").tag("fr")
                         Text("German").tag("de")
@@ -1703,7 +1703,7 @@ struct SettingsView: View {
 
                 transcriptionLabBrowser
 
-                Divider()
+                Divider().overlay(theme.separator)
 
                 // Meetings live under the dictations rather than mixed in with
                 // them: his choice on 2026-08-02 over one interleaved timeline.

@@ -25,12 +25,12 @@ struct IndexEntryView: View {
                     aliasesRow
                 }
 
-                Divider()
+                Divider().overlay(theme.separator)
 
                 bodyRendered
 
                 if !entry.sourceMeetings.isEmpty {
-                    Divider()
+                    Divider().overlay(theme.separator)
                     sourcesSection
                 }
             }

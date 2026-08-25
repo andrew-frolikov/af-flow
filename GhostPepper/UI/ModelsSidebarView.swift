@@ -17,7 +17,7 @@ struct ModelsSidebarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider().padding(.horizontal, 12).padding(.bottom, 8)
+            Divider().overlay(theme.separator).padding(.horizontal, 12).padding(.bottom, 8)
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     functionsSection
@@ -231,7 +231,7 @@ struct ModelsSidebarView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Divider()
+            Divider().overlay(theme.separator)
             Text("AF Flow runs 100% on-device.")
                 .font(theme.textFont(size: 10, weight: 500))
                 .foregroundStyle(theme.textSecondary)
