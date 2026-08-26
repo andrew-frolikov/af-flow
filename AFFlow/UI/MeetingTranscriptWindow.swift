@@ -4926,7 +4926,7 @@ private struct WikiGenerationConsoleSheet: View {
     let onClose: () -> Void
     let onMinimize: (() -> Void)?
     @State private var showPrompt: Bool = false
-    @State private var pepperPulse: Bool = false
+    @State private var markPulse: Bool = false
     @State private var displayNow: Date = Date()
 
     var body: some View {
@@ -4938,7 +4938,7 @@ private struct WikiGenerationConsoleSheet: View {
         )
         .interactiveDismissDisabled(run.isRunning)
         .onAppear {
-            pepperPulse = true
+            markPulse = true
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now in
             displayNow = now
@@ -5863,8 +5863,8 @@ private struct WikiGenerationConsoleSheet: View {
             VStack(spacing: 12) {
                 HStack(alignment: .top, spacing: 16) {
                     markGlyph(size: run.reviewDraft == nil ? 92 : 58)
-                        .scaleEffect(pepperPulse ? 1.035 : 0.965)
-                        .brandMotion(value: pepperPulse)
+                        .scaleEffect(markPulse ? 1.035 : 0.965)
+                        .brandMotion(value: markPulse)
 
                     VStack(alignment: .leading, spacing: 5) {
                         Text(run.reviewDraft == nil ? "Pre-loading..." : "Approve imported entities")

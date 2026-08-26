@@ -43,6 +43,11 @@ struct AFFlowHomeView: View {
     /// window used, so an existing user never sees the walkthrough again.
     @AppStorage("onboardingCompleted") private var onboardingCompleted = false
 
+    /// The real signal, not a constant. Everything the walkthrough gates on a
+    /// resource, the permission poll, the level meter, the try-it monitor,
+    /// hangs off this, and `orderOut` does not unmount SwiftUI.
+    @State private var isWindowVisible = true
+
     private var pushToTalk: String { appState.pushToTalkChord.displayString }
     private var toggleToTalk: String { appState.toggleToTalkChord.displayString }
 
@@ -52,13 +57,16 @@ struct AFFlowHomeView: View {
 
             VStack(spacing: 0) {
             if !onboardingCompleted {
+                // The collapse animates; the fog underneath never reacts.
                 // **First run: Home IS the onboarding**, on the same fog and
                 // the same plate, collapsing in place when it finishes. His
                 // words: "I want there to be full onboarding here on this page."
-                HomeWalkthrough(appState: appState, isWindowVisible: true) {
+                HomeWalkthrough(appState: appState, isWindowVisible: isWindowVisible) {
                     onboardingCompleted = true
                 }
+                .transition(.opacity)
             } else {
+            Group {
             StatusPill(status: appState.status, onHero: wearsHero)
                 .padding(.bottom, appState.permissionWarning == nil ? 26 : 10)
 
@@ -112,6 +120,8 @@ struct AFFlowHomeView: View {
                 .padding(.top, 16)
             }
             }
+            .transition(.opacity.combined(with: .offset(y: 8)))
+            }
 
             }
             // **The plate is derived from the block it protects, not guessed.**
@@ -156,6 +166,12 @@ struct AFFlowHomeView: View {
         // has to fill the detail pane. On the brand skin it paints NO ground of
         // its own, because the fog runs edge to edge behind the whole window.
         .frame(minWidth: 460, maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
+        .onReceive(NotificationCenter.default.publisher(for: .afFlowWindowVisibilityChanged)) { note in
+            isWindowVisible = (note.object as? Bool) ?? true
+        }
+        // The walkthrough leaving and the compact block arriving are one move,
+        // so they share one animation. Reduced motion makes it instant.
+        .brandReveal(value: onboardingCompleted)
         .background {
             if wearsHero {
                 ZStack {

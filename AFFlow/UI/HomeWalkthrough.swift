@@ -40,19 +40,57 @@ struct HomeWalkthrough: View {
     @State private var inputMonitoringGranted = false
     @State private var pollTimer: Timer?
     @State private var capturing = false
+    @State private var listeningPulse = false
+    @StateObject private var tryIt: TryItController
+    @StateObject private var micLevel = MicLevelMonitor()
+
+    /// **The hero is a brand-skin surface.** Under Windows 95 and Space the fog
+    /// and its dark components do not render, so the walkthrough lays out the
+    /// same content on the skin's own ground with the skin's own vocabulary.
+    /// Hardcoding the brand's dark values here would have put paper text on a
+    /// grey Windows 95 panel.
+    private var onHero: Bool { theme.id == .current }
+
+    private var primaryText: Color { onHero ? Brand.textOnDark : theme.textPrimary }
+    private var secondaryText: Color { onHero ? Brand.secondaryOnDark : theme.textSecondary }
+    private var accentText: Color { onHero ? Brand.mist : theme.accent }
+    private var alarmDot: Color { onHero ? Brand.statusLiveOnDark : theme.statusLive }
+    private var wellFill: Color { onHero ? Brand.surfaceDark.opacity(0.55) : theme.controlBackground }
 
     enum Step: Int, CaseIterable { case welcome, setup, shortcut, tryIt, done }
 
+    init(appState: AppState, isWindowVisible: Bool, onFinished: @escaping () -> Void) {
+        self.appState = appState
+        self.isWindowVisible = isWindowVisible
+        self.onFinished = onFinished
+        _tryIt = StateObject(wrappedValue: TryItController(transcriber: appState.transcriber))
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            switch step {
-            case .welcome: welcomeStep
-            case .setup: setupStep
-            case .shortcut: shortcutStep
-            case .tryIt: tryItStep
-            case .done: doneStep
+            Group {
+                switch step {
+                case .welcome: welcomeStep
+                case .setup: setupStep
+                case .shortcut: shortcutStep
+                case .tryIt: tryItStep
+                case .done: doneStep
+                }
             }
+            // The outgoing step leaves, the incoming one arrives with a small
+            // upward drift. `.id` is what makes SwiftUI treat a step change as
+            // a replacement rather than a diff, so the transition actually
+            // runs. Reduced motion collapses this to nothing, handled by
+            // `brandReveal`.
+            .id(step)
+            .transition(
+                .asymmetric(
+                    insertion: .opacity.combined(with: .offset(y: 8)),
+                    removal: .opacity
+                )
+            )
         }
+        .brandReveal(value: step)
         .frame(maxWidth: 400)
         .multilineTextAlignment(.center)
         .onAppear {
@@ -62,10 +100,26 @@ struct HomeWalkthrough: View {
             step = resumedStep()
             refreshGrants()
             startPollingIfNeeded()
+            syncTryItLifecycle()
+            syncMeterLifecycle()
+            Task { await loadModels() }
         }
-        .onDisappear { stopPolling() }
+        .onDisappear {
+            stopPolling()
+            tryIt.cleanup()
+            micLevel.stop()
+        }
         .onChange(of: step) { _, _ in startPollingIfNeeded() }
-        .onChange(of: isWindowVisible) { _, _ in startPollingIfNeeded() }
+        .onChange(of: isWindowVisible) { _, _ in
+            startPollingIfNeeded()
+            syncTryItLifecycle()
+            syncMeterLifecycle()
+        }
+        .onChange(of: step) { _, _ in
+            syncTryItLifecycle()
+            syncMeterLifecycle()
+        }
+        .onChange(of: micGranted) { _, _ in syncMeterLifecycle() }
     }
 
     private func resumedStep() -> Step {
@@ -86,11 +140,11 @@ struct HomeWalkthrough: View {
             Text("AF Flow")
                 .font(theme.displayFont)
                 .tracking(-0.48)
-                .foregroundStyle(Brand.textOnDark)
+                .foregroundStyle(primaryText)
 
             Text("Sovereign personal intelligence for your Mac")
                 .font(theme.textFont(size: 15))
-                .foregroundStyle(Brand.secondaryOnDark)
+                .foregroundStyle(secondaryText)
                 .padding(.top, 10)
 
             VStack(alignment: .leading, spacing: 12) {
@@ -114,7 +168,7 @@ struct HomeWalkthrough: View {
             stepTitle("Setup")
             Text("Grant two permissions. AF Flow chooses the local models.")
                 .font(theme.textFont(size: 13))
-                .foregroundStyle(Brand.secondaryOnDark)
+                .foregroundStyle(secondaryText)
                 .padding(.top, 8)
 
             VStack(spacing: 9) {
@@ -138,6 +192,9 @@ struct HomeWalkthrough: View {
                         }
                     }
                 )
+                if micGranted {
+                    soundCheckRow
+                }
                 permissionRow(
                     name: "Input Monitoring",
                     detail: "To notice your shortcut",
@@ -151,7 +208,12 @@ struct HomeWalkthrough: View {
             }
             .padding(.top, 22)
 
-            if micGranted && inputMonitoringGranted {
+            modelsRow.padding(.top, 9)
+
+            // Continue only when both grants are in AND the models are ready:
+            // the app cannot transcribe a word without them, so offering the
+            // next step earlier would be offering a broken try-it.
+            if micGranted && inputMonitoringGranted && modelsReady {
                 primary("Continue") { advance(to: .shortcut) }
                     .padding(.top, 24)
             }
@@ -159,8 +221,90 @@ struct HomeWalkthrough: View {
             // Skipping is allowed and must be SAFE, not silent: a missing grant
             // resurfaces on the compact Home as its permission-warning line.
             ghostLink("Set up later") { advance(to: .shortcut) }
-                .padding(.top, micGranted && inputMonitoringGranted ? 14 : 24)
+                .padding(.top, micGranted && inputMonitoringGranted && modelsReady ? 14 : 24)
         }
+    }
+
+    private var modelsReady: Bool {
+        appState.modelManager.isReady && appState.textCleanupManager.isReady
+    }
+
+    private var modelsFailed: Bool {
+        appState.modelManager.state == .error || appState.textCleanupManager.state == .error
+    }
+
+    /// The models row. Its subtitle mirrors the LIVE status rather than a fixed
+    /// sentence, so it cannot claim "ready" while a download is still running.
+    private var modelsRow: some View {
+        well {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 11) {
+                    Image(systemName: modelsReady ? "checkmark.circle" : (modelsFailed ? "circle" : "arrow.down.circle"))
+                        .font(.system(size: 15))
+                        .foregroundStyle(modelsReady ? accentText : (modelsFailed ? alarmDot : secondaryText))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Local models")
+                            .font(theme.textFont(size: 13, weight: 500))
+                            .foregroundStyle(primaryText)
+                        Text(modelsSubtitle)
+                            .font(theme.captionFont)
+                            .foregroundStyle(secondaryText)
+                    }
+                    Spacer(minLength: 8)
+                    if modelsFailed {
+                        Button("Retry") { Task { await loadModels() } }
+                            .buttonStyle(AFFlowPrimaryButtonStyle())
+                            .controlSize(.small)
+                    } else if !modelsReady {
+                        ProgressView().controlSize(.small).colorScheme(onHero ? .dark : .light)
+                    }
+                }
+
+                Text("AF Flow picks these during onboarding. Advanced model controls live in Settings.")
+                    .font(theme.captionFont)
+                    .foregroundStyle(secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var modelsSubtitle: String {
+        if modelsFailed { return "Download failed" }
+        if modelsReady { return "Ready for voice-to-text" }
+        if let progress = appState.modelManager.downloadProgress, progress > 0, progress < 1 {
+            return "Downloading \(Int(progress * 100))%"
+        }
+        return "Downloading the local models AF Flow needs"
+    }
+
+    /// The sound check. Its own caption until the first sound arrives, so
+    /// silence reads as "say something" rather than as a broken microphone.
+    private var soundCheckRow: some View {
+        well {
+            VStack(alignment: .leading, spacing: 9) {
+                Text(micLevel.level > 0.02 ? "Hearing you" : "Say something")
+                    .font(theme.captionFont)
+                    .foregroundStyle(secondaryText)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(primaryText.opacity(0.14))
+                        Capsule()
+                            // Turns clay above 0.7, which is the level at which
+                            // clipping starts to cost him words.
+                            .fill(micLevel.level > 0.7 ? alarmDot : accentText)
+                            .frame(width: max(4, geo.size.width * CGFloat(min(micLevel.level * 1.6, 1))))
+                    }
+                }
+                .frame(height: 8)
+            }
+        }
+    }
+
+    private func loadModels() async {
+        await appState.modelManager.loadModel(name: appState.speechModel)
+        await appState.textCleanupManager.loadModel(
+            kind: appState.textCleanupManager.selectedCleanupModelKind
+        )
     }
 
     private var shortcutStep: some View {
@@ -168,7 +312,7 @@ struct HomeWalkthrough: View {
             stepTitle("Your shortcut")
             Text("Hold these keys anywhere, speak, release. Your words land where the cursor is.")
                 .font(theme.textFont(size: 13))
-                .foregroundStyle(Brand.secondaryOnDark)
+                .foregroundStyle(secondaryText)
                 .padding(.top, 8)
 
             if !inputMonitoringGranted {
@@ -203,7 +347,7 @@ struct HomeWalkthrough: View {
                 // **The live binding, never a factory default dressed as an
                 // offer.** On a true first run this IS the default; on a rerun
                 // it is whatever the user already has.
-                Keycap(text: appState.pushToTalkChord.displayString)
+                Keycap(text: appState.pushToTalkChord.displayString, onHero: onHero)
                     .padding(.top, 22)
 
                 HStack(spacing: 10) {
@@ -217,7 +361,7 @@ struct HomeWalkthrough: View {
 
                 Text("Hands-free and other shortcuts live in Settings.")
                     .font(theme.captionFont)
-                    .foregroundStyle(Brand.secondaryOnDark)
+                    .foregroundStyle(secondaryText)
                     .padding(.top, 16)
             }
         }
@@ -229,24 +373,88 @@ struct HomeWalkthrough: View {
             HStack(spacing: 8) {
                 Text("Hold")
                     .font(theme.textFont(size: 13))
-                    .foregroundStyle(Brand.textOnDark)
-                Keycap(text: appState.pushToTalkChord.displayString)
+                    .foregroundStyle(primaryText)
+                Keycap(text: appState.pushToTalkChord.displayString, onHero: onHero)
                 Text("and say something")
                     .font(theme.textFont(size: 13))
-                    .foregroundStyle(Brand.textOnDark)
+                    .foregroundStyle(primaryText)
             }
             .padding(.top, 18)
 
-            Text("Your words land on the clipboard, and you paste them where you want them.")
-                .font(theme.captionFont)
-                .foregroundStyle(Brand.secondaryOnDark)
-                .padding(.top, 14)
+            // A reserved height, so proving it works does not make the layout
+            // jump under the reader as the state changes.
+            tryItState
+                .frame(minHeight: 92)
+                .padding(.top, 18)
 
             HStack(spacing: 10) {
                 ghostButton("Skip") { advance(to: .done) }
                 primary("Continue") { advance(to: .done) }
             }
-            .padding(.top, 26)
+            .padding(.top, 20)
+        }
+    }
+
+    @ViewBuilder
+    private var tryItState: some View {
+        if tryIt.monitorStartFailed {
+            // **Never Accessibility**, which cannot be granted in this sandbox.
+            // What this actually needs is Input Monitoring.
+            VStack(spacing: 14) {
+                calloutRow("AF Flow cannot see the keyboard yet. Grant Input Monitoring, then come back.")
+                ghostButton("Back to Setup") { advance(to: .setup) }
+            }
+        } else if tryIt.isRecording {
+            HStack(spacing: 9) {
+                Circle()
+                    .fill(alarmDot)
+                    .frame(width: 10, height: 10)
+                    .brandPulse(active: true, isPulsing: listeningPulse)
+                Text("Listening...")
+                    .font(theme.textFont(size: 13))
+                    .foregroundStyle(primaryText)
+            }
+            .onAppear { listeningPulse = true }
+        } else if tryIt.isTranscribing {
+            HStack(spacing: 9) {
+                ProgressView().controlSize(.small).colorScheme(onHero ? .dark : .light)
+                Text("Transcribing...")
+                    .font(theme.textFont(size: 13))
+                    .foregroundStyle(primaryText)
+            }
+        } else if let text = tryIt.transcribedText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VStack(spacing: 12) {
+                // His words, on the brand's reading surface. A solid light well
+                // is the second of the two paper-side exceptions on the fog,
+                // and user content is Inter, never the display face.
+                Text("\u{201C}\(text)\u{201D}")
+                    .font(theme.textFont(size: 15))
+                    .foregroundStyle(onHero ? Brand.textPrimary : theme.textPrimary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: 380)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(onHero ? Brand.well : theme.textBackground)
+                    )
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle").foregroundStyle(accentText)
+                    Text("It works. Your words land where the cursor is.")
+                        .font(theme.textFont(size: 13))
+                        .foregroundStyle(accentText)
+                }
+            }
+        } else if tryIt.transcribedText != nil {
+            // **An empty result is not a success.** nil, empty and
+            // whitespace-only all land here rather than in a quoted well
+            // congratulating the user on silence.
+            calloutRow("No speech detected. Check the microphone and try again.")
+        } else {
+            Text("Waiting for you...")
+                .font(theme.textFont(size: 13))
+                .foregroundStyle(secondaryText)
         }
     }
 
@@ -254,22 +462,22 @@ struct HomeWalkthrough: View {
         VStack(spacing: 0) {
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 44, weight: .light))
-                .foregroundStyle(Brand.mist)
+                .foregroundStyle(accentText)
 
             Text("You're all set")
                 .font(theme.displayFont)
                 .tracking(-0.48)
-                .foregroundStyle(Brand.textOnDark)
+                .foregroundStyle(primaryText)
                 .padding(.top, 16)
 
             Text("AF Flow lives in your menu bar")
                 .font(theme.textFont(size: 13))
-                .foregroundStyle(Brand.secondaryOnDark)
+                .foregroundStyle(secondaryText)
                 .padding(.top, 8)
 
             Text("Hold \(appState.pushToTalkChord.displayString) anywhere and speak. Nothing you say leaves this Mac.")
                 .font(theme.textFont(size: 13))
-                .foregroundStyle(Brand.textOnDark)
+                .foregroundStyle(primaryText)
                 .padding(.top, 18)
 
             primary("Start using AF Flow") {
@@ -286,18 +494,18 @@ struct HomeWalkthrough: View {
         Text(text)
             .font(theme.sectionTitleFont)
             .tracking(-0.32)
-            .foregroundStyle(Brand.textOnDark)
+            .foregroundStyle(primaryText)
     }
 
     private func reassurance(_ symbol: String, _ text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: symbol)
                 .font(.system(size: 13))
-                .foregroundStyle(Brand.mist)
+                .foregroundStyle(accentText)
                 .frame(width: 16)
             Text(text)
                 .font(theme.textFont(size: 13))
-                .foregroundStyle(Brand.secondaryOnDark)
+                .foregroundStyle(secondaryText)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -313,7 +521,7 @@ struct HomeWalkthrough: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Brand.surfaceDark.opacity(0.55))
+                    .fill(wellFill)
             )
     }
 
@@ -329,20 +537,20 @@ struct HomeWalkthrough: View {
                 HStack(spacing: 11) {
                     Image(systemName: granted ? "checkmark.circle" : "circle")
                         .font(.system(size: 15))
-                        .foregroundStyle(granted ? Brand.mist : Brand.secondaryOnDark)
+                        .foregroundStyle(granted ? accentText : secondaryText)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(name)
                             .font(theme.textFont(size: 13, weight: 500))
-                            .foregroundStyle(Brand.textOnDark)
+                            .foregroundStyle(primaryText)
                         Text(detail)
                             .font(theme.captionFont)
-                            .foregroundStyle(Brand.secondaryOnDark)
+                            .foregroundStyle(secondaryText)
                     }
                     Spacer(minLength: 8)
                     if granted {
                         Text("Granted")
                             .font(theme.textFont(size: 11.5, weight: 600))
-                            .foregroundStyle(Brand.mist)
+                            .foregroundStyle(accentText)
                     } else {
                         Button("Grant", action: grant)
                             .buttonStyle(AFFlowPrimaryButtonStyle())
@@ -352,7 +560,7 @@ struct HomeWalkthrough: View {
                 if !granted, let waitingCaption {
                     Text(waitingCaption)
                         .font(theme.captionFont)
-                        .foregroundStyle(Brand.secondaryOnDark)
+                        .foregroundStyle(secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -364,10 +572,10 @@ struct HomeWalkthrough: View {
     /// minimum.
     private func calloutRow(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Circle().fill(Brand.statusLiveOnDark).frame(width: 7, height: 7)
+            Circle().fill(alarmDot).frame(width: 7, height: 7)
             Text(text)
                 .font(theme.textFont(size: 13))
-                .foregroundStyle(Brand.textOnDark)
+                .foregroundStyle(primaryText)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -385,7 +593,7 @@ struct HomeWalkthrough: View {
         Button(action: action) {
             Text(label)
                 .font(theme.captionFont)
-                .foregroundStyle(Brand.secondaryOnDark)
+                .foregroundStyle(secondaryText)
         }
         .buttonStyle(.plain)
     }
@@ -393,15 +601,24 @@ struct HomeWalkthrough: View {
     private struct Keycap: View {
         @Environment(\.appTheme) private var theme
         let text: String
+        var onHero: Bool = true
         var body: some View {
-            // One of only two paper-side fills allowed on the fog, because it
-            // is solid: 16.37:1 whatever the video is doing underneath.
+            // On the fog this is one of only two paper-side fills allowed,
+            // because it is SOLID: 16.37:1 whatever the video is doing
+            // underneath. Off the fog it is the skin's own control surface.
             Text(text.isEmpty ? "no shortcut set" : text)
                 .font(theme.textFont(size: 15, weight: 500))
-                .foregroundStyle(Brand.textPrimary)
+                .foregroundStyle(onHero ? Brand.textPrimary : theme.textPrimary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Brand.well))
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(onHero ? Brand.well : theme.textBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(onHero ? Color.clear : theme.separator, lineWidth: 1)
+                        )
+                )
         }
     }
 
@@ -433,6 +650,29 @@ struct HomeWalkthrough: View {
                 refreshGrants()
                 if micGranted && inputMonitoringGranted { stopPolling() }
             }
+        }
+    }
+
+    /// The monitor, the recorder and the transcriber warm-up exist only while
+    /// this step is current AND the window is really visible. They hold the
+    /// microphone, and this app's whole history is about not competing for it.
+    /// The level meter holds an audio engine, so it runs only on the Setup
+    /// step, only once the microphone is granted, and only while the window is
+    /// really visible.
+    private func syncMeterLifecycle() {
+        if step == .setup, micGranted, isWindowVisible {
+            micLevel.start(deviceID: AudioDeviceManager.selectedInputDeviceID())
+        } else {
+            micLevel.stop()
+        }
+    }
+
+    private func syncTryItLifecycle() {
+        if step == .tryIt, isWindowVisible {
+            tryIt.chord = appState.pushToTalkChord
+            tryIt.start { advance(to: .done) }
+        } else {
+            tryIt.cleanup()
         }
     }
 

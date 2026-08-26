@@ -354,6 +354,50 @@ Review after each slice per the standing Codex rule, and measure the section 7 c
 
 ---
 
+## 11.5 Amendment, 2026-08-25: the Home hero
+
+**The monolith rule loses its absolutism on Home, by Andrew's choice, and the
+window stays one thing by a different route than section 3 imagined.**
+
+He chose the full-bleed dark hero after seeing it beside a bounded plate, and
+then asked for the image to continue behind the sidebar as well. So Home is not
+a paper pane with a dark object inset in it: **the whole window carries one
+continuous image**, and the sidebar is a VEIL over that image rather than a
+different surface. There is no seam because there is no boundary, which is what
+section 3 was protecting against in the first place.
+
+What that means concretely, all measured, all specified in
+`af-flow-home-hero.md`:
+
+- The sidebar veil is `--paper` at **0.86** over the shared image. Measured over
+  the darkest fog: row labels in ink 10.74:1, row icons in muted 3.50:1 which
+  clears the 3:1 non-text minimum, and the fog's visible swing is 32 of 255 so
+  it reads. **Muted TEXT fails at 3.50:1 there**, which is why the version line
+  is ink on Home and muted everywhere else.
+- Text on the fog sits on a **soft plate**: ink at an effective 0.84, sized to
+  the text block and extended 36pt past it, so the guarantee cannot be outgrown.
+  Its floor is `#3C4441`, ink at 0.84 over pure white, and because compositing
+  is monotone per channel that bounds every frame of any SDR encode rather than
+  one sampled frame.
+- On the fog only: the status pill takes the recording overlay's solid ink
+  capsule in place of 5.7's tinted pill; error messages are paper with a clay
+  dot in place of clay text, because clay measures 3.78:1 on the floor; the
+  keycap well carries no hairline; dark wells (ink 55% over the plate) are the
+  fog-side counterpart of `well`; the two solid light exceptions are the chord
+  keycap and the transcription well.
+- **The hero is a brand-skin surface.** Under Windows 95 and Space the fog, its
+  scrims and the dark components do not render, and Home lays out the same
+  content on the skin's own ground with the skin's own vocabulary.
+
+**Reviewer check, updated.** Sampling background pixels outside wells, bounded
+components and the Home image must still return exactly `#F5F1E8`. Distinct
+background colours: **two everywhere except Home**, where the image and its
+veil replace the count with the measured floors above.
+
+**Onboarding moved into Home** (first run over the hero, collapsing to the
+compact Home, re-invocable from General), specified in `af-flow-home-hero.md`
+part 2. The separate onboarding window is superseded, not deleted.
+
 ## 11. Light and dark: the recommendation
 
 **Commit to light. Force the window to light appearance and ship one look.**

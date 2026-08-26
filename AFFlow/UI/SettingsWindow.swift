@@ -203,7 +203,6 @@ struct SettingsView: View {
     @State private var inputDevices: [AudioInputDevice] = []
     @State private var selectedDeviceID: AudioDeviceID = 0
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var hasAccessibilityPermission = PermissionChecker.checkAccessibility()
     @State private var hasInputMonitoringPermission = PermissionChecker.checkInputMonitoring()
     @State private var permissionPollTimer: Timer?
     @State private var selectedSection: AFFlowSection
@@ -588,10 +587,20 @@ struct SettingsView: View {
         }
     }
 
+    /// **Accessibility is not part of this, and that is the whole point.**
+    ///
+    /// It is permanently blocked by the App Sandbox, proven 2026-08-21 across
+    /// 28 queries on every build after every grant. So `checkAccessibility()`
+    /// returns false forever, and a poll whose stop condition included it could
+    /// NEVER stop: the two-second timer ran for the life of the app waiting for
+    /// something that cannot occur, and the Permissions card was permanently
+    /// on screen offering a button that leads nowhere.
+    ///
+    /// Input Monitoring is the grant this app actually needs and can actually
+    /// get, so it is the only one polled and the only one shown.
     private func refreshRequiredPermissions() {
-        hasAccessibilityPermission = PermissionChecker.checkAccessibility()
         hasInputMonitoringPermission = PermissionChecker.checkInputMonitoring()
-        if hasAccessibilityPermission && hasInputMonitoringPermission {
+        if hasInputMonitoringPermission {
             permissionPollTimer?.invalidate()
             permissionPollTimer = nil
         }
@@ -632,7 +641,7 @@ struct SettingsView: View {
         // Gated on the section, not just on the window: he leaves the window
         // open, and the permission rows only exist in General.
         guard selectedSection == .general else { return }
-        guard !hasAccessibilityPermission || !hasInputMonitoringPermission else { return }
+        guard !hasInputMonitoringPermission else { return }
         guard permissionPollTimer == nil else { return }
         permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             refreshRequiredPermissions()
@@ -1093,18 +1102,33 @@ struct SettingsView: View {
 
     private var generalSection: some View {
         VStack(alignment: .leading, spacing: 24) {
-            if !hasAccessibilityPermission || !hasInputMonitoringPermission {
+            // Re-invoke the first run. It lives on Home now, so this only has
+            // to clear the flag and send him there; Home decides the rest and
+            // the walkthrough resumes from Welcome.
+            SettingsCard("First run") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Walk through setup again, on Home.")
+                        .font(theme.captionFont)
+                        .foregroundStyle(theme.textSecondary)
+                    Button("Run setup again") {
+                        UserDefaults.standard.set(false, forKey: "onboardingWelcomeSeen")
+                        UserDefaults.standard.set(false, forKey: "onboardingShortcutChosen")
+                        UserDefaults.standard.set(false, forKey: "onboardingCompleted")
+                        selectedSection = .home
+                    }
+                    .buttonStyle(AFFlowGhostButtonStyle())
+                }
+            }
+
+            if !hasInputMonitoringPermission {
                 SettingsCard("Permissions") {
                     VStack(alignment: .leading, spacing: 12) {
-                        PermissionStatusRow(
-                            title: "Accessibility",
-                            isGranted: hasAccessibilityPermission,
-                            action: {
-                                PermissionChecker.promptAccessibility()
-                                PermissionChecker.openAccessibilitySettings()
-                                startPermissionPollingIfNeeded()
-                            }
-                        )
+                        // The Accessibility row retired 2026-08-25. It could
+                        // only ever say "not granted" and send him to a pane
+                        // where granting it changes nothing, which has already
+                        // happened three times. Four features depend on it and
+                        // are broken BY DESIGN; that is recorded in STATE.md,
+                        // not offered as a button.
                         PermissionStatusRow(
                             title: "Input Monitoring",
                             isGranted: hasInputMonitoringPermission,
