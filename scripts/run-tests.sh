@@ -65,6 +65,31 @@ DOMAIN="com.frolikov.afflow"
 # bitten him more times than any other is not excessive.
 TEST_HOST_DOMAIN="com.frolikov.afflow.testhost"
 
+# The test host's VISIBLE name, passed on the same command line as its
+# identifier so the two cannot drift apart again.
+#
+# On 2026-08-25 Andrew opened Privacy and Security > Input Monitoring and found
+# "AF Flow" listed TWICE, both allowed, with nothing on screen to tell them
+# apart. The second row was this test host. It had been given its own identifier
+# above in 2026-07-26 and never its own NAME: `AFFlow/Info.plist` hardcoded
+# `CFBundleName` and `CFBundleDisplayName` as the literal "AF Flow", and macOS
+# labels a privacy row with the bundle's display name.
+#
+# `AF_FLOW_DISPLAY_NAME` defaults to `$(PRODUCT_NAME)` on the app target, so
+# Andrew's own builds are untouched and only this script overrides it. Setting
+# it here rather than in the project is the same reasoning as the identifier
+# above: a build setting on the xcodebuild command line reaches every target in
+# the scheme, and only the app target reads this one.
+#
+# The IDENTIFIER deliberately does not change. TCC keys on the identifier, so
+# renaming it would forfeit the Input Monitoring grant Andrew gave this host by
+# hand. Display names are free; grants do not move with them.
+#
+# Both name keys take this one value. Different macOS surfaces read different
+# keys, and letting them disagree invites ONE bundle to appear under TWO names,
+# which is a smaller copy of the bug this fixes.
+TEST_HOST_DISPLAY_NAME="AF Flow Tests"
+
 TEAM="Q4HNX2JLKT"
 DERIVED="${AF_FLOW_DERIVED:-build/run-derived}"
 
@@ -247,6 +272,7 @@ build_for_testing() {
         CODE_SIGN_IDENTITY="Apple Development" \
         CODE_SIGN_STYLE=Automatic \
         AF_FLOW_BUNDLE_ID="$TEST_HOST_DOMAIN" \
+        AF_FLOW_DISPLAY_NAME="$TEST_HOST_DISPLAY_NAME" \
         "$@" \
         2>&1 | grep -E "error:|warning: .*never be executed|TEST BUILD SUCCEEDED|BUILD FAILED"
     return "${PIPESTATUS[0]}"
@@ -320,6 +346,22 @@ if [ "${AF_FLOW_APP_BUILD:-}" = "1" ]; then
         echo "APP BUILD FAILED (exit $APP_BUILD_STATUS)." >&2
         exit "${APP_BUILD_STATUS:-1}"
     fi
+    # Building a bundle REGISTERS it with LaunchServices, and this one is thrown
+    # away: the workflow is copy it over the app he launches, then delete
+    # `build/app-derived`. That left LaunchServices holding a record naming
+    # `com.frolikov.afflow` as "AF Flow" at a path that no longer exists, every
+    # single time. Found on 2026-08-25 by scripts/system-list-check.py on the
+    # very first app build after that check was wired in, which is the check
+    # doing its job: the routine workflow was the leak.
+    #
+    # BEFORE the verifications below, not after, because each of them exits.
+    # A refused build is exactly when a stale record is least likely to be
+    # noticed. Unregistering does not touch the bundle on disk, so the copy
+    # still works. Best effort: a failure here is a stale row in a settings
+    # list, not a broken build, and the checker reports it either way.
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister" \
+        -u "$APP_PATH" >/dev/null 2>&1
+
     # Verified rather than assumed. Shipping a build carrying the test host's
     # identity to the path his permissions are attached to would silently break
     # his dictation, which is the failure this whole line of work started from.
@@ -329,6 +371,27 @@ if [ "${AF_FLOW_APP_BUILD:-}" = "1" ]; then
         echo "Installing this would break his Input Monitoring grant." >&2
         exit 10
     fi
+
+    # The NAME, checked here for the same reason the identifier is: this is the
+    # only branch that produces the artefact Andrew installs, and since
+    # 2026-08-25 both name keys are a build setting rather than a literal.
+    #
+    # There is no other layer that can see this. `BundleIdentityNameTests` runs
+    # inside the test host, and the test host's identifier is set unconditionally
+    # by this same script, so the arm of that test covering the APP can never
+    # execute. Found by review on 2026-08-25: without these four lines an app
+    # built with an empty or wrong AF_FLOW_DISPLAY_NAME would be reported as
+    # "bundle id verified" and success, and macOS would quietly fall back to the
+    # bundle filename in the menu bar and the About box.
+    for name_key in CFBundleName CFBundleDisplayName; do
+        BUILT_NAME=$(/usr/libexec/PlistBuddy -c "Print :$name_key" "$APP_PATH/Contents/Info.plist" 2>/dev/null)
+        if [ "$BUILT_NAME" != "AF Flow" ]; then
+            echo "REFUSING TO REPORT SUCCESS: built $name_key is '$BUILT_NAME', expected 'AF Flow'." >&2
+            echo "The bare product name belongs to the app alone; see" >&2
+            echo "docs/design/af-flow-system-list-names.md." >&2
+            exit 11
+        fi
+    done
     echo
     echo "built: $APP_PATH"
     echo "bundle id verified: $BUILT_ID"

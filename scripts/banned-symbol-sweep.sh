@@ -426,6 +426,22 @@ if ! python3 "$(dirname "$0")/test-registration-check.py"; then
   fail=1
 fi
 
+# A bundle that requests a macOS permission buys a PERMANENT row in System
+# Settings, labelled with its display name and kept after the bundle is deleted.
+# On 2026-08-25 that had put "AF Flow" in Andrew's Input Monitoring list twice
+# and left seven deleted probe bundles holding granted microphones. Nothing
+# inside the suite can see any of it: it is machine state, not code. Exit 2
+# means the databases could not be READ, which needs Full Disk Access and is a
+# skip rather than a failure, the same way the binary link check skips without
+# a Debug build.
+echo ""
+python3 "$(dirname "$0")/system-list-check.py"
+case "$?" in
+  0) : ;;
+  2) echo "skip  system list check (could not read the TCC databases)" ;;
+  *) fail=1 ;;
+esac
+
 # One key declared twice with DIFFERENT defaults is an unambiguous bug: which one
 # applies depends on which view initialises first while the key is absent. This
 # project shipped one already (meetingSummaryPrompt, fixed 2026-07-29). Only the

@@ -29,6 +29,7 @@ targets:
       base:
         INFOPLIST_FILE: AFFlow/Info.plist
         PRODUCT_NAME: AF Flow
+        AF_FLOW_DISPLAY_NAME: "$(PRODUCT_NAME)"
         PRODUCT_MODULE_NAME: AFFlow
         CODE_SIGN_ENTITLEMENTS: AFFlow/AFFlow.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

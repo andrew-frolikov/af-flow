@@ -39,6 +39,22 @@ echo "### Do the tests in the repo actually run"
 python3 scripts/test-registration-check.py 2>&1 | sed -n '3,$p'
 
 echo
+echo "### Does every system list show one AF Flow"
+# The status is captured rather than piped away. `cmd | sed` reports SED's exit
+# status and this script has no `set -e`, so the earlier version printed the
+# check's text and threw its verdict on the floor while its own comment claimed
+# the session start "goes red". Nothing here can abort a session start, so the
+# verdict is stated in a line a reader cannot miss instead.
+SYSTEM_LIST_OUT=$(python3 scripts/system-list-check.py 2>&1)
+SYSTEM_LIST_STATUS=$?
+printf '%s\n' "$SYSTEM_LIST_OUT" | sed -n '3,$p'
+case "$SYSTEM_LIST_STATUS" in
+    0) : ;;
+    2) echo ">>> COULD NOT CHECK. An unreadable database is not a clean one." ;;
+    *) echo ">>> ACT ON THIS. A system list is showing something it should not." ;;
+esac
+
+echo
 echo "### Does every spec line say who decided it"
 python3 scripts/spec-provenance-check.py 2>&1
 

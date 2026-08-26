@@ -15,7 +15,17 @@ IDENTITY="Apple Development: andriy.frolikov@gmail.com (A75XPSV5W4)"
 
 build_variant() {
     local variant="$1"        # sandboxed | unsandboxed
-    local bundle_id="com.frolikov.afflow.tapprobe.$variant"
+    # A SCRATCH identity, not the product's. This probe must ask for audio
+    # capture, which is the one thing the canon rule says a throwaway must never
+    # do (docs/design/af-flow-system-list-names.md section B), and it has no way
+    # around it: the question it answers is whether the SANDBOX blocks the tap,
+    # so it cannot run inside the sandboxed app or the test host. So it takes the
+    # rule's second belt instead. On 2026-08-25 the earlier version of this
+    # script, which used `com.frolikov.afflow.tapprobe.$variant` and called
+    # itself "AF Flow audio tap probe ($variant)", had left two permanent rows
+    # in Andrew's privacy settings holding GRANTED audio capture for bundles
+    # that no longer existed, both wearing his product's name.
+    local bundle_id="com.frolikov.scratch.audiotap.$variant"
     local app="$OUT/$variant/AudioTapProbe.app"
 
     rm -rf "$app"
@@ -31,7 +41,9 @@ build_variant() {
 	<key>CFBundleIdentifier</key>
 	<string>$bundle_id</string>
 	<key>CFBundleName</key>
-	<string>AF Flow audio tap probe ($variant)</string>
+	<string>scratch-audiotap-$variant</string>
+	<key>CFBundleDisplayName</key>
+	<string>scratch-audiotap-$variant</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -41,9 +53,9 @@ build_variant() {
 	<key>LSBackgroundOnly</key>
 	<true/>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>AF Flow is checking whether it can transcribe the other participants in a meeting. Audio only; this never captures your screen.</string>
+	<string>A scratch build is checking whether the App Sandbox blocks system audio capture. Audio only; this never captures your screen.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>AF Flow is checking system audio capture.</string>
+	<string>A scratch build is checking system audio capture.</string>
 </dict>
 </plist>
 PLIST

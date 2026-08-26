@@ -191,6 +191,7 @@
 		B135BE19B9795510F5749D3B /* SummaryFabrication.swift in Sources */ = {isa = PBXBuildFile; fileRef = F135BE19B9795510F5749D3B /* SummaryFabrication.swift */; };
 		B611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift */; };
 		B134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift */; };
+		CF04BEE5F7F43BBA2912248B /* BundleIdentityNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D35F0E8DB48BA23021C0AA8 /* BundleIdentityNameTests.swift */; };
 		F84C21AA931175E37108AC37 /* AccessibilityFunctionCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */; };
 		8F635DC70A6482BEACF0EFAD /* AppSupportDirectoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0612CA92E4B533CF283A8CB3 /* AppSupportDirectoryTests.swift */; };
 		B90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */; };
@@ -321,6 +322,7 @@
 		F135BE19B9795510F5749D3B /* SummaryFabrication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryFabrication.swift; sourceTree = "<group>"; };
 		F611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageReplayTests.swift; sourceTree = "<group>"; };
 		F134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionCensusTests.swift; sourceTree = "<group>"; };
+		5D35F0E8DB48BA23021C0AA8 /* BundleIdentityNameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleIdentityNameTests.swift; sourceTree = "<group>"; };
 		CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityFunctionCheckTests.swift; sourceTree = "<group>"; };
 		0612CA92E4B533CF283A8CB3 /* AppSupportDirectoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSupportDirectoryTests.swift; sourceTree = "<group>"; };
 		F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelShapeCensusTests.swift; sourceTree = "<group>"; };
@@ -953,6 +955,7 @@
 				F135BE19B9795510F5749D3B /* SummaryFabrication.swift */,
 				F611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift */,
 				F134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift */,
+				5D35F0E8DB48BA23021C0AA8 /* BundleIdentityNameTests.swift */,
 				CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */,
 				0612CA92E4B533CF283A8CB3 /* AppSupportDirectoryTests.swift */,
 				F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */,
@@ -1328,6 +1331,7 @@
 				B135BE19B9795510F5749D3B /* SummaryFabrication.swift in Sources */,
 				B611BF9BE5B16019208B0A3F /* LanguageReplayTests.swift in Sources */,
 				B134A6C1C665B0D2E57A3C8A /* PermissionCensusTests.swift in Sources */,
+				CF04BEE5F7F43BBA2912248B /* BundleIdentityNameTests.swift in Sources */,
 				F84C21AA931175E37108AC37 /* AccessibilityFunctionCheckTests.swift in Sources */,
 				8F635DC70A6482BEACF0EFAD /* AppSupportDirectoryTests.swift in Sources */,
 				B90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift in Sources */,
@@ -1411,6 +1415,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AF_FLOW_DISPLAY_NAME = "$(PRODUCT_NAME)";
 				INFOPLIST_FILE = AFFlow/Info.plist;
 				PRODUCT_NAME = "AF Flow";
 				PRODUCT_MODULE_NAME = AFFlow;
@@ -1578,6 +1583,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AF_FLOW_DISPLAY_NAME = "$(PRODUCT_NAME)";
 				INFOPLIST_FILE = AFFlow/Info.plist;
 				PRODUCT_NAME = "AF Flow";
 				PRODUCT_MODULE_NAME = AFFlow;
