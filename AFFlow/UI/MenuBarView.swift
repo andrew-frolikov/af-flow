@@ -94,9 +94,12 @@ struct MenuBarView: View {
                         Task { await appState.startHotkeyMonitor() }
                     }
                 }
-                if error.contains("Accessibility") {
-                    Button("Open Accessibility Settings") {
-                        PermissionChecker.openAccessibilitySettings()
+                // Was "Open Accessibility Settings", matched on the old error
+                // string. Granting Accessibility changes nothing under the
+                // sandbox; Input Monitoring is what the hotkey actually needs.
+                if error.contains("Input Monitoring") {
+                    Button("Open Input Monitoring Settings") {
+                        PermissionChecker.promptInputMonitoring()
                     }
                     Button("Retry") {
                         Task { await appState.startHotkeyMonitor() }

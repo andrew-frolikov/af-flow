@@ -1329,10 +1329,15 @@ class AppState: ObservableObject {
             errorMessage = nil
             debugLogStore.record(category: .hotkey, message: "Hotkey monitor is ready.")
         } else {
-            PermissionChecker.promptAccessibility()
-            errorMessage = "Accessibility access required: grant permission then click Retry"
+            // **Not Accessibility.** Under the App Sandbox the event tap fails
+            // for want of INPUT MONITORING; Accessibility can never be granted
+            // here at all (AXError -25204 on all 28 queries, proven
+            // 2026-08-21). This branch used to pop the Accessibility dialog and
+            // name it in the error, which is the fourth trip to a dead pane.
+            PermissionChecker.promptInputMonitoring()
+            errorMessage = "Input Monitoring required: grant it in System Settings, then click Retry"
             status = .error
-            debugLogStore.record(category: .hotkey, message: errorMessage ?? "Accessibility access required.")
+            debugLogStore.record(category: .hotkey, message: errorMessage ?? "Input Monitoring required.")
         }
     }
 
@@ -3647,7 +3652,14 @@ class AppState: ObservableObject {
             pushToTalkChord = previousPushChord
             toggleToTalkChord = previousToggleChord
             pepperChatChord = previousPepperChatChord
-            shortcutErrorMessage = "That shortcut is already in use."
+            // **Name the owner.** "Already in use" tells him nothing he can
+            // act on; the store reports WHICH action it collided with, and a
+            // previous commit claimed this interface said so when it did not.
+            if case ChordBindingStore.StoreError.duplicateBinding(let owner) = error {
+                shortcutErrorMessage = "That is already your \(owner.spokenName)."
+            } else {
+                shortcutErrorMessage = "That shortcut could not be saved."
+            }
         }
     }
 
@@ -3746,7 +3758,9 @@ class AppState: ObservableObject {
         pipelineOwner = nil
     }
 
-    private func refreshCleanupModelState() async {
+    /// Not private: the first-run walkthrough loads models too, and it must
+    /// go through this policy rather than around it.
+    func refreshCleanupModelState() async {
         guard cleanupEnabled else {
             debugLogStore.record(category: .model, message: "Cleanup disabled; unloading local cleanup models.")
             await textCleanupManager.unloadModel()

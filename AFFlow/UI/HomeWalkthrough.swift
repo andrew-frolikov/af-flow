@@ -108,6 +108,8 @@ struct HomeWalkthrough: View {
             stopPolling()
             tryIt.cleanup()
             micLevel.stop()
+            // Never leave his real shortcut suspended.
+            appState.setShortcutCaptureActive(false)
         }
         .onChange(of: step) { _, _ in startPollingIfNeeded() }
         .onChange(of: isWindowVisible) { _, _ in
@@ -226,7 +228,7 @@ struct HomeWalkthrough: View {
     }
 
     private var modelsReady: Bool {
-        appState.modelManager.isReady && appState.textCleanupManager.isReady
+        appState.modelManager.isReady && cleanupReady
     }
 
     private var modelsFailed: Bool {
@@ -270,6 +272,7 @@ struct HomeWalkthrough: View {
 
     private var modelsSubtitle: String {
         if modelsFailed { return "Download failed" }
+        if !appState.cleanupEnabled, appState.modelManager.isReady { return "Ready for voice-to-text" }
         if modelsReady { return "Ready for voice-to-text" }
         if let progress = appState.modelManager.downloadProgress, progress > 0, progress < 1 {
             return "Downloading \(Int(progress * 100))%"
@@ -300,11 +303,24 @@ struct HomeWalkthrough: View {
         }
     }
 
+    /// **Respects the cleanup policy rather than bypassing it.**
+    ///
+    /// This used to call `textCleanupManager.loadModel` directly, which skips
+    /// the guards in `AppState.refreshCleanupModelState()`. For a user who has
+    /// cleanup disabled or on a non-local backend that meant a multi-gigabyte
+    /// download they had already declined, a race against `initialize()`'s
+    /// unload, and `modelsReady` possibly never becoming true, so Continue
+    /// never appeared and the walkthrough stalled.
     private func loadModels() async {
         await appState.modelManager.loadModel(name: appState.speechModel)
-        await appState.textCleanupManager.loadModel(
-            kind: appState.textCleanupManager.selectedCleanupModelKind
-        )
+        await appState.refreshCleanupModelState()
+    }
+
+    /// Cleanup counts as ready when the policy says it is not wanted: waiting
+    /// for a model nobody asked for is how Continue never arrives.
+    private var cleanupReady: Bool {
+        guard appState.cleanupEnabled else { return true }
+        return appState.textCleanupManager.isReady
     }
 
     private var shortcutStep: some View {
@@ -318,10 +334,23 @@ struct HomeWalkthrough: View {
             if !inputMonitoringGranted {
                 // Reachable through "Set up later". Capture cannot work without
                 // the grant, and saying which grant is missing beats a dead field.
-                calloutRow("AF Flow cannot see the keyboard yet")
+                calloutRow("AF Flow cannot see the keyboard yet. Its shortcut needs Input Monitoring.")
                     .padding(.top, 22)
-                ghostButton("Back to Setup") { advance(to: .setup) }
-                    .padding(.top, 18)
+                HStack(spacing: 10) {
+                    ghostButton("Back to Setup") { advance(to: .setup) }
+                    // **There has to be a way out.** Without this the only
+                    // control here was "Back to Setup", whose only control was
+                    // "Set up later" back to here: a user who declines Input
+                    // Monitoring looped between two steps forever and could
+                    // never reach Home at all. Skipping must be safe, and it
+                    // was safe one step earlier and not this one.
+                    primary("Skip for now") { advance(to: .done) }
+                }
+                .padding(.top, 18)
+                Text("You can set the shortcut later in Settings.")
+                    .font(theme.captionFont)
+                    .foregroundStyle(secondaryText)
+                    .padding(.top, 14)
             } else if capturing {
                 // The app's own recorder, not a second capture state machine.
                 ShortcutRecorderView(
@@ -446,10 +475,11 @@ struct HomeWalkthrough: View {
                         .foregroundStyle(accentText)
                 }
             }
-        } else if tryIt.transcribedText != nil {
-            // **An empty result is not a success.** nil, empty and
-            // whitespace-only all land here rather than in a quoted well
-            // congratulating the user on silence.
+        } else if tryIt.heardNothing {
+            // **An empty result is not a success**, and nil is an empty result.
+            // A nil transcription used to fall through to "Waiting for you",
+            // and a whitespace-only one showed this callout and then
+            // auto-advanced two seconds later as though it had worked.
             calloutRow("No speech detected. Check the microphone and try again.")
         } else {
             Text("Waiting for you...")
@@ -669,10 +699,16 @@ struct HomeWalkthrough: View {
 
     private func syncTryItLifecycle() {
         if step == .tryIt, isWindowVisible {
+            // **Suspend the app's own monitor first.** It is bound to the same
+            // chord, so without this one press drove BOTH the real dictation
+            // pipeline, which pastes into whatever he had focused, and the
+            // try-it. The same suspension the shortcut recorder uses.
+            appState.setShortcutCaptureActive(true)
             tryIt.chord = appState.pushToTalkChord
             tryIt.start { advance(to: .done) }
         } else {
             tryIt.cleanup()
+            appState.setShortcutCaptureActive(false)
         }
     }
 

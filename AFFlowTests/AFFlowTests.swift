@@ -1596,7 +1596,12 @@ final class AFFlowTests: XCTestCase {
 
         XCTAssertEqual(appState.toggleToTalkChord, originalToggleChord)
         XCTAssertEqual(monitor.updatedBindings[.toggleToTalk], originalToggleChord)
-        XCTAssertEqual(appState.shortcutErrorMessage, "That shortcut is already in use.")
+        // The message names the OWNER now. "Already in use" told him nothing he
+        // could act on, and the store has always known which action it clashed
+        // with; the interface simply threw that away. The subject of this test,
+        // that the binding is REFUSED and the old chord survives, is unchanged
+        // and asserted above.
+        XCTAssertEqual(appState.shortcutErrorMessage, "That is already your push-to-talk shortcut.")
     }
 
     func testAppStateLoadsPersistedCleanupBackendSelection() throws {

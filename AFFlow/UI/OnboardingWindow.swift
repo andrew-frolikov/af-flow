@@ -657,6 +657,10 @@ class TryItController: ObservableObject {
     @Published var isRecording = false
     @Published var isTranscribing = false
     @Published var transcribedText: String?
+    /// Set when a transcription came back with nothing usable, whether that was
+    /// nil, empty, or whitespace only. All three are the same event to a user
+    /// and none of them is a success.
+    @Published var heardNothing = false
     /// **No chord literal, ever.** This used to read "Waiting for you to hold
     /// Right Command + Right Option", which stopped being true the moment
     /// Andrew rebound it, and told a new user to hold keys that do nothing.
@@ -665,6 +669,10 @@ class TryItController: ObservableObject {
     @Published var monitorStartFailed = false
 
     private var hotkeyMonitor: HotkeyMonitoring?
+    /// Held while a retry is pending, so teardown can stop it.
+    private var pendingMonitor: HotkeyMonitoring?
+    private var retryCancelled = false
+    private var isStarted = false
     private var audioRecorder: AudioRecorder?
     private var hasAdvanced = false
     private var retryCount = 0
@@ -687,7 +695,19 @@ class TryItController: ObservableObject {
         self.hotkeyMonitorFactory = hotkeyMonitorFactory
     }
 
+    /// **Idempotent, and it has to be.** A second call without an intervening
+    /// `cleanup()` used to drop the previous monitor WITHOUT stopping it, and
+    /// `HotkeyMonitor` has no `deinit`: a released-but-started monitor leaves an
+    /// enabled session-wide event tap on a live thread whose `userInfo` is an
+    /// unretained pointer to freed memory. That is a use-after-free on the next
+    /// keystroke ANYWHERE on the system, not a leak.
+    ///
+    /// The view calls this from `.onAppear` and again from `.onChange(of: step)`
+    /// on a resume straight into this step, so the second call was reachable.
     func start(onAdvance: @escaping () -> Void) {
+        guard !isStarted else { return }
+        isStarted = true
+        retryCancelled = false
         let recorder = AudioRecorder()
         recorder.targetDeviceID = AudioDeviceManager.selectedInputDeviceID()
         recorder.prewarm()
@@ -702,6 +722,7 @@ class TryItController: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.statusMessage = ""
+                self.heardNothing = false
                 self.isRecording = true
                 try? recorder.startRecording()
             }
@@ -714,13 +735,20 @@ class TryItController: ObservableObject {
                 let buffer = await recorder.stopRecording()
                 let text = await self.transcriber.transcribe(audioBuffer: buffer)
                 self.isTranscribing = false
-                if let text {
+                let usable = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if usable.isEmpty {
+                    self.heardNothing = true
+                    self.transcribedText = nil
+                    self.statusMessage = "No speech detected. Check the selected microphone and try again."
+                } else {
+                    self.heardNothing = false
                     self.transcribedText = text
+                    // Only a real result advances. This used to fire for ANY
+                    // non-nil string, so a whitespace-only transcription showed
+                    // "No speech detected" and then moved on as if it worked.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
                         self?.advance(onAdvance: onAdvance)
                     }
-                } else {
-                    self.statusMessage = "No speech detected. Check the selected microphone and try again."
                 }
             }
         }
@@ -728,6 +756,9 @@ class TryItController: ObservableObject {
         if monitor.start() {
             self.hotkeyMonitor = monitor
         } else {
+            // Hold it even while it is not started, so `cleanup()` can stop it
+            // if a retry succeeds after we have been torn down.
+            self.pendingMonitor = monitor
             retryStartMonitor(monitor: monitor)
         }
     }
@@ -740,9 +771,36 @@ class TryItController: ObservableObject {
     }
 
     func cleanup() {
+        // **Cancel the retry first.** It used to survive teardown: `cleanup()`
+        // stopped only `hotkeyMonitor`, which is nil during a retry window
+        // because it is assigned on success. So leaving the step or hiding the
+        // window left up to five pending attempts to install a global tap for
+        // a step that is no longer on screen, and if the controller had been
+        // deallocated by then the tap was orphaned outright.
+        retryCancelled = true
+        pendingMonitor?.stop()
+        pendingMonitor = nil
+
         hotkeyMonitor?.stop()
         hotkeyMonitor = nil
+
+        // **Stop the recording rather than abandoning it.** Dropping the
+        // recorder mid-press left the microphone held and `isRecording` stuck
+        // true, so returning to the step showed a pulsing "Listening" with
+        // nothing behind it and a chord that did nothing.
+        if let recorder = audioRecorder, isRecording {
+            Task { _ = await recorder.stopRecording() }
+        }
         audioRecorder = nil
+
+        isRecording = false
+        isTranscribing = false
+        heardNothing = false
+        // A failure from a previous attempt must not outlive it: the user may
+        // have granted Input Monitoring in between.
+        monitorStartFailed = false
+        retryCount = 0
+        isStarted = false
     }
 
     private func retryStartMonitor(monitor: HotkeyMonitoring) {
@@ -752,10 +810,13 @@ class TryItController: ObservableObject {
         }
         retryCount += 1
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            // If we were torn down, do NOT start a tap nobody will ever stop.
+            guard let self, !self.retryCancelled else { return }
             if monitor.start() {
-                self?.hotkeyMonitor = monitor
+                self.hotkeyMonitor = monitor
+                self.pendingMonitor = nil
             } else {
-                self?.retryStartMonitor(monitor: monitor)
+                self.retryStartMonitor(monitor: monitor)
             }
         }
     }
