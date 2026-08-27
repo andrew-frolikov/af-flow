@@ -1129,9 +1129,12 @@ final class ModelManager: ObservableObject {
         }
     }
 
-    private static var whisperModelsDirectory: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("AFFlow/whisper-models", isDirectory: true)
+    /// Internal rather than private so `AppSupportPathOwnershipTests` can
+    /// check where it points. It used to spell the folder itself, which is how
+    /// the 2026-08-25 rename sent it to an empty directory while 2.0 GB of
+    /// already downloaded speech models sat in the real one.
+    static var whisperModelsDirectory: URL {
+        AppSupportDirectory.url.appendingPathComponent("whisper-models", isDirectory: true)
     }
 
     private static var whisperModelsRootDirectory: URL {

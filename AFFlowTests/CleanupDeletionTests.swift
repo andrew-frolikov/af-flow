@@ -152,9 +152,8 @@ final class CleanupDeletionTests: XCTestCase {
             let correctedTranscription: String?
         }
 
-        let staged = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("AFFlow/replay/transcription-lab-index.json")
+        let staged = AppSupportDirectory.url
+            .appendingPathComponent("replay/transcription-lab-index.json")
         try XCTSkipUnless(FileManager.default.fileExists(atPath: staged.path), "nothing staged")
 
         let entries = try JSONDecoder().decode([Entry].self, from: Data(contentsOf: staged))

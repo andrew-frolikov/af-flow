@@ -17,8 +17,12 @@
 # the test host cannot corrupt each other's view.
 set -euo pipefail
 
-APP="$HOME/Library/Containers/com.frolikov.afflow/Data/Library/Application Support/AFFlow/models"
-HOST="$HOME/Library/Containers/com.frolikov.afflow.testhost/Data/Library/Application Support/AFFlow/models"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# The APP side is resolved with --find: a model downloaded straight after the
+# rename can live only in the folder that rename created, and linking from an
+# empty directory makes every model-backed eval skip and the run exit 0.
+APP="$(python3 "$HERE/af_paths.py" --print app --find models)" || exit 2
+HOST="$(python3 "$HERE/af_paths.py" --print testhost)/models" || exit 2
 
 if [ ! -d "$APP" ]; then
     echo "no models to link: $APP does not exist" >&2

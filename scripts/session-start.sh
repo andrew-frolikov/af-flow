@@ -55,6 +55,21 @@ case "$SYSTEM_LIST_STATUS" in
 esac
 
 echo
+echo "### Does anything name his data folder by hand"
+# Same discipline as the system list check above: capture the status rather
+# than piping it into sed, which would report SED's exit code. A finding here
+# means a script or a call site can be pointed at an empty folder by a rename,
+# which is how the probe above went blind on 2026-08-25.
+PATH_CHECK_OUT=$(python3 scripts/app-support-path-check.py 2>&1)
+PATH_CHECK_STATUS=$?
+printf '%s\n' "$PATH_CHECK_OUT" | sed -n '3,$p'
+case "$PATH_CHECK_STATUS" in
+    0) : ;;
+    2) echo ">>> COULD NOT CHECK. A source that cannot be read is not a clean one." ;;
+    *) echo ">>> ACT ON THIS. A rename can silently orphan his data through these lines." ;;
+esac
+
+echo
 echo "### Does every spec line say who decided it"
 python3 scripts/spec-provenance-check.py 2>&1
 

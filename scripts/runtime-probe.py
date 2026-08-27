@@ -30,17 +30,23 @@ import subprocess
 import sys
 from collections import Counter, defaultdict
 
-CONTAINER = os.path.expanduser(
-    "~/Library/Containers/com.frolikov.afflow/Data/Library/Application Support/AFFlow"
-)
-LOG = os.path.join(CONTAINER, "debug-log.jsonl")
+import af_paths
+
+# Never spell this folder here. On 2026-08-25 the literal that used to sit at
+# this line said `AFFlow`, the app's data was at `AF Flow`, and the probe
+# reported that he had never dictated on a day the log grew by megabytes.
+CONTAINER = af_paths.app_support()
+# `app_find` rather than a join: between a stale build and the next launch, a
+# file can exist only in the folder the rename created, and a probe that cannot
+# see it prints "not found", which reads as "he never dictated".
+LOG = af_paths.app_find("debug-log.jsonl")
 # Read from before the 2026-08-02 format change if the app has not launched
 # since. The store migrates the array into the line file on first launch, so
 # this fallback stops the probe going blind in the window between the two.
-LEGACY_LOG = os.path.join(CONTAINER, "debug-log.json")
-LAB = os.path.join(CONTAINER, "transcription-lab", "transcription-lab-index.jsonl")
+LEGACY_LOG = af_paths.app_find("debug-log.json")
+LAB = af_paths.app_find("transcription-lab/transcription-lab-index.jsonl")
 # The pre-2026-08-04 single-array archive. Read only if the new one is absent.
-LAB_LEGACY = os.path.join(CONTAINER, "transcription-lab", "transcription-lab-index.json")
+LAB_LEGACY = af_paths.app_find("transcription-lab/transcription-lab-index.json")
 
 
 def load_lab():

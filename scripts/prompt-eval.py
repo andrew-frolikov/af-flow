@@ -39,11 +39,9 @@ import sys
 import unicodedata
 from pathlib import Path
 
-LAB_INDEX = (
-    Path.home()
-    / "Library/Containers/com.frolikov.afflow/Data/Library/Application Support"
-    / "AFFlow/transcription-lab/transcription-lab-index.json"
-)
+import af_paths
+
+LAB_INDEX = Path(af_paths.app_find("transcription-lab/transcription-lab-index.json"))
 PROBE = Path(__file__).resolve().parent / "cleanup-model-probe.sh"
 
 # Deleting any of these is the defect he corrects most often. Deliberately NOT a
@@ -236,7 +234,9 @@ def main():
     # guard, so a missing model here would be fetched over the wire. The project's
     # premise is that nothing leaves this Mac, and a measurement tool is not an
     # exception to that.
-    models_dir = Path.home() / "Library/Application Support/AFFlow/models"
+    # The probe is a plain CLI with no container, so its Application Support is
+    # the unsandboxed one, NOT the app's.
+    models_dir = Path(af_paths.find("models", af_paths.unsandboxed_base()))
     expected = {
         "qwen35_0_8b_q4_k_m": "Qwen3.5-0.8B-Q4_K_M.gguf",
         "qwen35_2b_q4_k_m": "Qwen3.5-2B-Q4_K_M.gguf",

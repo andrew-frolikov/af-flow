@@ -344,9 +344,12 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
         modelsDirectory.appendingPathComponent(fileName)
     }
 
+    /// One place decides where his data lives, and it is not this file. The
+    /// 2026-08-25 rename rewrote the literal that used to be here, so the app
+    /// re-downloaded a cleanup model it already had and showed the 2B and 4B
+    /// as not downloaded.
     static var modelsDirectory: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("AFFlow/models", isDirectory: true)
+        AppSupportDirectory.url.appendingPathComponent("models", isDirectory: true)
     }
 
     static func isModelDownloaded(_ kind: LocalCleanupModelKind) -> Bool {

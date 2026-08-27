@@ -22,11 +22,9 @@ import os
 import sys
 from collections import Counter
 
-BUNDLE_ID = "com.frolikov.afflow"
-LOG = os.path.expanduser(
-    "~/Library/Containers/%s/Data/Library/Application Support/AFFlow/debug-log.jsonl"
-    % BUNDLE_ID
-)
+import af_paths
+
+LOG = af_paths.app_find("debug-log.jsonl")
 PREFIX = "RAW detectLanguage "
 
 

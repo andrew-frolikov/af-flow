@@ -36,8 +36,7 @@ final class DecodeOptionsBakeOffTests: XCTestCase {
     private static let shippedCharacterCount = 193
 
     private var containerRoot: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("AFFlow", isDirectory: true)
+        AppSupportDirectory.url
     }
 
     private func samples(at url: URL) throws -> [Float] {

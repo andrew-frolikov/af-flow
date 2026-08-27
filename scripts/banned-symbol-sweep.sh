@@ -442,6 +442,23 @@ case "$?" in
   *) fail=1 ;;
 esac
 
+# `AppSupportDirectory` exists so a rename cannot orphan his data, and on
+# 2026-08-25 the rename orphaned it anyway through two call sites and eight
+# script literals that spelled the folder themselves. The suite can pin the
+# Swift half; nothing pinned the scripts, and the scripts are how his behaviour
+# is read, so their failure is the silent one. Exit 2 means a source could not
+# be read, which is a skip, not a pass.
+echo ""
+# Exit 2 FAILS here, unlike the TCC check above. That one reads machine state
+# behind Full Disk Access, which is legitimately unavailable; this one reads
+# files in the checkout, so unreadable means the scan did not complete and the
+# gate has proven nothing. Codex, 2026-08-26.
+python3 "$(dirname "$0")/app-support-path-check.py"
+case "$?" in
+  0) : ;;
+  *) fail=1 ;;
+esac
+
 # One key declared twice with DIFFERENT defaults is an unambiguous bug: which one
 # applies depends on which view initialises first while the key is absent. This
 # project shipped one already (meetingSummaryPrompt, fixed 2026-07-29). Only the

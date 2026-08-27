@@ -19,8 +19,94 @@ enum AppSupportDirectory {
     /// condition, because the day it is deleted should be a deliberate edit.
     static let legacyFolderName = "GhostPepper"
 
+    /// The folder name nobody chose.
+    ///
+    /// The 2026-08-25 rename find-and-replaced `GhostPepper` into `AFFlow`
+    /// inside two hardcoded path literals, so the models went to `AFFlow` while
+    /// this file moved everything else to `AF Flow`. Between that day and this
+    /// fix, a model downloaded for the first time landed there and NOWHERE
+    /// ELSE. Measured on his test host: 65 files, 153.7 MB, no copy under the
+    /// real folder. So this name cannot simply be dropped; what is under it has
+    /// to be carried across.
+    static let interimFolderName = "AFFlow"
+
     static var url: URL {
-        resolve(in: baseDirectory)
+        let resolved = resolve(in: baseDirectory)
+        // Once per process, not per access: this walks a directory tree, and
+        // `url` is read on hot paths.
+        _ = interimAbsorption
+        return resolved
+    }
+
+    private static let interimAbsorption: Void = {
+        absorbInterimFolder(in: baseDirectory)
+    }()
+
+    /// Move anything that exists ONLY in the interim folder into the real one.
+    ///
+    /// Three rules, and each one is there because of how this kind of code
+    /// fails:
+    ///
+    ///   - a file already present in the real folder is LEFT ALONE, in both
+    ///     places. Never overwrite: the copy the app has been reading is the
+    ///     one that works.
+    ///   - nothing is ever deleted. Empty directories are pruned, and a
+    ///     directory that still holds something stays.
+    ///   - a failure to move one file does not stop the others, because a
+    ///     partial migration that reports success is worse than a loud one.
+    ///
+    /// The pre-rename folder is deliberately NOT absorbed. That one means an
+    /// old install beside a live one, and `resolve` already decides between
+    /// them; this one means a defect, and its contents may be unique.
+    @discardableResult
+    static func absorbInterimFolder(in base: URL) -> Int {
+        let current = resolve(in: base)
+        let interim = base.appendingPathComponent(interimFolderName, isDirectory: true)
+        guard interim.standardizedFileURL != current.standardizedFileURL else { return 0 }
+        guard isDirectory(interim) else { return 0 }
+
+        let manager = FileManager.default
+        guard let walker = manager.enumerator(at: interim, includingPropertiesForKeys: [.isRegularFileKey]) else {
+            return 0
+        }
+
+        var moved = 0
+        var directories: [URL] = []
+        for case let item as URL in walker {
+            if isDirectory(item) {
+                directories.append(item)
+                continue
+            }
+            let relative = item.path.dropFirst(interim.path.count).drop(while: { $0 == "/" })
+            let destination = current.appendingPathComponent(String(relative))
+            guard !manager.fileExists(atPath: destination.path) else { continue }
+            do {
+                try manager.createDirectory(
+                    at: destination.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try manager.moveItem(at: item, to: destination)
+                moved += 1
+            } catch {
+                NSLog("AppSupportDirectory: could not carry %@ across: %@",
+                      String(relative), error.localizedDescription)
+            }
+        }
+
+        // Deepest first, so a directory emptied by the loop above can itself be
+        // pruned. `removeEmptyDirectory` checks the contents before removing,
+        // so a directory still holding something survives.
+        for directory in directories.sorted(by: { $0.path.count > $1.path.count }) {
+            try? removeEmptyDirectory(directory)
+        }
+        try? removeEmptyDirectory(interim)
+        return moved
+    }
+
+    private static func removeEmptyDirectory(_ url: URL) throws {
+        let contents = try FileManager.default.contentsOfDirectory(atPath: url.path)
+        guard contents.isEmpty else { return }
+        try FileManager.default.removeItem(at: url)
     }
 
     static var baseDirectory: URL {

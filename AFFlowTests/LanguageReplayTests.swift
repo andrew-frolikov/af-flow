@@ -33,8 +33,7 @@ import WhisperKit
 /// It only ever READS his recordings, and writes one JSONL file.
 final class LanguageReplayTests: XCTestCase {
     private var containerRoot: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("AFFlow", isDirectory: true)
+        AppSupportDirectory.url
     }
 
     private struct Entry: Decodable {

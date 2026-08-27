@@ -34,14 +34,13 @@ import json
 import os
 import sys
 
+import af_paths
+
 ENGLISH_PRIOR = 887.0
 RUSSIAN_PRIOR = 332.0
 SUPPORTED = ("en", "ru")
 
-DEFAULT = os.path.expanduser(
-    "~/Library/Containers/com.frolikov.afflow.testhost/Data/Library/"
-    "Application Support/AFFlow/replay/detections.jsonl"
-)
+DEFAULT = af_paths.test_host_find("replay/detections.jsonl")
 
 
 def old_rule(probs, reported):

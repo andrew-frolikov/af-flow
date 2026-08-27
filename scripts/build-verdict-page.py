@@ -24,11 +24,9 @@ import json
 import re
 from pathlib import Path
 
-LAB_INDEX = (
-    Path.home()
-    / "Library/Containers/com.frolikov.afflow/Data/Library/Application Support"
-    / "AFFlow/transcription-lab/transcription-lab-index.json"
-)
+import af_paths
+
+LAB_INDEX = Path(af_paths.app_find("transcription-lab/transcription-lab-index.json"))
 
 
 def cyrillic_share(text):

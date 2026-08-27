@@ -66,6 +66,70 @@ final class AppSupportDirectoryTests: XCTestCase {
         )
     }
 
+    // MARK: - The folder the rename's find and replace created
+
+    /// A model downloaded AFTER the rename and BEFORE this fix is the only copy
+    /// there is. Measured on his test host on 2026-08-26: 65 files, 153.7 MB,
+    /// none of them present under the real folder. Cutting the path over
+    /// without absorbing that would have made the suite skip every model-backed
+    /// eval and exit 0, which is this project's signature failure.
+    func testAbsorbsAModelLeftInTheFolderTheRenameCreated() throws {
+        try makeFolder(AppSupportDirectory.folderName, containing: "debug-log.jsonl")
+        let interim = base.appendingPathComponent(AppSupportDirectory.interimFolderName, isDirectory: true)
+            .appendingPathComponent("models", isDirectory: true)
+        try FileManager.default.createDirectory(at: interim, withIntermediateDirectories: true)
+        try Data("weights".utf8).write(to: interim.appendingPathComponent("Qwen.gguf"))
+
+        AppSupportDirectory.absorbInterimFolder(in: base)
+
+        let landed = base.appendingPathComponent(AppSupportDirectory.folderName)
+            .appendingPathComponent("models/Qwen.gguf")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: landed.path),
+            "the only copy of a model must move into the folder the app reads"
+        )
+    }
+
+    /// Never overwrite, never delete. A file that exists in both is left in
+    /// both: the one the app reads is untouched, and his copy is still there to
+    /// look at.
+    func testLeavesACollidingFileAloneRatherThanOverwritingIt() throws {
+        try makeFolder(AppSupportDirectory.folderName)
+        let current = base.appendingPathComponent(AppSupportDirectory.folderName, isDirectory: true)
+        try Data("the one the app reads".utf8).write(to: current.appendingPathComponent("models.json"))
+
+        let interim = base.appendingPathComponent(AppSupportDirectory.interimFolderName, isDirectory: true)
+        try FileManager.default.createDirectory(at: interim, withIntermediateDirectories: true)
+        try Data("the stray".utf8).write(to: interim.appendingPathComponent("models.json"))
+
+        AppSupportDirectory.absorbInterimFolder(in: base)
+
+        XCTAssertEqual(
+            try String(contentsOf: current.appendingPathComponent("models.json"), encoding: .utf8),
+            "the one the app reads"
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: interim.appendingPathComponent("models.json").path),
+            "a colliding file is left where it is, never deleted"
+        )
+    }
+
+    /// The pre-rename folder is a different case and keeps its own rule: an old
+    /// install sitting beside a live one is left completely alone.
+    func testDoesNotAbsorbThePreRenameFolder() throws {
+        try makeFolder(AppSupportDirectory.folderName)
+        try makeFolder(AppSupportDirectory.legacyFolderName, containing: "old.json")
+
+        AppSupportDirectory.absorbInterimFolder(in: base)
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: base.appendingPathComponent(AppSupportDirectory.legacyFolderName)
+                    .appendingPathComponent("old.json").path
+            )
+        )
+    }
+
     func testFallsBackToTheLegacyFolderWhenTheMoveCannotHappen() throws {
         // A plain FILE where the new folder should go makes moveItem throw. The
         // app must then keep reading the old folder rather than inventing a new

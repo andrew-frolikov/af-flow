@@ -276,9 +276,8 @@ final class TranscriptionLabRetentionTests: XCTestCase {
             "set TEST_RUNNER_AF_FLOW_VERIFY_REAL_ARCHIVE=1 and stage first"
         )
 
-        let staged = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("AFFlow/replay", isDirectory: true)
+        let staged = AppSupportDirectory.url
+            .appendingPathComponent("replay", isDirectory: true)
         let legacy = staged.appendingPathComponent("transcription-lab-index.json")
         try XCTSkipUnless(FileManager.default.fileExists(atPath: legacy.path),
                           "nothing staged at \(staged.path)")
