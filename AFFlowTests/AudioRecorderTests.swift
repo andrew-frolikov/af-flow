@@ -454,8 +454,30 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
         )
     }
 
-    func testAConfigurationChangeDuringACaptureIsRealAndInvalidates() {
+    // MEASURED AGAIN, 2026-08-27, and the sentence above it was wrong.
+    //
+    // "During a capture it is a real route change" was an assumption, and his
+    // own log falsifies it: `reconfigured mid-recording` fired 652 times while
+    // the hardware route actually changed shape 13 times. A 50 to 1 false
+    // positive rate, against the very check this code already trusts at every
+    // start.
+    //
+    // What it cost him: 881 of 1332 recordings paid a rebuild, and a rebuild's
+    // `hotkey_to_mic_live` p90 is 1652 ms against 533 ms when the engine is
+    // reused. His median speech onset is 750 ms, so on a slow rebuild the
+    // opening of the sentence is never recorded. On 2026-08-27 he reported
+    // Russian coming back as nonsense; the five dictations after that day's
+    // meeting all show mic-live above 950 ms, and the transcripts open
+    // mid-thought or loop.
+    //
+    // So the notification is no longer trusted on its own. It ASKS the
+    // hardware, which is what `invalidateIfRouteChanged()` already does at
+    // every start, and invalidates only when the shape really moved.
+    func testAConfigurationChangeDuringACaptureOnAnUnchangedRouteIsNotBreakage() {
+        let route = InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1)
         let recorder = AudioRecorder()
+        recorder.routeSignatureProvider = { _ in route }
+        recorder.prewarm()
         recorder.armCaptureWatchdog()
 
         NotificationCenter.default.post(
@@ -463,10 +485,29 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
             object: recorder.test_currentEngine
         )
 
+        XCTAssertNil(
+            recorder.pendingEngineInvalidationReason,
+            "AVFAudio posts this while the graph renders, which is exactly when he is speaking. Rebuilding on it costs the first second of the next dictation."
+        )
+    }
+
+    func testAConfigurationChangeDuringACaptureThatMovedTheRouteStillInvalidates() {
+        var route = InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1)
+        let recorder = AudioRecorder()
+        recorder.routeSignatureProvider = { _ in route }
+        recorder.prewarm()
+        recorder.armCaptureWatchdog()
+
+        route = InputRouteSignature(deviceID: 73, sampleRate: 24000, channelCount: 1)
+        NotificationCenter.default.post(
+            name: .AVAudioEngineConfigurationChange,
+            object: recorder.test_currentEngine
+        )
+
         XCTAssertEqual(
             recorder.pendingEngineInvalidationReason,
-            "the audio graph was reconfigured mid-recording",
-            "The graph moving under a live capture is the case this notification exists for."
+            "the input route changed shape (48000Hz/1ch → 24000Hz/1ch)",
+            "A graph that really moved under a live capture must still throw the engine away."
         )
     }
 
@@ -477,13 +518,22 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
     // rebuild either. That is a path straight back to persistent zero-frame
     // captures. Arming now happens before the engine starts, the timer never
     // clears the flag, and a failed start disarms.
+    // The subject here is the ARMED FLAG, not the invalidation. The observable
+    // used to be the mid-recording reason string; since 2026-08-27 a
+    // notification only invalidates when the route really moved, so the route is
+    // moved here on purpose. If the flag fell down the gap, nothing would be
+    // pending and this still goes red.
     func testStartingTheWatchdogTimerNeverDropsTheArmedState() {
         let recorder = AudioRecorder()
         var now: UInt64 = 0
         recorder.nowNanoseconds = { now }
+        var route = InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1)
+        recorder.routeSignatureProvider = { _ in route }
+        recorder.prewarm()
 
         recorder.armCaptureWatchdog()
         recorder.startCaptureWatchdogTimer()
+        route = InputRouteSignature(deviceID: 73, sampleRate: 24000, channelCount: 1)
         NotificationCenter.default.post(
             name: .AVAudioEngineConfigurationChange,
             object: recorder.test_currentEngine
@@ -492,7 +542,7 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
 
         XCTAssertEqual(
             recorder.pendingEngineInvalidationReason,
-            "the audio graph was reconfigured mid-recording",
+            "the input route changed shape (48000Hz/1ch → 24000Hz/1ch)",
             "A notification arriving while the timer is being installed must not fall down a gap."
         )
     }
@@ -517,6 +567,72 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
         XCTAssertTrue(
             fired.isEmpty,
             "Counting engine startup against the grace period turns a slow start into a false alarm."
+        )
+    }
+
+    // MEASURED GAP, 2026-08-27. A capture diagnosed as broken mid-recording was
+    // logged and shown to him, and the engine was left in place, so the NEXT
+    // recording reused it. Nothing caught that, because the configuration
+    // notification was rebuilding on nearly every recording anyway and hid it
+    // behind an accident. With that removed, the engine has to be thrown away
+    // on evidence instead.
+    func testACaptureWithNoFramesThrowsTheEngineAwayForTheNextRecording() {
+        let recorder = AudioRecorder()
+        var now: UInt64 = 0
+        recorder.nowNanoseconds = { now }
+
+        recorder.armCaptureWatchdog()
+        now = 1_500_000_000          // past the one second the tap is given
+        recorder.pollCaptureHealth()
+
+        XCTAssertEqual(
+            recorder.pendingEngineInvalidationReason,
+            "the tap stopped delivering frames during a recording",
+            "A dead input path must not be handed to the next dictation."
+        )
+    }
+
+    func testAConversionFailureThrowsTheEngineAway() {
+        let recorder = AudioRecorder()
+        var now: UInt64 = 0
+        recorder.nowNanoseconds = { now }
+
+        recorder.armCaptureWatchdog()
+        now = 1_600_000_000
+        recorder.test_noteTapCallback()   // the tap IS firing, right now
+        recorder.pollCaptureHealth()      // and nothing has ever survived conversion
+
+        XCTAssertEqual(
+            recorder.pendingEngineInvalidationReason,
+            "audio stopped surviving conversion during a recording",
+            "A format mismatch is exactly what a reconfigured graph produces, and it outlives the recording."
+        )
+    }
+
+    // Digital silence is the MICROPHONE, not the graph: the route is alive and
+    // the frames are exact zeroes. Rebuilding cannot unmute a microphone, and
+    // rebuilding on it would put the 1.5 s cost back for the most common cause,
+    // which is him pausing mid-thought.
+    func testDigitalSilenceLeavesTheEngineAlone() {
+        let recorder = AudioRecorder()
+        var now: UInt64 = 0
+        recorder.nowNanoseconds = { now }
+
+        recorder.armCaptureWatchdog()
+        // The tap keeps firing and chunks keep converting. They are just all
+        // zeroes. Staging this wrongly is easy: without the tap callbacks this
+        // reads as `noFramesArriving`, and the test then passes for a reason
+        // that has nothing to do with silence.
+        for step in stride(from: 200_000_000, through: 4_000_000_000, by: 200_000_000) {
+            now = UInt64(step)
+            recorder.test_noteTapCallback()
+            recorder.test_convert(samples: [0, 0])
+        }
+        recorder.pollCaptureHealth()
+
+        XCTAssertNil(
+            recorder.pendingEngineInvalidationReason,
+            "A muted microphone is not a broken audio graph."
         )
     }
 
@@ -545,17 +661,25 @@ final class AudioRecorderEngineInvalidationTests: XCTestCase {
         let recorder = AudioRecorder()
         var now: UInt64 = 0
         recorder.nowNanoseconds = { now }
+        var route = InputRouteSignature(deviceID: 73, sampleRate: 48000, channelCount: 1)
+        recorder.routeSignatureProvider = { _ in route }
+        recorder.prewarm()
 
         recorder.armCaptureWatchdog()
         now = 800_000_000
         recorder.refreshCaptureWatchdogEpoch()
+        route = InputRouteSignature(deviceID: 73, sampleRate: 24000, channelCount: 1)
         NotificationCenter.default.post(
             name: .AVAudioEngineConfigurationChange,
             object: recorder.test_currentEngine
         )
         recorder.stopCaptureWatchdog()
 
-        XCTAssertEqual(recorder.pendingEngineInvalidationReason, "the audio graph was reconfigured mid-recording")
+        XCTAssertEqual(
+            recorder.pendingEngineInvalidationReason,
+            "the input route changed shape (48000Hz/1ch → 24000Hz/1ch)",
+            "The clock refresh must not clear the armed flag, or a real route move during a capture is discarded."
+        )
     }
 
     func testAFailedStartDisarmsSoLaterNoiseIsStillIgnored() {

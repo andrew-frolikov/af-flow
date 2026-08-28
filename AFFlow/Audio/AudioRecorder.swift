@@ -220,7 +220,24 @@ final class AudioRecorder {
     private var pendingInvalidationReasons: [String] = []
     /// The route shape the live engine was built against. Compared on every
     /// start; see `invalidateIfRouteChanged()`.
-    private(set) var engineBuiltForRoute: InputRouteSignature?
+    ///
+    /// Behind the lock because the configuration-change observer now reads it
+    /// from AVFAudio's queue while the start path writes it, which the previous
+    /// unguarded var could not survive.
+    private var engineBuiltForRouteStorage: InputRouteSignature?
+    private(set) var engineBuiltForRoute: InputRouteSignature? {
+        get {
+            routeLock.lock()
+            defer { routeLock.unlock() }
+            return engineBuiltForRouteStorage
+        }
+        set {
+            routeLock.lock()
+            engineBuiltForRouteStorage = newValue
+            routeLock.unlock()
+        }
+    }
+    private let routeLock = NSLock()
     /// Injectable so the baseline logic can be driven deterministically instead
     /// of depending on whichever microphone the test host happens to have.
     var routeSignatureProvider: (AudioDeviceID?) -> InputRouteSignature? = {
@@ -377,11 +394,21 @@ final class AudioRecorder {
     /// the recording immediately after every rebuild with nothing to compare
     /// against — the original failure, one recording later.
     func invalidateIfRouteChanged() {
+        // Hardware read AND baseline read under ONE lock. Codex, 2026-08-27:
+        // reading the route first and the baseline second leaves a window where
+        // `noteEngineBoundToRoute()` stores that same new route in between, so
+        // the comparison becomes B to B and a real change queues nothing. That
+        // is the startup-window gap round 5 already paid for once, arriving by
+        // a different road now that this runs from AVFAudio's queue as well as
+        // from the start path.
+        routeLock.lock()
         let current = routeSignatureProvider(targetDeviceID)
+        let baseline = engineBuiltForRouteStorage
+        routeLock.unlock()
 
-        guard Self.inputRouteChanged(from: engineBuiltForRoute, to: current) else { return }
+        guard Self.inputRouteChanged(from: baseline, to: current) else { return }
 
-        let was = engineBuiltForRoute.map { "\(Int($0.sampleRate))Hz/\($0.channelCount)ch" } ?? "unknown"
+        let was = baseline.map { "\(Int($0.sampleRate))Hz/\($0.channelCount)ch" } ?? "unknown"
         let now = current.map { "\(Int($0.sampleRate))Hz/\($0.channelCount)ch" } ?? "unknown"
         invalidateEngine(reason: "the input route changed shape (\(was) → \(now))")
     }
@@ -391,9 +418,12 @@ final class AudioRecorder {
     /// start of a recording — because a baseline that is missing at any of them
     /// is a window in which a profile flip goes unnoticed.
     private func noteEngineBoundToRoute() {
+        // Same lock, same span, for the same reason as `invalidateIfRouteChanged()`.
+        routeLock.lock()
         if let current = routeSignatureProvider(targetDeviceID) {
-            engineBuiltForRoute = current
+            engineBuiltForRouteStorage = current
         }
+        routeLock.unlock()
     }
 
     private static var defaultInputDeviceAddress: AudioObjectPropertyAddress {
@@ -417,18 +447,26 @@ final class AudioRecorder {
             object: engine,
             queue: nil
         ) { [weak self] _ in
-            // ONLY while capturing. AVFAudio posts this while the graph is
-            // RENDERING, and the graph settles after every stop, so between
-            // dictations it is routine noise rather than evidence of breakage.
+            // ONLY while capturing, and even then only if the route actually
+            // moved. AVFAudio posts this while the graph is RENDERING, which is
+            // exactly when he is speaking, so `isCapturing` does not separate
+            // breakage from noise: it selects the window the noise arrives in.
             //
-            // Treating it as breakage cost him nine days: 172 rebuilds across
-            // 173 recordings, `hotkey_to_mic_live` p90 523 ms -> 1362 ms, and on
-            // 2026-08-12 a 2.75 s press spent all 2751 ms rebuilding and
-            // captured nothing — the fix causing the failure it was written to
-            // prevent. Nothing is given up, because `invalidateIfRouteChanged()`
-            // reads the hardware route on every single start.
+            // Treating every notification as breakage cost him nine days in
+            // August: 172 rebuilds across 173 recordings, `hotkey_to_mic_live`
+            // p90 523 ms -> 1362 ms, and on 2026-08-12 a 2.75 s press spent all
+            // 2751 ms rebuilding and captured nothing. Narrowing it to captures
+            // did not fix that, it halved it: measured 2026-08-27 over his real
+            // log, this fired 652 times while the hardware route changed shape
+            // 13 times, and the 881 recordings that paid a rebuild have a
+            // mic-live p90 of 1652 ms against 533 ms for the 451 that did not.
+            // His median speech onset is 750 ms, so the opening of the sentence
+            // was being lost, which reads as the model mishearing him.
+            //
+            // Asking the hardware is the same authority every start already
+            // uses, so a real reconfiguration still throws the engine away.
             guard let self, self.isCapturing else { return }
-            self.invalidateEngine(reason: "the audio graph was reconfigured mid-recording")
+            self.invalidateIfRouteChanged()
         }
         configurationChangeObservedGeneration = engineGeneration
     }
@@ -836,6 +874,14 @@ final class AudioRecorder {
     }
 
     #if DEBUG
+    /// Marks the tap as having fired without converting anything, which is the
+    /// only way to stage `conversionFailing`: tap alive, nothing surviving.
+    func test_noteTapCallback() {
+        tapStateLock.lock()
+        lastTapCallbackAtNanoseconds = nowNanoseconds()
+        tapStateLock.unlock()
+    }
+
     func test_convert(samples: [Float]) {
         let inputFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -1109,6 +1155,22 @@ final class AudioRecorder {
         tapStateLock.unlock()
 
         for verdict in reportable {
+            // Throwing the engine away on EVIDENCE, which is what replaced
+            // throwing it away on a notification that fired 652 times for 13
+            // real route changes. Until 2026-08-27 a broken capture was logged,
+            // shown to him, and then handed to the next dictation unchanged;
+            // the constant rebuilding hid that by accident.
+            //
+            // Digital silence is deliberately not here: the graph is fine and
+            // the microphone is not, and a rebuild cannot unmute a microphone.
+            switch verdict {
+            case .noFramesArriving:
+                invalidateEngine(reason: "the tap stopped delivering frames during a recording")
+            case .conversionFailing:
+                invalidateEngine(reason: "audio stopped surviving conversion during a recording")
+            case .digitalSilence, .healthy:
+                break
+            }
             onCaptureUnhealthy?(verdict)
         }
     }
