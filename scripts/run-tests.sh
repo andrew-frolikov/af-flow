@@ -539,6 +539,32 @@ remove_test_hosts() {
         return
     fi
 
+    # Kill anything still RUNNING from this scratch root before touching its
+    # bundles. 2026-08-29: the suite's app product survived a reboot through
+    # macOS Resume, ran for a whole day beside his real app with the test
+    # host's permanent grants, transcribed his dictation with whisper-tiny.en,
+    # and raced his real app for the clipboard. Deleting the bundle is not
+    # enough while the process it spawned is alive, and a process the run left
+    # behind is this run's to kill: the sentinel above just proved ownership.
+    local scratch_pids
+    scratch_pids=$(pgrep -f "$DERIVED_REAL/.*/Contents/MacOS/" 2>/dev/null || true)
+    if [ -n "$scratch_pids" ]; then
+        echo "  terminating process(es) still running from the scratch root:" $scratch_pids
+        kill $scratch_pids 2>/dev/null
+        for _ in 1 2 3 4 5; do
+            pgrep -f "$DERIVED_REAL/.*/Contents/MacOS/" >/dev/null 2>&1 || break
+            sleep 1
+        done
+        if pgrep -f "$DERIVED_REAL/.*/Contents/MacOS/" >/dev/null 2>&1; then
+            kill -9 $scratch_pids 2>/dev/null
+            sleep 1
+        fi
+        if pgrep -f "$DERIVED_REAL/.*/Contents/MacOS/" >/dev/null 2>&1; then
+            echo "  CLEANUP FAILED: a process from $DERIVED_REAL is still running." >&2
+            CLEANUP_FAILED=1
+        fi
+    fi
+
     # Scoped to THIS invocation's derived-data root, not to the whole build
     # directory. Codex round 1 of 2026-07-26, finding 1: scanning `build/**`
     # deleted any bundle carrying the live identity, including ones this run
@@ -547,7 +573,14 @@ remove_test_hosts() {
     # this script, so it is the one path this invocation can prove it owns.
     while IFS= read -r bundle; do
         id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$bundle/Contents/Info.plist" 2>/dev/null)
-        if [ "$id" != "$DOMAIN" ] || [ ! -x "$bundle/Contents/MacOS/AF Flow" ]; then
+        # Ours means the FAMILY, not only his app id. 2026-08-29: the identity
+        # isolation gives the suite's own product the test host id, and this
+        # filter, written to protect bundles the run did not create, read its
+        # OWN product as foreign, printed "left alone", and left it for Resume
+        # to launch at his next login. Ownership inside $DERIVED_REAL is proven
+        # by the sentinel; the id only decides whether it is ours to delete or
+        # genuinely foreign.
+        if { [ "$id" != "$DOMAIN" ] && [ "$id" != "$TEST_HOST_DOMAIN" ]; } || [ ! -x "$bundle/Contents/MacOS/AF Flow" ]; then
             echo "  left alone, not our app bundle: $bundle" >&2
             continue
         fi
