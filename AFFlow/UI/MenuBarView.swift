@@ -3,7 +3,7 @@ import CoreAudio
 import ServiceManagement
 
 struct MenuBarView: View {
-    @AppStorage("meetingTranscriptEnabled") private var meetingTranscriptEnabled: Bool = false
+    @AppStorage(MeetingsVisibility.defaultsKey) private var meetingTranscriptEnabled: Bool = false
     @ObservedObject var appState: AppState
 
     var body: some View {

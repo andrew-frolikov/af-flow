@@ -151,9 +151,12 @@ struct HomeWalkthrough: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 reassurance("lock.shield.fill",
-                            "All open-source models. Voice to text, meeting transcription, your second brain and Q and A run under your control.")
+                            // See OnboardingWindow: meetings, the second brain
+                            // and Q and A are all behind the v1 scope gate.
+                            "All open-source models. Voice to text runs on this Mac, under your control.")
                 reassurance("externaldrive.fill",
-                            "No accounts required. Your notes, transcripts and wiki stay on this Mac.")
+                            // "notes and wiki" named the same hidden surfaces.
+                            "No accounts required. Your dictations and transcripts stay on this Mac.")
             }
             .padding(.top, 26)
 

@@ -184,7 +184,11 @@ struct WelcomeStep: View {
                 HStack(spacing: 8) {
                     Image(systemName: "lock.shield.fill")
                         .foregroundStyle(theme.accent)
-                    Text("All open-source models. Voice-to-text, meeting transcription, your second brain, and Q&A run under your control.")
+                    // Named meeting transcription, then a second brain and
+                    // Q&A. All three live behind the v1 scope gate, so all
+                    // three came out. What is left is what v1 ships and what
+                    // the privacy claim is actually about.
+                    Text("All open-source models. Voice-to-text runs on this Mac, under your control.")
                         .font(theme.bodyFont)
                         .foregroundStyle(theme.textSecondary)
                 }
@@ -1022,11 +1026,21 @@ struct DoneStep: View {
                 Text("From the menu bar you can:")
                     .font(theme.bodyFont)
                     .foregroundStyle(theme.textSecondary)
+                // FOUR BULLETS BECAME TWO, in two passes on 2026-08-30, and
+                // the first pass was wrong. It removed the two that said
+                // "meetings" and kept a second brain and a Q&A that BOTH live
+                // inside the meeting window: `BuildIndexSheet`, `IndexListView`
+                // and the Q&A callback are constructed only from
+                // `MeetingTranscriptWindow`, which v1 hides. Worse, the
+                // replacement claimed the index is built "from what you
+                // dictate" and it is not: it is built from meeting files.
+                //
+                // Sweeping for a WORD found the word and left the claim. Review
+                // caught it the same day. What stays is what a v1 user can
+                // actually do from the menu bar.
                 BulletPoint("Switch your microphone")
                 BulletPoint("Change your recording shortcuts")
-                BulletPoint("Record and transcribe meetings")
-                BulletPoint("Import meetings and build your second brain")
-                BulletPoint("Ask local questions over your archive")
+                BulletPoint("See what the app decided, in the debug log")
             }
             .padding(.horizontal, 40)
 

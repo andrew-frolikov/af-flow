@@ -105,8 +105,28 @@ enum AFFlowSection: String, CaseIterable, Identifiable {
     /// no longer polls.
     /// Home leads, because it is the front door and the app opens on it. The
     /// debug log sits last: it is a diagnostic, not somewhere he works.
+    ///
+    /// **Meeting Transcript is conditional as of 2026-08-30.** v1 ships
+    /// dictation only (`docs/launch-v1-plan.md`, settled 2026-08-29), and this
+    /// list is the single door into that section, so gating it here is the
+    /// whole scope gate for the settings window. `MeetingsVisibility` decides;
+    /// nothing else may.
     static var visible: [AFFlowSection] {
-        [.home, .general, .cleanup, .models, .transcriptionLab, .meetingTranscript, .debugLog]
+        var sections: [AFFlowSection] = [.home, .general, .cleanup, .models, .transcriptionLab]
+        if MeetingsVisibility.isOn { sections.append(.meetingTranscript) }
+        sections.append(.debugLog)
+        return sections
+    }
+
+    /// The section to show when a stored or requested one is not visible.
+    ///
+    /// A selection outlives the flag: `selectedSection` is remembered, and a
+    /// build that hides Meeting Transcript can still be asked for it by a
+    /// restored value or by a caller that was written before the gate existed.
+    /// Falling through would render the hidden section, or a blank pane, and a
+    /// scope gate that leaks on the one path nobody tested is not a gate.
+    static func resolvingHidden(_ section: AFFlowSection) -> AFFlowSection {
+        visible.contains(section) ? section : .home
     }
 
     /// Sections that draw their own full-bleed layout, so the shell must not put
@@ -138,7 +158,12 @@ enum AFFlowSection: String, CaseIterable, Identifiable {
         case .modelExperiment: "Paste prompts and context to test local model behavior."
         case .transcriptionLab: "Saved recordings, reruns, and cleanup experiments."
         case .recognizedVoices: "Reusable speaker labels and 'this is me' voice prints."
-        case .meetingTranscript: "Auto-detect calls and transcribe meetings locally."
+        // The line used to read "Auto-detect calls and transcribe meetings
+        // locally." Nothing auto-detects anything: the five-second browser poll
+        // was deleted on 2026-07-27 along with its dead toggle, and meetings
+        // start from the menu bar. Corrected 2026-08-30 during the v1 claim
+        // sweep; pinned by MeetingsHiddenInV1Tests.
+        case .meetingTranscript: "Transcribe a call on this Mac, started from the menu bar."
         case .debugLog: "What the app decided, line by line, as it happened."
         }
     }
@@ -237,7 +262,11 @@ struct SettingsView: View {
 
     init(appState: AppState, initialSection: AFFlowSection = .general) {
         self.appState = appState
-        _selectedSection = State(initialValue: initialSection)
+        // A caller can ask for a section this build hides, and one already
+        // does: `showSettings(section:)` remembers where he was. Rendering the
+        // hidden section anyway is how a scope gate leaks on the one path
+        // nobody clicks.
+        _selectedSection = State(initialValue: AFFlowSection.resolvingHidden(initialSection))
         _dictationTestController = StateObject(
             wrappedValue: SettingsDictationTestController(transcriber: appState.transcriber)
         )
@@ -343,7 +372,12 @@ struct SettingsView: View {
         let isHovered = hoveredSection == section
         let squareCorners = theme.id == .windows95
         Button {
-            selectedSection = section
+            // Routed through the fallback like every other non-literal
+            // assignment, even though this one is fed by `visible` and cannot
+            // be a hidden section today. One rule with no exceptions is
+            // checkable; a rule with an allowlist rots the first time the
+            // sidebar is fed from somewhere else.
+            selectedSection = AFFlowSection.resolvingHidden(section)
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: section.systemImageName)
@@ -532,7 +566,9 @@ struct SettingsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsSection)) { note in
             if let section = note.object as? AFFlowSection {
-                selectedSection = section
+                // Same reason as the initialiser: a notification is the other
+                // way a hidden section can be asked for.
+                selectedSection = AFFlowSection.resolvingHidden(section)
             }
         }
         .onChange(of: selectedSection) { oldSection, newSection in
@@ -1779,26 +1815,46 @@ struct SettingsView: View {
                 )
 
                 if !appState.transcriptionLabEnabled {
-                    Text("Transcripts are always kept here for a year. Audio is not being saved, which costs nothing in disk but means a dictation that comes back wrong cannot be re-checked against what you actually said. Meeting transcripts are saved separately as markdown files, and are still listed below.")
+                    // Two sentences, and the third one named meetings. Split on
+                    // 2026-08-30 so a v1 user is not told about a list that is
+                    // not on their screen.
+                    Text("Transcripts are always kept here for a year. Audio is not being saved, which costs nothing in disk but means a dictation that comes back wrong cannot be re-checked against what you actually said.")
                         .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
+
+                    if MeetingsVisibility.isOn {
+                        Text("Meeting transcripts are saved separately as markdown files, and are still listed below.")
+                            .font(theme.captionFont)
+                            .foregroundStyle(theme.textSecondary)
+                    }
                 }
 
                 transcriptionLabBrowser
 
-                Divider().overlay(theme.separator)
+                // The divider separates dictations from meetings, so it goes
+                // when the meetings go. A rule with nothing under it reads as a
+                // section that failed to load.
+                if MeetingsVisibility.isOn {
+                    Divider().overlay(theme.separator)
+                }
 
                 // Meetings live under the dictations rather than mixed in with
                 // them: his choice on 2026-08-02 over one interleaved timeline.
                 // It is deliberately NOT gated on `transcriptionLabEnabled` —
                 // that toggle governs whether dictation AUDIO is kept, and
                 // meeting transcripts are files on disk either way.
-                MeetingHistorySection(
-                    searchText: transcriptionLabController.searchText,
-                    onOpen: { url in
-                        appState.openMeetingFile(url)
-                    }
-                )
+                // Hidden with the rest of meetings in v1. This list sits at the
+                // bottom of History, a section every dictation user opens, so
+                // leaving it would have put the feature back on screen after
+                // the sidebar entry was taken away.
+                if MeetingsVisibility.isOn {
+                    MeetingHistorySection(
+                        searchText: transcriptionLabController.searchText,
+                        onOpen: { url in
+                            appState.openMeetingFile(url)
+                        }
+                    )
+                }
             }
         }
     }
@@ -1870,7 +1926,8 @@ struct SettingsView: View {
                 Text("This permanently removes all saved recordings and transcriptions.")
             }
 
-            TextField("Search dictations and meetings", text: $transcriptionLabController.searchText)
+            TextField(MeetingsVisibility.historySearchPlaceholder,
+                      text: $transcriptionLabController.searchText)
                 .textFieldStyle(.roundedBorder)
 
             if transcriptionLabController.filteredEntries.isEmpty {
@@ -2498,106 +2555,110 @@ struct SettingsView: View {
 
             SettingsCard("Meeting Transcription") {
                 VStack(alignment: .leading, spacing: 18) {
-                    Toggle(
-                        "Enable meeting transcription",
-                        isOn: $appState.meetingTranscriptEnabled
-                    )
-
-                    Text("When enabled, AF Flow transcribes video calls on this Mac: your voice from the microphone, and the other participants from the Mac's audio output. Nothing is sent anywhere, and no Google or Zoom account is connected.")
+                    // THE "Enable meeting transcription" TOGGLE USED TO SIT
+                    // HERE, and it was the only control that wrote
+                    // `meetingTranscriptEnabled`. Removed 2026-08-30, because
+                    // v1 ships dictation only and that key is now the scope
+                    // gate: this whole section is unreachable unless it is
+                    // already true, so a switch here would be a switch that can
+                    // only ever turn itself off. `MeetingsHiddenInV1Tests`
+                    // fails if a control to write it comes back, and
+                    // `MeetingsVisibility` documents the one-line internal
+                    // route for turning it on.
+                    //
+                    // The "Auto-detect meeting apps" toggle went earlier, on
+                    // 2026-07-27: `meetingAutoDetectEnabled` had no runtime
+                    // consumer once the five-second poll was deleted, so the
+                    // control promised monitoring nothing performed. A switch
+                    // that cannot do what its label says is worse than no
+                    // switch. Meetings start from the menu bar.
+                    Text("AF Flow transcribes video calls on this Mac: your voice from the microphone, and the other participants from the Mac's audio output. Nothing is sent anywhere, and no Google or Zoom account is connected.")
                         .font(theme.captionFont)
                         .foregroundStyle(theme.textSecondary)
 
-                    if appState.meetingTranscriptEnabled {
-                        // The "Auto-detect meeting apps" toggle used to sit
-                        // here. Removed 2026-07-27: `meetingAutoDetectEnabled`
-                        // has no runtime consumer since the five-second poll was
-                        // deleted, so the control promised monitoring and prompts
-                        // that nothing performs. A switch that cannot do what its
-                        // label says is worse than no switch. Meetings start from
-                        // the menu bar instead.
+                    Text("Meetings are not part of version 1. This section is only here because the internal flag is on, and it returns as a supported feature in a later version.")
+                        .font(theme.captionFont)
+                        .foregroundStyle(theme.textSecondary)
 
-                        Toggle(
-                            "Float the meeting window while recording",
-                            isOn: $appState.meetingWindowFloatsWhileRecording
-                        )
-                        .onChange(of: appState.meetingWindowFloatsWhileRecording) { _, _ in
-                            appState.refreshMeetingTranscriptWindowPresentation()
-                        }
+                    Toggle(
+                        "Float the meeting window while recording",
+                        isOn: $appState.meetingWindowFloatsWhileRecording
+                    )
+                    .onChange(of: appState.meetingWindowFloatsWhileRecording) { _, _ in
+                        appState.refreshMeetingTranscriptWindowPresentation()
+                    }
 
-                        Text("Keeps the current meeting window above other windows only while an active meeting is recording.")
+                    Text("Keeps the current meeting window above other windows only while an active meeting is recording.")
+                        .font(theme.captionFont)
+                        .foregroundStyle(theme.textSecondary)
+                }
+            }
+
+            SettingsCard("Transcript Storage") {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Save directory:")
+                            .font(theme.bodyFont)
+
+                        Text(meetingDirectoryBookmark?.path ?? MeetingTranscriptSettings.defaultSaveDirectory().path)
                             .font(theme.captionFont)
                             .foregroundStyle(theme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        Spacer()
+
+                        Button("Choose...") {
+                            let panel = NSOpenPanel()
+                            panel.canChooseFiles = false
+                            panel.canChooseDirectories = true
+                            panel.allowsMultipleSelection = false
+                            panel.canCreateDirectories = true
+                            panel.message = "Choose where to save AF Flow meetings and 2nd Brain files"
+                            panel.prompt = "Select Folder"
+                            // Open straight at the vault Meetings folder, so
+                            // the recommended choice is one click. AF Flow is
+                            // sandboxed and cannot write there until he picks
+                            // it, and that grant is deliberately his to give
+                            // rather than something the app assumes.
+                            if let suggested = MeetingTranscriptSettings.suggestedVaultDirectory() {
+                                panel.directoryURL = suggested
+                            }
+
+                            if panel.runModal() == .OK, let url = panel.url {
+                                MeetingTranscriptSettings.saveSaveDirectory(url)
+                                meetingDirectoryBookmark = url
+                            }
+                        }
+                    }
+
+                    Text("Meetings are saved as Markdown files organized in date folders. Generated 2nd Brain files are saved under the same folder in wikis/.")
+                        .font(theme.captionFont)
+                        .foregroundStyle(theme.textSecondary)
+                }
+            }
+
+            SettingsCard("Summary Prompt") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("This prompt is used to generate a summary after a meeting ends. The transcript is sent to your local cleanup model.")
+                        .font(theme.captionFont)
+                        .foregroundStyle(theme.textSecondary)
+
+                    TextEditor(text: $appState.meetingSummaryPrompt)
+                        .font(theme.monoFont(size: 12))
+                        .frame(height: 100)
+                        .padding(4)
+                        .background(RoundedRectangle(cornerRadius: 6).stroke(theme.separator))
+
+                    HStack {
+                        Button("Reset to Default") {
+                            appState.meetingSummaryPrompt = MeetingSummaryGenerator.finalSummaryPrompt
+                        }
+                        .font(theme.captionFont)
                     }
                 }
             }
 
-            if appState.meetingTranscriptEnabled {
-                SettingsCard("Transcript Storage") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Save directory:")
-                                .font(theme.bodyFont)
-
-                            Text(meetingDirectoryBookmark?.path ?? MeetingTranscriptSettings.defaultSaveDirectory().path)
-                                .font(theme.captionFont)
-                                .foregroundStyle(theme.textSecondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-
-                            Spacer()
-
-                            Button("Choose...") {
-                                let panel = NSOpenPanel()
-                                panel.canChooseFiles = false
-                                panel.canChooseDirectories = true
-                                panel.allowsMultipleSelection = false
-                                panel.canCreateDirectories = true
-                                panel.message = "Choose where to save AF Flow meetings and 2nd Brain files"
-                                panel.prompt = "Select Folder"
-                                // Open straight at the vault Meetings folder, so
-                                // the recommended choice is one click. AF Flow is
-                                // sandboxed and cannot write there until he picks
-                                // it, and that grant is deliberately his to give
-                                // rather than something the app assumes.
-                                if let suggested = MeetingTranscriptSettings.suggestedVaultDirectory() {
-                                    panel.directoryURL = suggested
-                                }
-
-                                if panel.runModal() == .OK, let url = panel.url {
-                                    MeetingTranscriptSettings.saveSaveDirectory(url)
-                                    meetingDirectoryBookmark = url
-                                }
-                            }
-                        }
-
-                        Text("Meetings are saved as Markdown files organized in date folders. Generated 2nd Brain files are saved under the same folder in wikis/.")
-                            .font(theme.captionFont)
-                            .foregroundStyle(theme.textSecondary)
-                    }
-                }
-
-                SettingsCard("Summary Prompt") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("This prompt is used to generate a summary after a meeting ends. The transcript is sent to your local cleanup model.")
-                            .font(theme.captionFont)
-                            .foregroundStyle(theme.textSecondary)
-
-                        TextEditor(text: $appState.meetingSummaryPrompt)
-                            .font(theme.monoFont(size: 12))
-                            .frame(height: 100)
-                            .padding(4)
-                            .background(RoundedRectangle(cornerRadius: 6).stroke(theme.separator))
-
-                        HStack {
-                            Button("Reset to Default") {
-                                appState.meetingSummaryPrompt = MeetingSummaryGenerator.finalSummaryPrompt
-                            }
-                            .font(theme.captionFont)
-                        }
-                    }
-                }
-
-            }
         }
     }
 

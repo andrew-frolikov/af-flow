@@ -537,7 +537,18 @@ class AppState: ObservableObject {
     // were always-empty properties, but AppState still wired a live send path
     // that built a TrelloBackend from them, so the capability was one populated
     // string away from working. Removed per CLAUDE.md hard rule 1.
-    @AppStorage("meetingTranscriptEnabled") var meetingTranscriptEnabled: Bool = false
+    /// The v1 scope gate, not a feature preference. `MeetingsVisibility` owns
+    /// the key's one spelling and explains why this key rather than a new one.
+    @AppStorage(MeetingsVisibility.defaultsKey) var meetingTranscriptEnabled: Bool = false
+
+    /// Whether any meeting surface exists in this build.
+    ///
+    /// Read through `MeetingsVisibility` rather than through the property
+    /// above, so that a caller which is not a SwiftUI view gets the same answer
+    /// the settings sidebar gets. `@AppStorage` on an ObservableObject class
+    /// never fires `objectWillChange`, so the property above is a value, not a
+    /// signal.
+    var meetingSurfacesAreVisible: Bool { MeetingsVisibility.isOn }
     @AppStorage("meetingAutoDetectEnabled") var meetingAutoDetectEnabled: Bool = true
     @AppStorage("meetingWindowFloatsWhileRecording") var meetingWindowFloatsWhileRecording: Bool = MeetingTranscriptWindowPresentation.floatsWhileRecordingDefault
     @AppStorage("meetingSummaryPrompt") var meetingSummaryPrompt: String = MeetingSummaryGenerator.storedSummaryPromptDefault
@@ -2537,21 +2548,41 @@ class AppState: ObservableObject {
     /// accessibility tree for the app's whole lifetime, in a dictation app,
     /// while he was speaking. That poll was removed on 2026-07-27 and is not
     /// coming back as a side effect of this feature.
-    func startMeetingTranscriptionFromMenu() {
+    @discardableResult
+    func startMeetingTranscriptionFromMenu() -> Bool {
+        // Checked BEFORE detection, not only inside the call below. Detection
+        // reads the frontmost window through the accessibility APIs, and a
+        // build that hides meetings should not be inspecting his browser at
+        // all, whatever it then decides to do with the answer.
+        guard meetingSurfacesAreVisible else { return false }
         let detected = MeetingDetector.detectFrontmostMeetingNow()
-        startMeetingTranscription(
+        return startMeetingTranscription(
             meetingName: detected?.suggestedName ?? MeetingDetector.defaultMeetingName(),
             detectedMeeting: detected
         )
     }
 
-    /// Stops the meeting in progress and writes it out.
+    /// Starts a meeting, opens the window without taking focus, and returns
+    /// whether it did.
+    ///
+    /// **THIS IS THE ONE DOOR PRODUCTION ACTUALLY USES**, and on 2026-08-30 it
+    /// was the one that did not get the v1 scope guard. The three methods below
+    /// were guarded first because they are the ones named `show...`; review
+    /// found that none of them has a live caller, while this method is reached
+    /// from the menu bar and is what opens the microphone and the system-audio
+    /// tap. The gate rested entirely on a SwiftUI `if` in `MenuBarView`, so any
+    /// future caller here would have recorded a meeting with meetings hidden.
+    ///
+    /// Guarding at the model layer rather than at each view is the point: a
+    /// view can be added, this cannot be bypassed.
+    @discardableResult
     func startMeetingTranscription(
         meetingName: String,
         skipConsent: Bool = false,
         sourceURL: String? = nil,
         detectedMeeting: DetectedMeeting? = nil
-    ) {
+    ) -> Bool {
+        guard meetingSurfacesAreVisible else { return false }
         // Shown WITHOUT taking focus. Starting a recording is not a request to look at
         // the transcript window, and on 2026-07-29 it pulled AF Flow in front of the
         // Zoom call he was recording. Bug 11 of sixteen.
@@ -2562,6 +2593,7 @@ class AppState: ObservableObject {
             sourceURL: sourceURL,
             detectedMeeting: detectedMeeting
         )
+        return true
     }
 
     /// Opens AF Flow's own window. This is what launching the app and clicking
@@ -2572,8 +2604,21 @@ class AppState: ObservableObject {
         homeWindowController.show(appState: self, section: .home)
     }
 
-    func showMeetingTranscriptWindow() {
+    /// Returns whether the window was opened.
+    ///
+    /// **This method has no caller in the shipped app**, and saying so is the
+    /// correction of a comment that was wrong when it was written. It claimed
+    /// three doors reached from the menu bar, a History row and the summary
+    /// writer; review on 2026-08-30 found the menu bar goes through
+    /// `startMeetingTranscription`, the summary writer does not exist, and only
+    /// `openMeetingFile` has a live caller. The guard stays because an
+    /// unguarded public method is a door whether or not anyone has opened it
+    /// yet, but the coverage it represents is one door, not three.
+    @discardableResult
+    func showMeetingTranscriptWindow() -> Bool {
+        guard meetingSurfacesAreVisible else { return false }
         meetingTranscriptWindowController.show()
+        return true
     }
 
     /// Opens a saved meeting transcript in the meeting window.
@@ -2584,13 +2629,19 @@ class AppState: ObservableObject {
     /// older "save as note" call site guessed 0.3 seconds and now routes through
     /// this instead. A guess that happens to work is still a guess, and two ways
     /// to open the same file is how they drift apart.
-    func openMeetingFile(_ url: URL) {
+    @discardableResult
+    func openMeetingFile(_ url: URL) -> Bool {
+        guard meetingSurfacesAreVisible else { return false }
         meetingTranscriptWindowController.show()
         meetingTranscriptWindowController.windowState?.openFile(url)
+        return true
     }
 
-    func showOrCreateMeetingWindow() {
+    @discardableResult
+    func showOrCreateMeetingWindow() -> Bool {
+        guard meetingSurfacesAreVisible else { return false }
         meetingTranscriptWindowController.show()
+        return true
     }
 
     func refreshMeetingTranscriptWindowPresentation() {

@@ -102,13 +102,18 @@ struct ModelsSidebarView: View {
                 .labelsHidden()
             }
 
-            FunctionRow(
-                icon: "doc.text",
-                title: "Meeting summary",
-                modelLabel: (cleanupModel?.displayName ?? "-") + " (same as Cleanup)",
-                location: .local,
-                available: cleanupModel.map { TextCleanupManager.isModelDownloaded($0.kind) } ?? false
-            )
+            // Hidden with the rest of meetings in v1. The Models sidebar is a
+            // section every dictation user opens, so a row here would put the
+            // feature back on screen after the sidebar entry was taken away.
+            if MeetingsVisibility.isOn {
+                FunctionRow(
+                    icon: "doc.text",
+                    title: "Meeting summary",
+                    modelLabel: (cleanupModel?.displayName ?? "-") + " (same as Cleanup)",
+                    location: .local,
+                    available: cleanupModel.map { TextCleanupManager.isModelDownloaded($0.kind) } ?? false
+                )
+            }
 
             FunctionRow(
                 icon: "cpu",
@@ -174,7 +179,7 @@ struct ModelsSidebarView: View {
                     // "meeting summary" capable, since that overstates what
                     // the model has actually been verified to do.
                     capabilities: desc.recommendation != nil
-                        ? ["cleanup", "meeting summary"]
+                        ? MeetingsVisibility.cleanupModelCapabilities
                         : ["agent tool-use"],
                     isDownloaded: downloaded,
                     isActive: isActive,

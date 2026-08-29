@@ -40,8 +40,15 @@ PLIST = os.path.expanduser(
     "~/Library/Containers/%s/Data/Library/Preferences/%s.plist" % (BUNDLE_ID, BUNDLE_ID)
 )
 
+# THE KEY IS NOT ALWAYS A LITERAL ANY MORE. On 2026-08-30
+# `meetingTranscriptEnabled` became `@AppStorage(MeetingsVisibility.defaultsKey)`
+# so that one file spells the v1 scope gate, and this scanner, which only
+# matched a quoted string, silently stopped seeing the key: the report went from
+# "1 frozen" to "0 frozen" with nothing saying a key had been dropped. The same
+# indirection this file already resolves for `forKey:` is now resolved here.
 APPSTORAGE = re.compile(
-    r'@AppStorage\(\s*"([^"]+)"\s*\)\s*(?:private\s+)?var\s+\w+\s*:\s*([\w\[\]\.<>?]+)\s*=\s*(.+?)\s*(?:\{|$)',
+    r'@AppStorage\(\s*(?:"(?P<literal>[^"]+)"|(?:\w+\.)?(?P<const>\w*[Kk]ey))\s*\)\s*'
+    r'(?:private\s+)?var\s+\w+\s*:\s*(?P<type>[\w\[\]\.<>?]+)\s*=\s*(?P<default>.+?)\s*(?:\{|$)',
     re.MULTILINE,
 )
 # `static let fooKey = "actualKey"` so `forKey: Self.fooKey` can be resolved.
@@ -62,6 +69,7 @@ def swift_files():
 def scan_source():
     """Returns (declared, referenced, constants, all_declarations)."""
     declared, referenced, constants, all_declarations = {}, set(), {}, {}
+    pending = []
     for path in swift_files():
         try:
             text = open(path, encoding="utf-8").read()
@@ -69,11 +77,18 @@ def scan_source():
             continue
         for name, value in KEY_CONST.findall(text):
             constants[name] = value
-        for key, _type, default in APPSTORAGE.findall(text):
+        for match in APPSTORAGE.finditer(text):
+            default = match.group("default")
             where = "%s:%d" % (
                 os.path.relpath(path, REPO),
-                text[: text.index(default)].count("\n") + 1 if default in text else 0,
+                text[: match.start()].count("\n") + 1,
             )
+            key = match.group("literal")
+            if key is None:
+                # The constant may live in a file scanned later, so this is
+                # resolved in the second pass below rather than dropped.
+                pending.append((match.group("const"), default.strip(), where))
+                continue
             declared.setdefault(key, (default.strip(), where))
             all_declarations.setdefault(key, []).append((default.strip(), where))
             referenced.add(key)
@@ -90,6 +105,21 @@ def scan_source():
         for name in FOR_KEY_CONST.findall(text):
             if name in constants:
                 referenced.add(constants[name])
+
+    # Unresolvable is not "absent". A constant this cannot resolve means the
+    # scan does not know what key that declaration writes, and reporting the
+    # rest as if it were the whole picture is how the report went from 1 frozen
+    # to 0 frozen without anyone noticing.
+    for name, default, where in pending:
+        if name not in constants:
+            print("WARNING: %s declares @AppStorage(%s) and that constant could "
+                  "not be resolved, so its key is missing from everything below."
+                  % (where, name))
+            continue
+        key = constants[name]
+        declared.setdefault(key, (default, where))
+        all_declarations.setdefault(key, []).append((default, where))
+        referenced.add(key)
     return declared, referenced, constants, all_declarations
 
 

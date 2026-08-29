@@ -60,8 +60,15 @@ final class OneWindowTests: XCTestCase {
 
     /// Every row the sidebar draws needs a label, a description and an icon.
     /// A new section reachable but unlabelled is a blank row he cannot identify.
+    ///
+    /// **Over `allCases`, not `visible`, since 2026-08-30.** `visible` became
+    /// conditional when meetings went behind the v1 scope gate, and the gate is
+    /// off in the suite's own defaults domain, so this silently stopped
+    /// checking the meeting section the day that landed. A section that is
+    /// hidden today is shown again in v1.x, and an unlabelled row is exactly as
+    /// broken then. Found by review the same day.
     func testEveryVisibleSectionIsLabelled() {
-        for section in AFFlowSection.visible {
+        for section in AFFlowSection.allCases {
             XCTAssertFalse(section.title.isEmpty, "\(section) has no title")
             XCTAssertFalse(section.subtitle.isEmpty, "\(section) has no subtitle")
             XCTAssertFalse(section.systemImageName.isEmpty, "\(section) has no icon")

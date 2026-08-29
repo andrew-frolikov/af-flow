@@ -455,7 +455,104 @@ if [ "${AF_FLOW_BUILD_ONLY:-}" = "1" ]; then
     exit 0
 fi
 
-if pgrep -x AFFlow >/dev/null 2>&1; then
+
+# WHAT PROCESS NAME IS HIS APP, ACTUALLY.
+#
+# The two guards below refuse to launch a test host while Andrew's app is open,
+# because two instances compete for one microphone and he dictates all day.
+# From 2026-08-25 until 2026-08-30 NEITHER OF THEM COULD FIRE.
+#
+# The rename commit rewrote `pgrep -x GhostPepper` into a pgrep for the MODULE
+# name, AFFlow. The executable is PRODUCT_NAME, which that same commit set to
+# "AF Flow", with a space. So both guards looked for a process that has never
+# existed under either name, and the protection had been silently off for five
+# days when this was found. Verified rather than reasoned: his app was running,
+# the old pattern matched nothing, and a pgrep for "AF Flow" returned its pid.
+#
+# This is the 2026-08-25 rename's other victim, and it is the same shape as the
+# one that cost 24 days: a find-and-replace rewrote a literal that had to agree
+# with something outside the file. The cure is the same one `af_paths.py` uses
+# for the data folder. The name is not repeated here; it is READ from the
+# project that builds the app, through the parser `build-config-check.py`
+# already owns.
+#
+# Unreadable is not a pass. If the name cannot be resolved this refuses rather
+# than guessing, because a guard that cannot name its target is exactly the
+# state that just went unnoticed for five days.
+resolve_app_process_name() {
+    python3 - "$REPO_ROOT" <<'PY'
+import importlib.util, os, sys
+repo = sys.argv[1]
+spec = importlib.util.spec_from_file_location(
+    "build_config_check", os.path.join(repo, "scripts", "build-config-check.py"))
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+try:
+    settings = module.pbxproj_settings(
+        os.path.join(repo, "AFFlow.xcodeproj", "project.pbxproj"))
+except Exception:
+    sys.exit(1)
+name = (settings.get("Debug") or {}).get("PRODUCT_NAME")
+if not name or name.startswith("$("):
+    sys.exit(1)
+print(name)
+PY
+}
+
+APP_PROCESS_NAME=$(resolve_app_process_name)
+if [ -z "$APP_PROCESS_NAME" ]; then
+    echo "REFUSING TO RUN: could not read PRODUCT_NAME out of the project, so" >&2
+    echo "this script cannot tell whether Andrew's app is open. A guard that" >&2
+    echo "cannot name its target was off for five days in August 2026." >&2
+    exit 2
+fi
+
+# One place asks the question. Both guards below call this.
+#
+# IT MUST NOT MATCH THIS SCRIPT'S OWN TEST HOST, and the first version did.
+# The test host is built with the SAME `PRODUCT_NAME`, so its executable is
+# also named "AF Flow"; only its bundle id and display name differ. Review,
+# 2026-08-30, found the deadlock that buys: `remove_test_hosts` is only ever
+# called from the `restore` trap, which is installed AFTER the first guard, so
+# a test host left running by a killed run, or resurrected by macOS Resume,
+# would make every future run refuse at that guard and tell Andrew to quit an
+# app he had already closed. The one automated thing that kills the leftover
+# sits downstream of the refusal that the leftover causes.
+#
+# That is worse than the dead guard it replaced, because a dead guard fails
+# open on a rare hazard and this failed closed on a documented one: a test host
+# surviving a reboot is exactly the 2026-08-29 incident.
+#
+# So the question is not "is a process called AF Flow running" but "is the
+# process Andrew launched running", and the answer is a path test. Anything
+# under this repository's build directory is this script's own output.
+#
+# `ps -o comm=` REPORTS THE PATH AS THE PROCESS WAS INVOKED, which is relative
+# when it was launched with a relative path. Staged on 2026-08-30: a stub under
+# the derived root reported `build/run-derived/.../AF Flow`, with no leading
+# slash, and an exclusion written only against "$REPO_ROOT"/build/* let it
+# through and refused the run. So a relative path is resolved against the
+# repository root before it is compared, and the derived root is matched
+# separately in case it was pointed somewhere else by AF_FLOW_DERIVED.
+af_flow_is_running() {
+    local pid path
+    for pid in $(pgrep -x "$APP_PROCESS_NAME" 2>/dev/null); do
+        path=$(ps -o comm= -p "$pid" 2>/dev/null)
+        [ -n "$path" ] || continue
+        case "$path" in
+            /*) : ;;
+            *) path="$REPO_ROOT/$path" ;;
+        esac
+        case "$path" in
+            "$REPO_ROOT"/build/*) continue ;;
+            "$DERIVED_REAL"/*) continue ;;
+        esac
+        return 0
+    done
+    return 1
+}
+
+if af_flow_is_running; then
     cat >&2 <<'RUNNING'
 REFUSING TO RUN: AF Flow is currently open.
 
@@ -859,7 +956,7 @@ fi
 #
 # Deliberately placed AFTER the defaults trap on line 568, so refusing here still
 # restores his settings on the way out.
-if pgrep -x AFFlow >/dev/null 2>&1; then
+if af_flow_is_running; then
     cat >&2 <<'RUNNING_NOW'
 REFUSING TO RUN: AF Flow was opened while this script was building.
 
