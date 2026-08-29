@@ -55,6 +55,21 @@ case "$SYSTEM_LIST_STATUS" in
 esac
 
 echo
+echo "### Does the firewall still hold an Allow-any for the family"
+# Same discipline as the check above. Exit 2 means the rules database could not
+# be read or decoded, which is NOT the same answer as "no bad rules": a firewall
+# database that cannot be read is not a clean one. Three Allow any:any rules sat
+# here for five weeks in 2026 with nothing looking.
+LULU_OUT=$(python3 scripts/lulu-rule-check.py 2>&1)
+LULU_STATUS=$?
+printf '%s\n' "$LULU_OUT" | sed -n '3,$p'
+case "$LULU_STATUS" in
+    0) : ;;
+    2) echo ">>> COULD NOT CHECK. An unreadable rules database is not a clean one." ;;
+    *) echo ">>> ACT ON THIS. His firewall is not backstopping this app." ;;
+esac
+
+echo
 echo "### Does anything name his data folder by hand"
 # Same discipline as the system list check above: capture the status rather
 # than piping it into sed, which would report SED's exit code. A finding here

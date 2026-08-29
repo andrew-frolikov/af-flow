@@ -392,6 +392,24 @@ if [ "${AF_FLOW_APP_BUILD:-}" = "1" ]; then
             exit 11
         fi
     done
+
+    # The app must be INCAPABLE of egress at the OS layer, not merely watched.
+    # 2026-08-29, his decision after the LuLu episode: Allow-any firewall rules
+    # for this app came back months after he deleted them, LuLu ignores
+    # synthetic clicks by design so nothing can clean them up for him, and a
+    # firewall's view of an app is only as good as its rule matching, which
+    # stale post-rename paths had already broken. The sandbox needs no
+    # matching: without com.apple.security.network.client every outbound call
+    # dies at the kernel. A build carrying the entitlement is refused here so
+    # it cannot creep back through a template or an xcodegen default. Fetching
+    # a NEW model is now a deliberate act: re-add the entitlement, build,
+    # download, remove it, build again.
+    if codesign -d --entitlements :- "$APP_PATH" 2>/dev/null | grep -q "com.apple.security.network.client"; then
+        echo "REFUSING TO REPORT SUCCESS: the built app carries the network.client entitlement." >&2
+        echo "This app is fully local by decision (2026-08-29). Remove the entitlement from" >&2
+        echo "project.yml and AFFlow/AFFlow.entitlements before installing." >&2
+        exit 12
+    fi
     echo
     echo "built: $APP_PATH"
     echo "bundle id verified: $BUILT_ID"
