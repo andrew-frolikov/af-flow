@@ -63,6 +63,7 @@ docs
 docs/*
 !docs/index.html
 !docs/pre-deploy-privacy-security.md
+!docs/launch-v1-plan.md
 !docs/2026-07-27-meeting-transcripts-design.md
 !docs/design/
 !docs/design/af-flow-visual-system.md
