@@ -479,6 +479,32 @@ case "$?" in
   *) fail=1 ;;
 esac
 
+# There is no xcodegen on this machine, so `project.yml` is a DESCRIPTION of the
+# project and the pbxproj is what Xcode obeys. Nothing had ever compared them,
+# and on 2026-08-30 they disagreed on the hardened runtime. The settings this
+# checks are the ones that decide whether the app Andrew hands his friends is
+# sandboxed, notarizable and non-debuggable. Exit 2 FAILS: both files are in
+# the checkout, so unreadable means the check did not happen.
+echo ""
+python3 "$(dirname "$0")/build-config-check.py"
+case "$?" in
+  0) : ;;
+  *) fail=1 ;;
+esac
+
+# The three release checkers are only as good as their staged states, and none
+# of them is exercised by the Swift suite. They are offline and take about two
+# seconds together.
+echo ""
+for selftest in bundle-boundary-check-selftest build-config-check-selftest af_installed_app_selftest; do
+  if python3 "$(dirname "$0")/$selftest.py" >/dev/null 2>&1; then
+    echo "ok    $selftest distinguishes every state it stages"
+  else
+    echo "FAIL  $selftest does not pass. Run it directly."
+    fail=1
+  fi
+done
+
 # One key declared twice with DIFFERENT defaults is an unambiguous bug: which one
 # applies depends on which view initialises first while the key is absent. This
 # project shipped one already (meetingSummaryPrompt, fixed 2026-07-29). Only the

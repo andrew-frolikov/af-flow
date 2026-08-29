@@ -85,6 +85,21 @@ case "$PATH_CHECK_STATUS" in
 esac
 
 echo
+echo "### Do the two files describing the build agree"
+# Added 2026-08-30, when the answer was no. There is no xcodegen here, so the
+# pbxproj is the truth and project.yml is what everyone reads; they had drifted
+# on the hardened runtime. A distribution build is decided by settings nobody
+# looks at, so they are looked at here, every session, in under a second.
+BUILD_CONFIG_OUT=$(python3 scripts/build-config-check.py 2>&1)
+BUILD_CONFIG_STATUS=$?
+printf '%s\n' "$BUILD_CONFIG_OUT" | sed -n '2,$p'
+case "$BUILD_CONFIG_STATUS" in
+    0) : ;;
+    2) echo ">>> COULD NOT CHECK. A project file that cannot be read is not a clean one." ;;
+    *) echo ">>> ACT ON THIS. The build Andrew ships is configured by these lines." ;;
+esac
+
+echo
 echo "### Does every spec line say who decided it"
 python3 scripts/spec-provenance-check.py 2>&1
 

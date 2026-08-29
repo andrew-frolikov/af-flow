@@ -36,7 +36,23 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: "$(AF_FLOW_BUNDLE_ID:default=com.frolikov.afflow)"
         ENABLE_APP_SANDBOX: YES
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: YES
-        ENABLE_HARDENED_RUNTIME: NO
+      configs:
+        Debug:
+          # On since before this file described it. Recorded here on
+          # 2026-08-30, when `scripts/build-config-check.py` found project.yml
+          # claiming NO while both real configurations said YES. There is no
+          # xcodegen on this machine, so this file is a description and the
+          # pbxproj is the truth; that checker now refuses the two to disagree.
+          ENABLE_HARDENED_RUNTIME: YES
+        Release:
+          # Notarization refuses a Developer ID build without it.
+          ENABLE_HARDENED_RUNTIME: YES
+          # Left at its default, Xcode injects
+          # com.apple.security.get-task-allow into the signature and the app
+          # Andrew hands his friends is debuggable by any process on their Mac.
+          # `scripts/bundle-boundary-check.py` refuses the built artefact;
+          # this refuses it a build earlier.
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
     dependencies:
       - package: WhisperKit
       - package: FluidAudio

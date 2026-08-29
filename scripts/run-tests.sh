@@ -400,14 +400,29 @@ if [ "${AF_FLOW_APP_BUILD:-}" = "1" ]; then
     # firewall's view of an app is only as good as its rule matching, which
     # stale post-rename paths had already broken. The sandbox needs no
     # matching: without com.apple.security.network.client every outbound call
-    # dies at the kernel. A build carrying the entitlement is refused here so
-    # it cannot creep back through a template or an xcodegen default. Fetching
-    # a NEW model is now a deliberate act: re-add the entitlement, build,
-    # download, remove it, build again.
-    if codesign -d --entitlements :- "$APP_PATH" 2>/dev/null | grep -q "com.apple.security.network.client"; then
-        echo "REFUSING TO REPORT SUCCESS: the built app carries the network.client entitlement." >&2
-        echo "This app is fully local by decision (2026-08-29). Remove the entitlement from" >&2
-        echo "project.yml and AFFlow/AFFlow.entitlements before installing." >&2
+    # dies at the kernel. Fetching a NEW model is a deliberate act, run from
+    # scripts/download-model.sh and never by this app.
+    #
+    # THIS USED TO BE ONE LINE, AND THAT LINE COULD ONLY REFUSE A BUNDLE IT HAD
+    # ALREADY SUCCESSFULLY READ:
+    #
+    #   codesign -d --entitlements :- "$APP_PATH" 2>/dev/null | grep -q network.client
+    #
+    # When codesign fails, it prints nothing, grep finds nothing, and the build
+    # is reported boundary-clean. An unsigned bundle, an empty
+    # CODE_SIGN_IDENTITY, or a path codesign cannot read all read as verified.
+    # Staged and watched on 2026-08-30: an unsigned copy of a bundle that
+    # really did carry the entitlement was reported CLEAN. Unreadable must
+    # fail, which is the `lulu-rule-check.py` rule in a second system.
+    #
+    # It is now a script so that `scripts/release-build.sh` runs the SAME
+    # guarantee against the notarized artefact, plus the ones only a
+    # distribution build can break: hardened runtime on, get-task-allow absent,
+    # and a signature that is not ad-hoc. Every state it distinguishes is
+    # staged in scripts/bundle-boundary-check-selftest.py.
+    if ! python3 "$REPO_ROOT/scripts/bundle-boundary-check.py" \
+            "$APP_PATH" --configuration debug; then
+        echo "REFUSING TO REPORT SUCCESS: the built app is outside its boundary." >&2
         exit 12
     fi
     echo
