@@ -459,6 +459,26 @@ case "$?" in
   *) fail=1 ;;
 esac
 
+# LuLu is a THIRD system list, and until 2026-08-29 nothing looked at it. Three
+# `Allow any-address:any-port` rules for the family sat in it for five weeks:
+# deleted 2026-07-20, back by 2026-08-29. A standing allow-any rule means LuLu
+# never prompts or logs for that bundle again, so the empirical backstop this
+# project names as its mitigation was disarmed while the documents still said
+# it was in force.
+#
+# Exit 2 FAILS here, like the path check above and unlike the TCC check. The
+# TCC databases sit behind Full Disk Access, so unreadable there is a genuine
+# skip. `rules.plist` is root-owned but world-readable, 644, and needs no
+# special rights at all: if it cannot be read, the check did not happen and
+# this gate has proven nothing. Calling that clean is the exact mistake this
+# project has a named rule about.
+echo ""
+python3 "$(dirname "$0")/lulu-rule-check.py"
+case "$?" in
+  0) : ;;
+  *) fail=1 ;;
+esac
+
 # One key declared twice with DIFFERENT defaults is an unambiguous bug: which one
 # applies depends on which view initialises first while the key is absent. This
 # project shipped one already (meetingSummaryPrompt, fixed 2026-07-29). Only the
