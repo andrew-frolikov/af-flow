@@ -148,6 +148,8 @@
 		9F0C599099252C3E7C8846F2 /* IndexEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F22B92A6ECEE8A19C9A5095 /* IndexEntryView.swift */; };
 		A3183D30BAD0A1C2712E033F /* PermissionChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1BDC9C549491AC003117EC /* PermissionChecker.swift */; };
 		BD9906A5BF9017CC8191BD8E /* PermissionCensus.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD9906A5BF9017CC8191BD8E /* PermissionCensus.swift */; };
+		C6A1196E8D1BDF89E0C8F3C9 /* TierBenchmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3AF370A56EC149005B7227 /* TierBenchmark.swift */; };
+		BE0D498179C382B1D2E8685D /* QualityTier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BF63AF73B1508C8D786C488 /* QualityTier.swift */; };
 		D4F9820A7C0F7537E9870EC3 /* MeetingsVisibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC35CC853F0308A51DCD4CE8 /* MeetingsVisibility.swift */; };
 		4CCEBF1174B4CB15416B36EE /* AppSupportDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 590E94A3FE6C987F008CE42E /* AppSupportDirectory.swift */; };
 		BE9A29B1FBE2D5B213B248BA /* AccessibilityFunctionCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3976F95D3AAA2ED7BB6C2453 /* AccessibilityFunctionCheck.swift */; };
@@ -176,6 +178,8 @@
 		BF329CF451CC34A3B74348CC /* HotkeyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF88392E6B9F0168E43B8C51 /* HotkeyMonitor.swift */; };
 		C1B0000000000000000002 /* Inter-variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C1A0000000000000000002 /* Inter-variable.ttf */; };
 		C1B0000000000000000011 /* hero-poster-graded.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C1A0000000000000000011 /* hero-poster-graded.jpg */; };
+		F193B42A8DDF447516A50BFB /* benchmark-ru.wav in Resources */ = {isa = PBXBuildFile; fileRef = 49CA6791B3BAE31EB916C185 /* benchmark-ru.wav */; };
+		6A9BD7118D6334C6209BC68B /* benchmark-en.wav in Resources */ = {isa = PBXBuildFile; fileRef = 1485B33FEC512C88F4F928B6 /* benchmark-en.wav */; };
 		C1B0000000000000000010 /* hero-fog-960-graded.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = C1A0000000000000000010 /* hero-fog-960-graded.mp4 */; };
 		C1B0000000000000000001 /* Fraunces-opsz9-wght500.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C1A0000000000000000001 /* Fraunces-opsz9-wght500.ttf */; };
 		C18E7F36CC6523A86671707D /* PromptEditorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B43697CC08695B8E8F8AD01 /* PromptEditorWindow.swift */; };
@@ -196,6 +200,8 @@
 		F84C21AA931175E37108AC37 /* AccessibilityFunctionCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */; };
 		8F635DC70A6482BEACF0EFAD /* AppSupportDirectoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0612CA92E4B533CF283A8CB3 /* AppSupportDirectoryTests.swift */; };
 		BB3B0BD2311E6A6FF78B9EF8 /* AppSupportPathOwnershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DFF8A710D4A720170CDD412 /* AppSupportPathOwnershipTests.swift */; };
+		8C1F702891FBF19096E32245 /* TierBenchmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFFEAE1BE9C44750E261E9EE /* TierBenchmarkTests.swift */; };
+		E561EBC345FFE6FEAA7543BB /* QualityTierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FEE95BBA0CE8F788102A538 /* QualityTierTests.swift */; };
 		E69BFEE27C7F7123988EE7AF /* MeetingsHiddenInV1Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 047BE676DE33CF00550BDECD /* MeetingsHiddenInV1Tests.swift */; };
 		B90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */; };
 		B0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */; };
@@ -309,6 +315,8 @@
 		17F70F511A956DAB5778D430 /* WindowCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowCaptureService.swift; sourceTree = "<group>"; };
 		C1A0000000000000000002 /* Inter-variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-variable.ttf"; sourceTree = "<group>"; };
 		C1A0000000000000000011 /* hero-poster-graded.jpg */ = {isa = PBXFileReference; lastKnownFileType = file; path = "hero-poster-graded.jpg"; sourceTree = "<group>"; };
+		49CA6791B3BAE31EB916C185 /* benchmark-ru.wav */ = {isa = PBXFileReference; lastKnownFileType = file; path = "benchmark-ru.wav"; sourceTree = "<group>"; };
+		1485B33FEC512C88F4F928B6 /* benchmark-en.wav */ = {isa = PBXFileReference; lastKnownFileType = file; path = "benchmark-en.wav"; sourceTree = "<group>"; };
 		C1A0000000000000000010 /* hero-fog-960-graded.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = "hero-fog-960-graded.mp4"; sourceTree = "<group>"; };
 		C1A0000000000000000001 /* Fraunces-opsz9-wght500.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Fraunces-opsz9-wght500.ttf"; sourceTree = "<group>"; };
 		1AC12AC919C182CDEF77DB11 /* CommandKSearchSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandKSearchSheet.swift; sourceTree = "<group>"; };
@@ -329,6 +337,8 @@
 		CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityFunctionCheckTests.swift; sourceTree = "<group>"; };
 		0612CA92E4B533CF283A8CB3 /* AppSupportDirectoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSupportDirectoryTests.swift; sourceTree = "<group>"; };
 		8DFF8A710D4A720170CDD412 /* AppSupportPathOwnershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSupportPathOwnershipTests.swift; sourceTree = "<group>"; };
+		AFFEAE1BE9C44750E261E9EE /* TierBenchmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierBenchmarkTests.swift; sourceTree = "<group>"; };
+		1FEE95BBA0CE8F788102A538 /* QualityTierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QualityTierTests.swift; sourceTree = "<group>"; };
 		047BE676DE33CF00550BDECD /* MeetingsHiddenInV1Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsHiddenInV1Tests.swift; sourceTree = "<group>"; };
 		F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelShapeCensusTests.swift; sourceTree = "<group>"; };
 		F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionLabStoreCorruptionTests.swift; sourceTree = "<group>"; };
@@ -461,6 +471,8 @@
 		ABAC2D0F6C311FB1DA3E9ABF /* PostPasteLearningCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostPasteLearningCoordinatorTests.swift; sourceTree = "<group>"; };
 		AC1BDC9C549491AC003117EC /* PermissionChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionChecker.swift; sourceTree = "<group>"; };
 		FD9906A5BF9017CC8191BD8E /* PermissionCensus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionCensus.swift; sourceTree = "<group>"; };
+		2C3AF370A56EC149005B7227 /* TierBenchmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierBenchmark.swift; sourceTree = "<group>"; };
+		2BF63AF73B1508C8D786C488 /* QualityTier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QualityTier.swift; sourceTree = "<group>"; };
 		FC35CC853F0308A51DCD4CE8 /* MeetingsVisibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsVisibility.swift; sourceTree = "<group>"; };
 		590E94A3FE6C987F008CE42E /* AppSupportDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSupportDirectory.swift; sourceTree = "<group>"; };
 		3976F95D3AAA2ED7BB6C2453 /* AccessibilityFunctionCheck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityFunctionCheck.swift; sourceTree = "<group>"; };
@@ -606,6 +618,8 @@
 				CC0F71B32FF6973FD42639C7 /* ModelInventory.swift */,
 				AC1BDC9C549491AC003117EC /* PermissionChecker.swift */,
 				FD9906A5BF9017CC8191BD8E /* PermissionCensus.swift */,
+				2C3AF370A56EC149005B7227 /* TierBenchmark.swift */,
+				2BF63AF73B1508C8D786C488 /* QualityTier.swift */,
 				FC35CC853F0308A51DCD4CE8 /* MeetingsVisibility.swift */,
 				590E94A3FE6C987F008CE42E /* AppSupportDirectory.swift */,
 				3976F95D3AAA2ED7BB6C2453 /* AccessibilityFunctionCheck.swift */,
@@ -712,6 +726,8 @@
 			children = (
 				C1A0000000000000000002 /* Inter-variable.ttf */,
 				C1A0000000000000000011 /* hero-poster-graded.jpg */,
+				49CA6791B3BAE31EB916C185 /* benchmark-ru.wav */,
+				1485B33FEC512C88F4F928B6 /* benchmark-en.wav */,
 				C1A0000000000000000010 /* hero-fog-960-graded.mp4 */,
 				C1A0000000000000000001 /* Fraunces-opsz9-wght500.ttf */,
 				0AC7A5C3B9E8424694D7A000 /* cytoscape.min.js */,
@@ -966,6 +982,8 @@
 				CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */,
 				0612CA92E4B533CF283A8CB3 /* AppSupportDirectoryTests.swift */,
 				8DFF8A710D4A720170CDD412 /* AppSupportPathOwnershipTests.swift */,
+				AFFEAE1BE9C44750E261E9EE /* TierBenchmarkTests.swift */,
+				1FEE95BBA0CE8F788102A538 /* QualityTierTests.swift */,
 				047BE676DE33CF00550BDECD /* MeetingsHiddenInV1Tests.swift */,
 				F90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift */,
 				F0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift */,
@@ -1134,6 +1152,8 @@
 				9BE17BC60B1F9CFD3747A844 /* Assets.xcassets in Resources */,
 				C1B0000000000000000002 /* Inter-variable.ttf in Resources */,
 				C1B0000000000000000011 /* hero-poster-graded.jpg in Resources */,
+				F193B42A8DDF447516A50BFB /* benchmark-ru.wav in Resources */,
+				6A9BD7118D6334C6209BC68B /* benchmark-en.wav in Resources */,
 				C1B0000000000000000010 /* hero-fog-960-graded.mp4 in Resources */,
 				C1B0000000000000000001 /* Fraunces-opsz9-wght500.ttf in Resources */,
 				0AC7A5C3B9E8424694D7A001 /* cytoscape.min.js in Resources */,
@@ -1242,6 +1262,8 @@
 				408C8D6C7BE897429324F4F1 /* PerformanceTrace.swift in Sources */,
 				A3183D30BAD0A1C2712E033F /* PermissionChecker.swift in Sources */,
 				BD9906A5BF9017CC8191BD8E /* PermissionCensus.swift in Sources */,
+				C6A1196E8D1BDF89E0C8F3C9 /* TierBenchmark.swift in Sources */,
+				BE0D498179C382B1D2E8685D /* QualityTier.swift in Sources */,
 				D4F9820A7C0F7537E9870EC3 /* MeetingsVisibility.swift in Sources */,
 				4CCEBF1174B4CB15416B36EE /* AppSupportDirectory.swift in Sources */,
 				BE9A29B1FBE2D5B213B248BA /* AccessibilityFunctionCheck.swift in Sources */,
@@ -1345,6 +1367,8 @@
 				F84C21AA931175E37108AC37 /* AccessibilityFunctionCheckTests.swift in Sources */,
 				8F635DC70A6482BEACF0EFAD /* AppSupportDirectoryTests.swift in Sources */,
 				BB3B0BD2311E6A6FF78B9EF8 /* AppSupportPathOwnershipTests.swift in Sources */,
+				8C1F702891FBF19096E32245 /* TierBenchmarkTests.swift in Sources */,
+				E561EBC345FFE6FEAA7543BB /* QualityTierTests.swift in Sources */,
 				E69BFEE27C7F7123988EE7AF /* MeetingsHiddenInV1Tests.swift in Sources */,
 				B90F3F041A65A5C5CD1CDAAB /* ModelShapeCensusTests.swift in Sources */,
 				B0697C3E1185ACE289C1DDDA /* TranscriptionLabStoreCorruptionTests.swift in Sources */,

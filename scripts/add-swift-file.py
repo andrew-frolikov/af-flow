@@ -20,6 +20,8 @@ directory is registered in the same four places, so its four line positions are
 the right four positions.
 
     python3 scripts/add-swift-file.py AFFlow/Foo.swift --like PermissionCensus.swift
+    python3 scripts/add-swift-file.py AFFlow/Resources/clip.wav \\
+        --phase Resources --like hero-poster-graded.jpg
 
 Ids are derived from the file name, so a rerun is a no-op rather than a
 duplicate.
@@ -34,10 +36,28 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PBXPROJ = os.path.join(ROOT, "AFFlow.xcodeproj", "project.pbxproj")
 
-BUILD_FILE_PATTERN = re.compile(
-    r"^\s*([0-9A-F]{24}) /\* (?P<name>.+?) in Sources \*/ = \{isa = PBXBuildFile; "
-    r"fileRef = ([0-9A-F]{24}) /\* (?P=name) \*/; \};"
-)
+# EXTENDED 2026-08-30 TO REGISTER RESOURCES TOO, because Phase 3 of the launch
+# plan bundles two benchmark clips and Phases 5 and 8 bundle more. The four
+# edits and the failure mode are identical; only the build phase's name and the
+# accepted extension differ, so a second near-identical script would have been
+# a second place to fix the next bug found in this one. The file keeps its name
+# so existing references stay valid; `--phase Resources` is the new door.
+#
+# The sibling's PBXBuildFile line is matched with the phase name in it, which is
+# what makes the phase real rather than decorative: asking for Resources and
+# naming a Swift sibling finds no anchor and stops, instead of quietly adding
+# the file to the wrong phase.
+def build_file_pattern(phase):
+    # NOT {24}. Xcode writes 24-hex ids and so does this script, but the
+    # resources in this project were registered by hand with 22-character ids
+    # (`C1B0000000000000000011`), and a pattern demanding 24 silently matched
+    # none of them: the script reported "could not find the PBXBuildFile line"
+    # for a sibling that was sitting right there. Found on the first real use,
+    # 2026-08-30.
+    return re.compile(
+        r"^\s*([0-9A-F]{16,32}) /\* (?P<name>.+?) in %s \*/ = \{isa = PBXBuildFile; "
+        r"fileRef = ([0-9A-F]{16,32}) /\* (?P=name) \*/; \};" % re.escape(phase)
+    )
 
 
 def object_id(name, salt):
@@ -57,11 +77,19 @@ def main():
         required=True,
         help="file name of an already-registered sibling to copy placement from",
     )
+    parser.add_argument(
+        "--phase",
+        default="Sources",
+        choices=["Sources", "Resources"],
+        help="which build phase the sibling is in (default: Sources)",
+    )
     args = parser.parse_args()
 
     name = os.path.basename(args.path)
-    if not name.endswith(".swift"):
-        sys.exit("Only .swift files. Got: " + name)
+    if args.phase == "Sources" and not name.endswith(".swift"):
+        sys.exit("Sources takes .swift files. Got: " + name)
+    if args.phase == "Resources" and name.endswith(".swift"):
+        sys.exit("A .swift file belongs in Sources, not Resources: " + name)
     if not os.path.exists(os.path.join(ROOT, args.path)):
         sys.exit("No such file on disk: " + args.path)
 
@@ -84,14 +112,19 @@ def main():
     # tells us which of the sibling's two ids is which. Without it the single-id
     # lines are ambiguous and a wrong guess produces a project that opens fine
     # and builds the wrong file.
+    pattern = build_file_pattern(args.phase)
     sibling_ids = None
     for index in anchors:
-        match = BUILD_FILE_PATTERN.match(lines[index])
+        match = pattern.match(lines[index])
         if match:
             sibling_ids = (match.group(1), match.group(3))
             break
     if sibling_ids is None:
-        sys.exit("Could not find the PBXBuildFile line for %s." % sibling)
+        sys.exit(
+            "Could not find the PBXBuildFile line for %s in the %s phase. "
+            "Either the sibling is in a different phase, or it is registered "
+            "in a way this cannot copy." % (sibling, args.phase)
+        )
 
     sibling_build_id, sibling_file_id = sibling_ids
     build_id = object_id(name, "build")

@@ -1020,8 +1020,19 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
     /// `.gemma4_12b_it_optiq_4bit_mlx` that predates its descriptor removal
     /// and reaches this function through a path that bypasses the migration
     /// in `AppState.init`.
+    /// The catalogue lookup, without an instance and without the fallback.
+    ///
+    /// Added 2026-08-30 for `QualityTier`, which has to answer "how big is the
+    /// model this tier bundles" before any manager exists. It returns nil
+    /// rather than substituting the compact model, because a tier naming a
+    /// kind the catalogue does not describe is a bug to surface, not a
+    /// selection to quietly correct.
+    static func descriptor(for modelKind: LocalCleanupModelKind) -> CleanupModelDescriptor? {
+        cleanupModels.first(where: { $0.kind == modelKind })
+    }
+
     private func descriptor(for modelKind: LocalCleanupModelKind) -> CleanupModelDescriptor {
-        Self.cleanupModels.first(where: { $0.kind == modelKind }) ?? Self.compactModel
+        Self.descriptor(for: modelKind) ?? Self.compactModel
     }
 
     private func availabilityOverride(for modelKind: LocalCleanupModelKind) -> Bool? {
