@@ -55,6 +55,40 @@ DEFINITION_AND_FIXTURES='AFFlow/QA/KeychainHelper\.swift|AFFlowTests/[^:]*\.swif
 # expects (no grep -n colon anchoring).
 INERT_CLOUD_SOURCES_PATHS='AFFlow/(Calendar/GoogleCalendarService|Meeting/AirtableImporter|Meeting/GranolaImporter|PepperChat/ZoBackend|PepperChat/TrelloBackend|PepperChat/TrelloCommandParser|QA/AnthropicProvider|Reader/ReaderCapture|Reader/ReaderCaptureSheet)\.swift'
 
+# THREE FILES WHOSE JOB IS TO CONTAIN THE CHARACTERS THIS RULE BANS.
+#
+# Hard rule 9 bans em dashes in anything user-facing. These three are fixtures
+# that feed banned characters INTO the text guards, and banning the character
+# there bans the test:
+#
+#   TextCleanerTests.swift            two sentences built around an em dash,
+#                                     asserting the cleanup model may not
+#                                     invent or move one
+#   CasingGuardAdversarialReplay.swift  a mask list of the characters his own
+#                                     archive never contains, so the casing
+#                                     guard can be proven against shapes his
+#                                     1,835 tokens cannot supply
+#   SummaryFabrication.swift          a bullet-marker set for detecting
+#                                     invented headings
+#
+# STATE.md's line is the reason all three exist: "His archive cannot prove a
+# text guard safe."
+#
+# SCOPED TO EXACTLY THESE THREE FILES, not to AFFlowTests. Copy is regularly
+# drafted in a test and moved into the app later, so a genuine user-facing
+# string in any other test file still fails. And it is passed per-invocation to
+# the em-dash check alone, so the currency check over the same files is
+# untouched.
+#
+# REJECTED, and recorded so nobody re-proposes it: narrowing the check so a
+# `\u{2014}` escape is allowed and only a raw character fails. All three hits
+# are written as escapes, so that would have looked like an elegant fix. It is
+# the hole Fable's adversary found (finding 5): decode_escapes resolves unicode
+# escapes on purpose, because a banned character written as an escape never
+# appears in source and still ships in the binary. See the same rejection
+# recorded in swift-scan.py's is_entity_table_allowed.
+ADVERSARIAL_TEXT_FIXTURES='AFFlowTests/(TextCleanerTests|CasingGuardAdversarialReplay|SummaryFabrication)\.swift'
+
 # Documented single-symbol exception, added 2026-07-19 and flagged to Andrew.
 # GranolaImporter.extractTranscript is a `nonisolated static func` that parses a
 # local dictionary into a string. It contains no URLSession, no http, no
@@ -291,8 +325,12 @@ check "no ScreenCaptureKit in config" 'ScreenCaptureKit' config
 # that matter most: a prompt containing em dashes teaches the model to emit them.
 # Excluding comments removes noise, not coverage. Comments are not user-facing.
 literal_check() {
-  local label="$1" pattern="$2" hits
-  hits=$(scan --mode string --join "$pattern" "${SWIFT_PATHS[@]}")
+  local label="$1" pattern="$2" allow="${3:-}" hits
+  if [ -n "$allow" ]; then
+    hits=$(scan --mode string --join "$pattern" "${SWIFT_PATHS[@]}" --allow "$allow")
+  else
+    hits=$(scan --mode string --join "$pattern" "${SWIFT_PATHS[@]}")
+  fi
   if [ -n "$hits" ]; then
     echo "FAIL  $label"
     echo "$hits" | sed 's/^/        /'
@@ -312,7 +350,48 @@ literal_check() {
 # meeting detection. Hard rule 9 bans em dashes; an en dash is a different
 # character with a different job, and widening past the rule creates pressure to
 # weaken the check later.
-literal_check "no em dash in user-facing strings" '[\u2014\u2015\u2E3A\u2E3B]'
+literal_check "no em dash in user-facing strings" '[\u2014\u2015\u2E3A\u2E3B]' \
+  "$ADVERSARIAL_TEXT_FIXTURES"
+
+# AN ALLOWLIST THAT OUTLIVES ITS REASON IS A HOLE. Each exempted file must still
+# contain the character it is exempted for; if one stops, the exemption is doing
+# nothing except standing ready to excuse the next em dash somebody adds there.
+# Fails rather than warns, because the fix is one line: delete the entry.
+#
+# ASKED OF THE SCANNER, NOT OF THE RAW FILE. The first version read the source
+# text and looked for the character or the string `u{2014}`, which is satisfied
+# by a COMMENT: two of these three files carry em dashes in their comments, and
+# comments are not what the exemption is for. So the guard passed for two of the
+# three files whatever happened to their fixtures. Codex found it, 2026-08-30,
+# and my own staged test had missed it by removing the fixture from the one file
+# where the guard happened to work.
+#
+# Asking `swift-scan --mode string` is the fix and it is also the right shape:
+# the guard now runs the SAME query as the check it guards, so an exemption is
+# live exactly while the check would otherwise fire.
+ One scan over the directory, not one per file: swift-scan walks directories
+# and returns nothing for a bare file path, which made the first version of this
+# report all three exemptions stale at once. A guard that fails everything is
+# easier to notice than one that passes everything, which is the only good thing
+# about that particular mistake.
+em_dash_hits=$(scan --mode string --join '[\u2014\u2015\u2E3A\u2E3B]' AFFlowTests)
+stale_fixture_exemptions=""
+for fixture in AFFlowTests/TextCleanerTests.swift \
+               AFFlowTests/CasingGuardAdversarialReplay.swift \
+               AFFlowTests/SummaryFabrication.swift; do
+  if [ ! -f "$fixture" ]; then
+    stale_fixture_exemptions+="$fixture: exempted and does not exist"$'\n'
+  elif ! printf '%s' "$em_dash_hits" | grep -q "^$fixture:"; then
+    stale_fixture_exemptions+="$fixture: exempted, and no string literal in it needs the exemption"$'\n'
+  fi
+done
+if [ -n "$stale_fixture_exemptions" ]; then
+  echo "FAIL  every em dash exemption is still needed"
+  printf '%s' "$stale_fixture_exemptions" | sed 's/^/        /'
+  fail=1
+else
+  echo "ok    every em dash exemption is still needed"
+fi
 # The currency pattern must not match Swift's `$0` closure shorthand, which
 # appears inside interpolated strings all over the codebase. Matching it was a
 # bug in this check that buried the three real USD sites under 60 false
@@ -342,6 +421,36 @@ literal_check "no em dash in user-facing strings" '[\u2014\u2015\u2E3A\u2E3B]'
 # can legitimately occur here, while regex backreferences demonstrably do.
 literal_check "no non-CAD currency in user-facing strings" \
   '[$]%|[$][0-9]+[.,][0-9]|[$][0-9]{2,}|\bUSD\b|[$][0-9] ?(USD|CAD|dollar)'
+
+# A DELIBERATE DEFECT MUST NOT SURVIVE INTO A COMMIT.
+#
+# On 2026-08-30 two mutations installed for a mutation test were COMMITTED:
+# Starter went English-only, the exact regression its own test forbids, and the
+# benchmark invented a 3.0 calibration ratio, the exact fabrication its own test
+# forbids. Both were in HEAD, and both files' tests would have failed.
+#
+# The revert did nothing and said nothing. `git checkout FILE` restores from the
+# index, and these were NEW files not yet tracked, so it errored; the error was
+# sent to /dev/null and `git diff` on an untracked file prints nothing, which
+# read as "reverted". Codex found it.
+#
+# The deeper gap is that `mutation-sweep.py` refuses to run on a dirty tree, so
+# testing a mutation against uncommitted work means hand-rolling it, and a
+# hand-rolled mutation has no bookkeeping. Recorded in PROGRESS.md. This check
+# is the narrow backstop: any line marked as a deliberate defect fails the
+# sweep, so it cannot be committed while the marker is on it.
+mutation_markers=$(grep -rn "MUTATION, reverted\|// MUTATION\|# MUTATION\b" \
+  --include='*.swift' --include='*.py' --include='*.sh' \
+  AFFlow AFFlowTests scripts 2>/dev/null \
+  | grep -v '^scripts/mutation-sweep\.py:' \
+  | grep -v '^scripts/banned-symbol-sweep\.sh:' || true)
+if [ -n "$mutation_markers" ]; then
+  echo "FAIL  no deliberately installed defect is still in the tree"
+  echo "$mutation_markers" | sed 's/^/        /'
+  fail=1
+else
+  echo "ok    no deliberately installed defect is still in the tree"
+fi
 
 # Rule 9 applies to helper-script output too. Codex round 7, MEDIUM: the sweep
 # only looked at Swift, so scripts/extract_granola.py printed an em dash to the

@@ -60,7 +60,7 @@ enum QualityTier: String, CaseIterable, Identifiable {
     /// `whisperSmallMultilingual`, never `whisperSmallEnglish`. They are the
     /// same size on disk, so the English-only build buys nothing and costs a
     /// quarter of the dictation of anyone who speaks Russian.
-    static let starterSpeechModelID = SpeechModelCatalog.whisperSmallEnglish.id  // MUTATION
+    static let starterSpeechModelID = SpeechModelCatalog.whisperSmallMultilingual.id
 
     /// **Open item 1 of the launch plan, answered from his own 26 days rather
     /// than from a fresh benchmark, and marked as such.**

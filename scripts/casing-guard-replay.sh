@@ -4,14 +4,14 @@
 # WHY THIS EXISTS. Replaying the guard over his archive proves what happened on
 # the population that archive holds, and nothing about the population it lacks.
 # Measured 2026-08-24: across the 50 archived dictations the raw punctuation
-# inventory is `. , ? ' - %` — no quotes, brackets, guillemets, dashes or
+# inventory is `. , ? ' - %`: no quotes, brackets, guillemets, dashes or
 # newlines, no `period + punctuation + word`, and no lowercase-initial-with-a-
 # later-capital tokens in 1,835. All three defects found in review were invisible
 # to a plain replay, and a clean replay was compatible with every one of them
 # being live.
 #
-# So this synthesises the missing shapes FROM HIS OWN TRANSCRIPTIONS — his
-# vocabulary, his languages, his sentence boundaries — and runs the real Swift
+# So this synthesises the missing shapes FROM HIS OWN TRANSCRIPTIONS, using his
+# vocabulary, his languages and his sentence boundaries, and runs the real Swift
 # function over them, not a re-implementation that can drift.
 #
 # His transcripts are never committed. This reads the live archive in place and

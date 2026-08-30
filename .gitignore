@@ -44,6 +44,13 @@ cache-v6.json
 cache-v6.json.enc
 *.jsonl
 *.wav
+# The two benchmark clips are the exception: the app BUNDLES them, so a fresh
+# checkout that lacks them cannot build the resource phase at all. They are
+# synthesised by `say` rather than recorded, 355 KB together, and committing
+# them is what makes the build reproducible from a clone. Codex found them
+# ignored on 2026-08-30, after they had been registered in the pbxproj.
+!AFFlow/Resources/benchmark-en.wav
+!AFFlow/Resources/benchmark-ru.wav
 *.m4a
 *.mp3
 *.caf

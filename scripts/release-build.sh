@@ -376,6 +376,20 @@ say "step 1: archive (Release configuration)"
 # host's or with the Debug app build's, both of which live beside it under
 # build/. This touches no defaults domain and launches no test host, so AF Flow
 # may stay open while it runs.
+# UNREGISTER BEFORE DELETING, because a previous run that was killed, or a
+# machine that lost power, never reached its EXIT trap and left its bundles
+# registered under com.frolikov.afflow. Deleting them first strands the record:
+# the trap below then finds nothing to unregister, and `af_installed_app.py`
+# deliberately ignores paths under build/, so nothing else would ever see them.
+# That is the 2026-08-26 failure with the order reversed. Codex, 2026-08-30.
+for leftover in "$ARCHIVE/Products/Applications/AF Flow.app" "$APP" \
+                "$OUT/dmg-stage/AF Flow.app"; do
+    if [ -d "$leftover" ]; then
+        echo "  unregistering a bundle left by an earlier run: $leftover"
+        "$LSREGISTER" -u "$leftover" >/dev/null 2>&1 \
+            || echo "  WARNING: could not unregister $leftover" >&2
+    fi
+done
 rm -rf "$OUT"
 mkdir -p "$OUT"
 

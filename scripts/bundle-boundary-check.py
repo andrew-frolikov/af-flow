@@ -227,6 +227,19 @@ def main():
             f"anything else arrived from a template, an Xcode default, or a "
             f"re-sign.")
 
+    # AND THE OTHER DIRECTION, which the first version left open. Rejecting only
+    # what is EXTRA compares one way: a Release bundle that lost
+    # `files.user-selected.read-write` was reported as carrying exactly what the
+    # file declares, because only the sandbox and the microphone were separately
+    # required, and the user would find the folder picker silently unable to
+    # write. "Exactly what is declared" has to mean exactly. Codex, 2026-08-30.
+    for key in sorted(set(declared) - set(entitlements)):
+        findings.append(
+            f"MISSING {key}, which {os.path.basename(declared_path)} declares. "
+            f"The bundle carries fewer entitlements than the app was written "
+            f"against, so something it does will fail at runtime with no build "
+            f"error.")
+
     forbidden = dict(FORBIDDEN_ALWAYS)
     if configuration == "release":
         forbidden.update(FORBIDDEN_RELEASE)

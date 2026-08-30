@@ -238,6 +238,18 @@ def main():
         check("a build that lost the App Sandbox is refused",
               got.returncode == FINDINGS, got.stdout + got.stderr)
 
+        # Codex, 2026-08-30: the check compared one way only, so a bundle that
+        # LOST a declared entitlement read as "exactly what is declared".
+        app = make_bundle(root, "NoFilePicker",
+                          entitlements_without("com.apple.security.files.user-selected.read-write"),
+                          hardened=True)
+        got = run(app, "release", ADHOC)
+        check("a build that quietly LOST a declared entitlement is refused",
+              got.returncode == FINDINGS, got.stdout + got.stderr)
+        check("that refusal says MISSING rather than CARRIES",
+              "MISSING com.apple.security.files.user-selected" in got.stdout,
+              got.stdout)
+
         app = make_bundle(root, "NoMic",
                           entitlements_without("com.apple.security.device.audio-input"),
                           hardened=True)

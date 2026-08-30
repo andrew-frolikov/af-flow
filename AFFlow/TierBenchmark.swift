@@ -144,7 +144,7 @@ enum TierBenchmark {
     ) -> TierBenchmarkEstimate {
         guard let measured = measurement.secondsPerReferenceSpeech else { return .unknown }
         if tier == measurement.tier { return .measured(measured) }
-        let ratio = ratios[tier] ?? 3.0  // MUTATION
+        guard let ratio = ratios[tier], ratio.isFinite, ratio > 0 else { return .unknown }
         let extrapolated = measured * ratio
         guard extrapolated.isFinite else { return .unknown }
         return .estimated(extrapolated)

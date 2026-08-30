@@ -948,7 +948,7 @@ fi
 # RE-CHECK, because the first check is stale by the time it matters.
 #
 # The refuse-while-running guard runs near the top of this script, but the test
-# host does not launch until the line below — a whole build later. On 2026-08-24
+# host does not launch until the line below, a whole build later. On 2026-08-24
 # the margin was 95 SECONDS: Andrew's last dictation landed at 18:04:14 and the
 # test host started at 18:05:49. Had he dictated two minutes later, two copies of
 # the app would have been competing for his microphone, which is the exact thing
