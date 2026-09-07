@@ -79,6 +79,25 @@ struct AFFlowApp: App {
                 // means a stray `onboardingCompleted = true` in the test
                 // domain can never trigger a model download.
                 if Self.isRunningTests { return }
+
+                // BEFORE ANYTHING ASKS FOR A MODEL. On a friend's Mac the DMG
+                // carried the Starter tier into Contents/Resources/StarterModels
+                // and nothing moved it into the folders the app reads, so the
+                // first dictation would have attempted a download the kernel
+                // blocks. Codex found the gap on 2026-08-30.
+                //
+                // Placed after the test-host return on purpose: the suite must
+                // never write into a real models folder. It never overwrites,
+                // verifies pinned bytes where they land, and treats "no bundled
+                // models" as normal, which is every development build including
+                // the one Andrew runs.
+                let starter = StarterModelInstaller.installBundledModels()
+                if starter.installed > 0 || !starter.failures.isEmpty {
+                    appState.debugLogStore.record(
+                        category: .model,
+                        message: "Starter models from the bundle: \(starter.description)")
+                }
+
                 // All four of these used to open the fork's meeting window.
                 // AF Flow's own front door is the only thing launching the app
                 // or clicking the Dock icon should ever show.

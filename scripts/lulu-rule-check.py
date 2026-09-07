@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The AF Flow family must have NO firewall rule at all.
+"""The AF Flow family must have NO firewall rule, except the downloader's.
 
 WHY THIS EXISTS, and why the rule got stricter. On 2026-07-20 Andrew found a
 single rule for `com.frolikov.afflow` reading `any address:any port` set to
@@ -16,7 +16,12 @@ the App Sandbox every outbound connection dies in the kernel before LuLu is
 consulted. A firewall rule for a process that cannot open a socket is at best
 decoration, and at worst the thing that quietly re-authorises it the day the
 entitlement comes back. So the rule this file enforces is: nothing in the
-family, in either direction.
+family, in either direction, WITH ONE NAMED EXCEPTION decided by Andrew on
+2026-08-30: `com.frolikov.afflow.models`, the model downloader, is the one
+family member that legitimately opens connections, so a rule for exactly that
+identifier is expected, printed in full every session, and excused ONLY while
+a bundle carrying that identifier ships inside the installed app
+(`lulu_rules.helper_ships`). "Could not tell" counts as "does not ship".
 
 Session 18 wrote down that a check for the family's firewall rules would have
 caught them the day they reappeared. That sentence is this file. A rule that
@@ -49,6 +54,8 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lulu_rules as L  # noqa: E402
 
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 EXIT_CLEAN = 0
 EXIT_FINDINGS = 1
 EXIT_UNREADABLE = 2
@@ -68,16 +75,41 @@ def run(quiet=False):
         return EXIT_UNREADABLE
 
     total = sum(len(rules) for rules in whole.values())
-    family = [
+    everyone = [
         (key, rule)
         for key, rules in whole.items()
         for rule in rules
         if L.in_family(rule["id"])
     ]
-    say(f"ok    rules database read, {total} rule(s) total, {len(family)} in the family")
+    say(f"ok    rules database read, {total} rule(s) total, {len(everyone)} in the family")
 
-    if not family:
-        say("ok    the family has NO rule, which is the agreed end state")
+    # THE ONE EXCEPTION. The model downloader, `L.HELPER_ID`, legitimately
+    # opens connections, so a rule for exactly that identifier is expected,
+    # and it is expected ONLY while a bundle carrying the identifier ships
+    # inside the installed app. Decided by Andrew 2026-08-30 (open item 3).
+    # Its rules are printed in full every session, so a widened one is seen.
+    helper_rules = [(k, r) for k, r in everyone if r["id"] == L.HELPER_ID]
+    family = [(k, r) for k, r in everyone if r["id"] != L.HELPER_ID]
+    helper_findings = []
+    if helper_rules:
+        ships, where = L.helper_ships(REPO)
+        if ships:
+            say(f"ok    {L.HELPER_ID} ships in the build: {where}")
+            for _key, rule in helper_rules:
+                say(f"ok    expected, the downloader's own rule: {L.describe(rule)}")
+        else:
+            for _key, rule in helper_rules:
+                helper_findings.append(
+                    f"a rule for {L.HELPER_ID}, but no shipped bundle carries that "
+                    f"identifier ({where}), so the downloader exception does not "
+                    f"apply: {L.describe(rule)}"
+                )
+
+    if not family and not helper_findings:
+        if helper_rules:
+            say("ok    apart from the downloader, the family has NO rule")
+        else:
+            say("ok    the family has NO rule, which is the agreed end state")
         say("ok    the app has no network entitlement, so it needs none")
         say()
         say("RESULT: clean")
@@ -111,6 +143,7 @@ def run(quiet=False):
                 f"its own rule and every attempt prompts fresh: {recorded}"
             )
 
+    quiet_findings.extend(helper_findings)
     say()
     for finding in loud:
         say(f"FINDING: {finding}")
@@ -176,7 +209,23 @@ def selftest():
     here = os.path.abspath(".")  # a path that certainly exists
     ok = []
 
-    def case(label, entries, expect, raw_bytes=None):
+    # Two staged apps: one shipping the downloader as an XPC service, one not.
+    # `AF_FLOW_LULU_APP_PATH` is honoured only because the rules path is also
+    # staged; against the real database it is ignored.
+    def staged_app(name, with_helper):
+        app = os.path.join(workspace, name, "AF Flow.app")
+        os.makedirs(os.path.join(app, "Contents"))
+        if with_helper:
+            service = os.path.join(app, "Contents", "XPCServices",
+                                   "AF Flow Models.xpc", "Contents")
+            os.makedirs(service)
+            with open(os.path.join(service, "Info.plist"), "wb") as handle:
+                plistlib.dump({"CFBundleIdentifier": L.HELPER_ID}, handle)
+        return app
+    app_with_helper = staged_app("with-helper", True)
+    app_without_helper = staged_app("without-helper", False)
+
+    def case(label, entries, expect, raw_bytes=None, app=None):
         path = os.path.join(workspace, label.split(".")[0] + ".plist")
         if raw_bytes is not None:
             with open(path, "wb") as handle:
@@ -184,6 +233,9 @@ def selftest():
         elif entries is not None:
             _archive(entries, path)
         env = dict(os.environ, AF_FLOW_LULU_RULES_PATH=path)
+        env.pop("AF_FLOW_LULU_APP_PATH", None)
+        if app is not None:
+            env["AF_FLOW_LULU_APP_PATH"] = app
         proc = subprocess.run(
             [sys.executable, os.path.abspath(__file__)],
             env=env, capture_output=True, text=True,
@@ -253,6 +305,110 @@ def selftest():
         good = proc.returncode == EXIT_UNREADABLE
         ok.append(good)
         print(f"{'PASS' if good else 'FAIL'}  8. absent file -> exit 2, not 0: exit {proc.returncode}")
+
+        # THE DOWNLOADER EXCEPTION, open item 3, decided 2026-08-30.
+        helper_rule = {"id": L.HELPER_ID, "addr": "huggingface.co", "port": "443",
+                       "path": here}
+        # 9. The helper ships and holds a scoped rule: expected, printed, clean.
+        proc = case("9. downloader rule, downloader ships -> clean and printed",
+                    {f"{L.HELPER_ID}:auth": [helper_rule]},
+                    EXIT_CLEAN, app=app_with_helper)
+        printed = L.HELPER_ID in proc.stdout and "expected" in proc.stdout
+        ok.append(printed)
+        print(f"{'PASS' if printed else 'FAIL'}  9. the downloader's rule is printed in full")
+
+        # 10. The same rule with NO shipped bundle carrying the identifier: the
+        #     exception must die with the bundle, or it silently permits a
+        #     rule for something no longer shipped.
+        case("10. downloader rule, downloader NOT in the build -> finding",
+             {f"{L.HELPER_ID}:auth": [helper_rule]},
+             EXIT_FINDINGS, app=app_without_helper)
+
+        # 11. Could not tell whether it ships (no staged app, real registry
+        #     will not name a staged path): unknown counts as does-not-ship.
+        case("11. downloader rule, cannot tell if it ships -> finding",
+             {f"{L.HELPER_ID}:auth": [helper_rule]},
+             EXIT_FINDINGS, app=os.path.join(workspace, "absent-app"))
+
+        # 12. The exception is for ONE identifier. The main app's rule is a
+        #     finding even while the downloader ships beside it.
+        proc = case("12. main app rule beside a shipping downloader -> finding",
+                    {f"{L.HELPER_ID}:auth": [helper_rule],
+                     "com.frolikov.afflow:auth": [{"id": "com.frolikov.afflow", "path": here}]},
+                    EXIT_FINDINGS, app=app_with_helper)
+        loud = "STANDING ALLOW ANY:ANY" in proc.stdout
+        ok.append(loud)
+        print(f"{'PASS' if loud else 'FAIL'}  12. and the main app's wildcard is still the loud one")
+
+        # 13. A dotted child that is NOT the downloader gets no exception.
+        case("13. a sibling id, not the downloader, beside a shipping downloader -> finding",
+             {"com.frolikov.afflow.testhost:auth": [
+                 {"id": "com.frolikov.afflow.testhost", "path": here}]},
+             EXIT_FINDINGS, app=app_with_helper)
+
+        # 14. The staged-app override is IGNORED against the real database.
+        #     Proved by asking the library directly, not the checker: with no
+        #     rules override set, `installed_app` must not return the staged path.
+        saved = os.environ.get("AF_FLOW_LULU_RULES_PATH")
+        os.environ.pop("AF_FLOW_LULU_RULES_PATH", None)
+        os.environ["AF_FLOW_LULU_APP_PATH"] = app_with_helper
+        try:
+            probe = subprocess.run(
+                [sys.executable, "-c",
+                 "import sys; sys.path.insert(0, 'scripts'); import lulu_rules as L; "
+                 "print(L.installed_app('.')[0])"],
+                capture_output=True, text=True, env=dict(os.environ),
+                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        finally:
+            os.environ.pop("AF_FLOW_LULU_APP_PATH", None)
+            if saved is not None:
+                os.environ["AF_FLOW_LULU_RULES_PATH"] = saved
+        ignored = app_with_helper not in probe.stdout
+        ok.append(ignored)
+        print(f"{'PASS' if ignored else 'FAIL'}  14. the staged-app override is ignored against the real database")
+
+        # 15. The override is ignored for an ALIAS of the real database too.
+        #     A lexical compare called /System/Volumes/Data/Library/... a test
+        #     database; it is the same inode. Codex, 2026-09-06.
+        alias = "/System/Volumes/Data" + L.REAL_RULES_PATH
+        if os.path.exists(alias) and os.path.exists(L.REAL_RULES_PATH):
+            probe = subprocess.run(
+                [sys.executable, "-c",
+                 "import sys; sys.path.insert(0, 'scripts'); import lulu_rules as L; "
+                 "print(L.is_test_database(), L.installed_app('.')[0])"],
+                capture_output=True, text=True,
+                env=dict(os.environ, AF_FLOW_LULU_RULES_PATH=alias,
+                         AF_FLOW_LULU_APP_PATH=app_with_helper),
+                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            good = probe.stdout.startswith("False") and app_with_helper not in probe.stdout
+            ok.append(good)
+            print(f"{'PASS' if good else 'FAIL'}  15. an alias of the real database is still the real database")
+        else:
+            print("skip  15. no /System/Volumes/Data alias on this machine")
+
+        # 16. A helper reached only through a symlink does not "ship", and an
+        #     Info.plist that is not a dictionary is "does not ship", not a crash.
+        linked = os.path.join(workspace, "linked", "AF Flow.app")
+        os.makedirs(os.path.join(linked, "Contents"))
+        os.symlink(os.path.join(app_with_helper, "Contents", "XPCServices"),
+                   os.path.join(linked, "Contents", "XPCServices"))
+        case("16a. downloader reachable only through a symlink -> finding",
+             {f"{L.HELPER_ID}:auth": [helper_rule]}, EXIT_FINDINGS, app=linked)
+        # 16c. The symlink one level down: a real .xpc whose Contents points
+        #      outside the app. Codex, 2026-09-06.
+        inner = os.path.join(workspace, "inner-link", "AF Flow.app")
+        os.makedirs(os.path.join(inner, "Contents", "XPCServices", "AF Flow Models.xpc"))
+        os.symlink(os.path.join(app_with_helper, "Contents", "XPCServices",
+                                "AF Flow Models.xpc", "Contents"),
+                   os.path.join(inner, "Contents", "XPCServices", "AF Flow Models.xpc", "Contents"))
+        case("16c. downloader whose Contents is a symlink out of the app -> finding",
+             {f"{L.HELPER_ID}:auth": [helper_rule]}, EXIT_FINDINGS, app=inner)
+        odd = staged_app("odd-plist", True)
+        with open(os.path.join(odd, "Contents", "XPCServices", "AF Flow Models.xpc",
+                               "Contents", "Info.plist"), "wb") as handle:
+            plistlib.dump(["not", "a", "dict"], handle)
+        case("16b. downloader Info.plist that is not a dictionary -> finding, not a traceback",
+             {f"{L.HELPER_ID}:auth": [helper_rule]}, EXIT_FINDINGS, app=odd)
 
         print()
         print("ALL STATES DISTINGUISHED" if all(ok) else "SOME STATES NOT DISTINGUISHED")

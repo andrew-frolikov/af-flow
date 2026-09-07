@@ -369,7 +369,7 @@ literal_check "no em dash in user-facing strings" '[\u2014\u2015\u2E3A\u2E3B]' \
 # Asking `swift-scan --mode string` is the fix and it is also the right shape:
 # the guard now runs the SAME query as the check it guards, so an exemption is
 # live exactly while the check would otherwise fire.
- One scan over the directory, not one per file: swift-scan walks directories
+# One scan over the directory, not one per file: swift-scan walks directories
 # and returns nothing for a bare file path, which made the first version of this
 # report all three exemptions stale at once. A guard that fails everything is
 # easier to notice than one that passes everything, which is the only good thing

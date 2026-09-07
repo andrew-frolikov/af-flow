@@ -67,6 +67,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lulu_rules as L  # noqa: E402
 
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 EXIT_CLEAN = 0
 EXIT_REFUSED = 1
 EXIT_UNREADABLE = 2
@@ -99,9 +101,17 @@ def family_entries(raw):
     graph, which is the thing this design exists to avoid.
     """
     whole = L.index(raw)
+    # The downloader's rule is the ONE the family is allowed, and only while
+    # the downloader ships (open item 3, decided 2026-08-30). Removing it would
+    # cost Andrew a fresh LuLu prompt on the next download and nothing else, so
+    # this errs towards keeping it: kept when it ships, removed like any other
+    # family rule when it does not.
+    ships, _where = L.helper_ships(REPO)
     doomed, mixed = {}, {}
     for key, rules in whole.items():
         flags = [L.in_family(rule["id"]) for rule in rules]
+        if ships and all(rule["id"] == L.HELPER_ID for rule in rules):
+            continue
         if not any(flags):
             continue
         if all(flags):
@@ -160,6 +170,20 @@ def build_candidate(raw, doomed_keys, out_path):
 
 
 def is_real_database():
+    """Is the path this run will swap the live LuLu database?
+
+    By FILE IDENTITY, not spelling: `/System/Volumes/Data/Library/...` is the
+    same inode as `/Library/...`, and a realpath compare called the alias a
+    staged file, which would have skipped the stop/restart protections and
+    allowed the fault-injection branches against the live database. Codex,
+    2026-09-06. When either path is missing there is nothing to be the same
+    as, and the realpath compare is the only answer left.
+    """
+    try:
+        if os.path.exists(L.RULES_PATH) and os.path.exists(L.REAL_RULES_PATH):
+            return os.path.samefile(L.RULES_PATH, L.REAL_RULES_PATH)
+    except OSError:
+        pass
     return os.path.realpath(L.RULES_PATH) == os.path.realpath(L.REAL_RULES_PATH)
 
 
@@ -212,7 +236,16 @@ def verify(path, before, doomed_keys, label):
             f"{label} changed the rules under {len(changed)} untouched key(s): {changed[:5]}"
         )
 
-    leftover = [k for k, rules in after.items() if any(L.in_family(r["id"]) for r in rules)]
+    # The downloader's rule is allowed to stay while the downloader ships
+    # (open item 3); `family_entries` kept it out of `doomed_keys` for that
+    # reason, and verifying against a stricter sentence than the one the
+    # remover acted on made the correct candidate fail. Codex, 2026-09-06.
+    ships, _where = L.helper_ships(REPO)
+    leftover = [
+        k for k, rules in after.items()
+        if any(L.in_family(r["id"]) and not (ships and r["id"] == L.HELPER_ID)
+               for r in rules)
+    ]
     if leftover:
         problems.append(f"{label} still holds family rules under {leftover}")
 
@@ -399,7 +432,7 @@ def main():
     say()
 
     if not doomed:
-        say("Nothing to remove: the family has no rules, which is the agreed end state.")
+        say("Nothing to remove: the family has no rules (apart from a shipping downloader's), which is the agreed end state.")
         say("\nRESULT: clean")
         return EXIT_CLEAN
 
@@ -593,7 +626,7 @@ def main():
         return finish(EXIT_LULU_MISSING, "the rules are removed, but LuLu is not filtering.")
 
     return finish(EXIT_CLEAN,
-                  f"{len(removed)} key(s) removed and verified. The family has no rules.")
+                  f"{len(removed)} key(s) removed and verified. The family has no rules, apart from a shipping downloader's.")
 
 
 if __name__ == "__main__":

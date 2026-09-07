@@ -364,6 +364,53 @@ echo "ok    signing identity: $IDENTITY"
 
 if [ -n "$STARTER_MODELS" ]; then
     [ -d "$STARTER_MODELS" ] || fail "--starter-models '$STARTER_MODELS' is not a directory." 4
+    # Checked HERE rather than at the copy in step 3, which is a full archive
+    # and export later. A payload staged one level too deep produces a DMG that
+    # installs cleanly and dictates nothing, and finding that out after four
+    # minutes of building is four minutes worse than finding it now.
+    #
+    # THE WHOLE Starter tier, by name, as the app reads it. A first version
+    # accepted either directory, so a cleanup-only payload would have produced
+    # a signed, notarized DMG whose missing speech model triggers a download
+    # the kernel denies; a second version checked the Core ML folder but not
+    # the tokenizer folder, which is the one `ModelManager.modelIsCached`
+    # actually tests, so the app would STILL have tried to download. Codex,
+    # 2026-09-06, twice.
+    #
+    # Every name below is READ from the code that defines the tier, never
+    # copied here: `QualityTier.swift` names the Starter rungs by symbol, and
+    # the two catalogues resolve the symbols to file and folder names.
+    STARTER_CLEANUP_KIND=$(sed -n 's/.*starterCleanupModel: LocalCleanupModelKind = \.\([A-Za-z0-9_]*\).*/\1/p' AFFlow/QualityTier.swift | head -1)
+    STARTER_SPEECH_SYMBOL=$(sed -n 's/.*starterSpeechModelID = SpeechModelCatalog\.\([A-Za-z0-9_]*\)\.id.*/\1/p' AFFlow/QualityTier.swift | head -1)
+    [ -n "$STARTER_CLEANUP_KIND" ] || fail "could not read starterCleanupModel from AFFlow/QualityTier.swift." 4
+    [ -n "$STARTER_SPEECH_SYMBOL" ] || fail "could not read starterSpeechModelID from AFFlow/QualityTier.swift." 4
+    STARTER_CLEANUP_FILE=$(awk "/kind: \.$STARTER_CLEANUP_KIND,/,/fileName:/" AFFlow/Cleanup/TextCleanupManager.swift \
+        | sed -n 's/.*fileName: *"\([^"]*\)".*/\1/p' | head -1)
+    SPEECH_BLOCK=$(awk "/static let $STARTER_SPEECH_SYMBOL = /,/fluidAudioVariant:/" AFFlow/Transcription/SpeechModelCatalog.swift)
+    STARTER_SPEECH_VARIANT=$(printf '%s\n' "$SPEECH_BLOCK" | sed -n 's/.*name: *"\([^"]*\)".*/\1/p' | head -1)
+    STARTER_SPEECH_CACHE=$(printf '%s\n' "$SPEECH_BLOCK" | sed -n 's/.*cachePathComponents: *\[\(.*\)\].*/\1/p' | head -1 | tr -d '" ' | tr ',' '/')
+    [ -n "$STARTER_CLEANUP_FILE" ] || fail "could not resolve .$STARTER_CLEANUP_KIND to a file name in TextCleanupManager.swift." 4
+    [ -n "$STARTER_SPEECH_VARIANT" ] && [ -n "$STARTER_SPEECH_CACHE" ] \
+        || fail "could not resolve $STARTER_SPEECH_SYMBOL to a variant and cache path in SpeechModelCatalog.swift." 4
+    CLEANUP_PATH="$STARTER_MODELS/models/$STARTER_CLEANUP_FILE"
+    COREML_DIR="$STARTER_MODELS/whisper-models/models/argmaxinc/whisperkit-coreml/$STARTER_SPEECH_VARIANT"
+    TOKENIZER_DIR="$STARTER_MODELS/whisper-models/models/$STARTER_SPEECH_CACHE"
+    # Regular files only: `-f` follows a symlink, and the installer refuses one.
+    has_regular_file() { [ -d "$1" ] && [ ! -L "$1" ] && [ -n "$(find "$1" -type f ! -name '.*' -print -quit 2>/dev/null)" ]; }
+    MISSING=""
+    { [ -f "$CLEANUP_PATH" ] && [ ! -L "$CLEANUP_PATH" ]; } || MISSING="$MISSING cleanup(models/$STARTER_CLEANUP_FILE)"
+    has_regular_file "$COREML_DIR" || MISSING="$MISSING coreml(whisper-models/models/argmaxinc/whisperkit-coreml/$STARTER_SPEECH_VARIANT)"
+    has_regular_file "$TOKENIZER_DIR" || MISSING="$MISSING tokenizer(whisper-models/models/$STARTER_SPEECH_CACHE)"
+    if [ -n "$MISSING" ]; then
+        fail "--starter-models '$STARTER_MODELS' does not hold the whole Starter tier.
+StarterModelInstaller copies this tree VERBATIM into Application Support, so it
+must mirror the destination and hold all three parts, as regular files:
+    models/$STARTER_CLEANUP_FILE
+    whisper-models/models/argmaxinc/whisperkit-coreml/$STARTER_SPEECH_VARIANT/<Core ML files>
+    whisper-models/models/$STARTER_SPEECH_CACHE/<tokenizer files>
+Missing:$MISSING" 4
+    fi
+    echo "ok    starter tier present: $STARTER_CLEANUP_FILE, $STARTER_SPEECH_VARIANT, tokenizer $STARTER_SPEECH_CACHE"
     MODEL_BYTES=$(du -sk "$STARTER_MODELS" | cut -f1)
     echo "ok    starter models: $STARTER_MODELS ($(( MODEL_BYTES / 1024 )) MB)"
 fi
@@ -479,6 +526,23 @@ say "step 3: put the starter models in, then sign"
 # after it is signed invalidates the signature, and the app then fails
 # Gatekeeper on a stranger's Mac with an error that names nothing useful. The
 # models go in first and the whole bundle is signed around them.
+#
+# THE BUNDLED TREE MUST MIRROR THE DESTINATION TREE, exactly. What lands at
+# Contents/Resources/StarterModels/X is copied by `StarterModelInstaller` to
+# <App Support>/X, verbatim, so the directory passed to --starter-models has to
+# be laid out the way the app reads:
+#
+#     models/Qwen3.5-0.8B-Q4_K_M.gguf
+#     whisper-models/models/argmaxinc/whisperkit-coreml/<variant>/...   (Core ML)
+#     whisper-models/models/openai/<short name>/...                    (tokenizer)
+#
+# That mirroring is deliberate: it means the installer knows nothing about model
+# internals and there is only ONE description of where a model lives, the app's.
+# A second description is the defect that put his models in a third folder for
+# 24 days after the 2026-08-25 rename.
+#
+# The layout is checked below rather than assumed, because a payload staged one
+# level too deep produces a DMG that installs cleanly and dictates nothing.
 if [ -n "$STARTER_MODELS" ]; then
     DEST="$APP/Contents/Resources/StarterModels"
     mkdir -p "$DEST"

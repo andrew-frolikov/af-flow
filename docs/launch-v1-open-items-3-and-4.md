@@ -201,3 +201,35 @@ mechanism for it at all. And option 4C was dismissed on reasoning that is true
 of child processes but **not of XPC services**, which `launchd` starts with
 their own sandbox. That opened option 4D, which is what Sparkle ships, and 4D
 is now the decision.
+
+**2026-08-30, later. Andrew ratified 3A.** Helper identifier inside the family,
+`com.frolikov.afflow.models`, with one named exception in `lulu-rule-check.py`
+conditional on the bundle existing in the build.
+
+**2026-09-06, item 3 built.** `lulu_rules.HELPER_ID` and `helper_ships()`: the
+exception applies only while a bundle declaring that identifier physically
+ships inside the installed app (realpath containment, no symlinks at any
+level), and "could not tell" counts as "does not ship". The checker prints the
+helper's rule in full every session; the remover leaves it alone while the
+helper ships and removes it like any other family rule once it does not. The
+test-only staged-app override is ignored whenever the rules database is the
+real one, compared by inode: a lexical compare had called the
+`/System/Volumes/Data` alias a staged file (Codex). Self-test cases 9 to 16c.
+Item 4's spike is the next piece of work.
+
+**2026-09-06, item 4 spike DONE: the answer is yes, on this Mac.** A throwaway
+host app signed with his Apple Development identity, App Sandbox on, NO
+`network.client`, embedding `Contents/XPCServices/SpikeNet.xpc` signed with
+App Sandbox + `network.client`. The host's own `URLSession` fetch of
+`http://127.0.0.1:8765/hello` failed with `NSPOSIXErrorDomain 1, Operation not
+permitted`, the kernel refusal (the control held). The host then opened a file
+in its own container and passed the `FileHandle` over `NSXPCConnection`; the
+service fetched the same URL, status 200, wrote 21 bytes into that descriptor,
+and the host read them back. `launchd` gave the service its own container
+(`~/Library/Containers/com.frolikov.spike.net` appeared), so it ran sandboxed
+under its OWN entitlements, not its host's. What the spike does NOT show,
+stated so nobody upgrades it: a remote host (localhost drew no LuLu prompt and
+earned no rule), Developer ID + notarization, or a launch through
+LaunchServices rather than direct exec. None of those touches the mechanism
+under test. **4D stands; 4A is not needed.** Spike files lived in the session
+scratchpad and its two containers were removed afterwards.

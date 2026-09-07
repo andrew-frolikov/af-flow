@@ -148,6 +148,7 @@
 		9F0C599099252C3E7C8846F2 /* IndexEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F22B92A6ECEE8A19C9A5095 /* IndexEntryView.swift */; };
 		A3183D30BAD0A1C2712E033F /* PermissionChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1BDC9C549491AC003117EC /* PermissionChecker.swift */; };
 		BD9906A5BF9017CC8191BD8E /* PermissionCensus.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD9906A5BF9017CC8191BD8E /* PermissionCensus.swift */; };
+		A7CA1A0117F4C8D79C271D64 /* StarterModelInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A30939CC4F9A42877BF210 /* StarterModelInstaller.swift */; };
 		C6A1196E8D1BDF89E0C8F3C9 /* TierBenchmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3AF370A56EC149005B7227 /* TierBenchmark.swift */; };
 		BE0D498179C382B1D2E8685D /* QualityTier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BF63AF73B1508C8D786C488 /* QualityTier.swift */; };
 		D4F9820A7C0F7537E9870EC3 /* MeetingsVisibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC35CC853F0308A51DCD4CE8 /* MeetingsVisibility.swift */; };
@@ -200,6 +201,7 @@
 		F84C21AA931175E37108AC37 /* AccessibilityFunctionCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */; };
 		8F635DC70A6482BEACF0EFAD /* AppSupportDirectoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0612CA92E4B533CF283A8CB3 /* AppSupportDirectoryTests.swift */; };
 		BB3B0BD2311E6A6FF78B9EF8 /* AppSupportPathOwnershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DFF8A710D4A720170CDD412 /* AppSupportPathOwnershipTests.swift */; };
+		610A6C078875A3056DA91013 /* StarterModelInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6860C5770DB1D7524622C507 /* StarterModelInstallerTests.swift */; };
 		8C1F702891FBF19096E32245 /* TierBenchmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFFEAE1BE9C44750E261E9EE /* TierBenchmarkTests.swift */; };
 		E561EBC345FFE6FEAA7543BB /* QualityTierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FEE95BBA0CE8F788102A538 /* QualityTierTests.swift */; };
 		E69BFEE27C7F7123988EE7AF /* MeetingsHiddenInV1Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 047BE676DE33CF00550BDECD /* MeetingsHiddenInV1Tests.swift */; };
@@ -337,6 +339,7 @@
 		CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityFunctionCheckTests.swift; sourceTree = "<group>"; };
 		0612CA92E4B533CF283A8CB3 /* AppSupportDirectoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSupportDirectoryTests.swift; sourceTree = "<group>"; };
 		8DFF8A710D4A720170CDD412 /* AppSupportPathOwnershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSupportPathOwnershipTests.swift; sourceTree = "<group>"; };
+		6860C5770DB1D7524622C507 /* StarterModelInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterModelInstallerTests.swift; sourceTree = "<group>"; };
 		AFFEAE1BE9C44750E261E9EE /* TierBenchmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierBenchmarkTests.swift; sourceTree = "<group>"; };
 		1FEE95BBA0CE8F788102A538 /* QualityTierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QualityTierTests.swift; sourceTree = "<group>"; };
 		047BE676DE33CF00550BDECD /* MeetingsHiddenInV1Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsHiddenInV1Tests.swift; sourceTree = "<group>"; };
@@ -471,6 +474,7 @@
 		ABAC2D0F6C311FB1DA3E9ABF /* PostPasteLearningCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostPasteLearningCoordinatorTests.swift; sourceTree = "<group>"; };
 		AC1BDC9C549491AC003117EC /* PermissionChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionChecker.swift; sourceTree = "<group>"; };
 		FD9906A5BF9017CC8191BD8E /* PermissionCensus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionCensus.swift; sourceTree = "<group>"; };
+		86A30939CC4F9A42877BF210 /* StarterModelInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterModelInstaller.swift; sourceTree = "<group>"; };
 		2C3AF370A56EC149005B7227 /* TierBenchmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierBenchmark.swift; sourceTree = "<group>"; };
 		2BF63AF73B1508C8D786C488 /* QualityTier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QualityTier.swift; sourceTree = "<group>"; };
 		FC35CC853F0308A51DCD4CE8 /* MeetingsVisibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsVisibility.swift; sourceTree = "<group>"; };
@@ -618,6 +622,7 @@
 				CC0F71B32FF6973FD42639C7 /* ModelInventory.swift */,
 				AC1BDC9C549491AC003117EC /* PermissionChecker.swift */,
 				FD9906A5BF9017CC8191BD8E /* PermissionCensus.swift */,
+				86A30939CC4F9A42877BF210 /* StarterModelInstaller.swift */,
 				2C3AF370A56EC149005B7227 /* TierBenchmark.swift */,
 				2BF63AF73B1508C8D786C488 /* QualityTier.swift */,
 				FC35CC853F0308A51DCD4CE8 /* MeetingsVisibility.swift */,
@@ -982,6 +987,7 @@
 				CE0FBF916AA173AFD8955CBB /* AccessibilityFunctionCheckTests.swift */,
 				0612CA92E4B533CF283A8CB3 /* AppSupportDirectoryTests.swift */,
 				8DFF8A710D4A720170CDD412 /* AppSupportPathOwnershipTests.swift */,
+				6860C5770DB1D7524622C507 /* StarterModelInstallerTests.swift */,
 				AFFEAE1BE9C44750E261E9EE /* TierBenchmarkTests.swift */,
 				1FEE95BBA0CE8F788102A538 /* QualityTierTests.swift */,
 				047BE676DE33CF00550BDECD /* MeetingsHiddenInV1Tests.swift */,
@@ -1262,6 +1268,7 @@
 				408C8D6C7BE897429324F4F1 /* PerformanceTrace.swift in Sources */,
 				A3183D30BAD0A1C2712E033F /* PermissionChecker.swift in Sources */,
 				BD9906A5BF9017CC8191BD8E /* PermissionCensus.swift in Sources */,
+				A7CA1A0117F4C8D79C271D64 /* StarterModelInstaller.swift in Sources */,
 				C6A1196E8D1BDF89E0C8F3C9 /* TierBenchmark.swift in Sources */,
 				BE0D498179C382B1D2E8685D /* QualityTier.swift in Sources */,
 				D4F9820A7C0F7537E9870EC3 /* MeetingsVisibility.swift in Sources */,
@@ -1367,6 +1374,7 @@
 				F84C21AA931175E37108AC37 /* AccessibilityFunctionCheckTests.swift in Sources */,
 				8F635DC70A6482BEACF0EFAD /* AppSupportDirectoryTests.swift in Sources */,
 				BB3B0BD2311E6A6FF78B9EF8 /* AppSupportPathOwnershipTests.swift in Sources */,
+				610A6C078875A3056DA91013 /* StarterModelInstallerTests.swift in Sources */,
 				8C1F702891FBF19096E32245 /* TierBenchmarkTests.swift in Sources */,
 				E561EBC345FFE6FEAA7543BB /* QualityTierTests.swift in Sources */,
 				E69BFEE27C7F7123988EE7AF /* MeetingsHiddenInV1Tests.swift in Sources */,

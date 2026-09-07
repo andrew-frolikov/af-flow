@@ -62,8 +62,8 @@ enum QualityTier: String, CaseIterable, Identifiable {
     /// quarter of the dictation of anyone who speaks Russian.
     static let starterSpeechModelID = SpeechModelCatalog.whisperSmallMultilingual.id
 
-    /// **Open item 1 of the launch plan, answered from his own 26 days rather
-    /// than from a fresh benchmark, and marked as such.**
+    /// **Open item 1 of the launch plan. RATIFIED by Andrew on 2026-08-30, on
+    /// his own 26 days of dictation rather than on a fresh benchmark.**
     ///
     /// `large-v3-turbo` at 632 MB is the model he has actually been running:
     /// the runtime probe covers 3,620 dictations, 2,374 of them Russian, and
@@ -72,11 +72,11 @@ enum QualityTier: String, CaseIterable, Identifiable {
     /// failing Russian language identification, so the ladder would get worse
     /// by climbing.
     ///
-    /// That is real evidence at scale, and it is not the controlled bench the
-    /// plan asks for: it compares one model against his history, not against
-    /// alternatives on the same fixtures. **Andrew ratifies this pairing after
-    /// the Phase 3 bench, and until then this is the honest default rather
-    /// than a settled answer.**
+    /// The evidence is real and at scale, and it is not a controlled bench: it
+    /// compares one model against his history, not against alternatives on
+    /// the same fixtures. He ratified it on that basis, so this is a settled
+    /// answer, and a future bench that beats it re-opens the item rather than
+    /// the item staying open until one exists.
     static let fullSpeechModelID = SpeechModelCatalog.whisperLargeV3Turbo.id
 
     var speechModelID: String {

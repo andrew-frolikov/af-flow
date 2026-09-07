@@ -180,6 +180,116 @@ def in_family(identifier):
     return identifier == FAMILY_PREFIX or identifier.startswith(FAMILY_PREFIX + ".")
 
 
+# THE ONE EXCEPTION, decided by Andrew on 2026-08-30 (launch plan open item 3).
+#
+# The model downloader is the one member of the family that legitimately opens
+# a connection, so it will earn a LuLu rule on his Mac and on every friend's.
+# Its identifier is INSIDE the family on purpose: moving it outside to keep this
+# checker's sentence absolute would hide it from `system-list-check.py`, the
+# checker that audits privacy rows and LaunchServices claimants by the same
+# prefix, and that is the checker with the track record.
+#
+# The exception names exactly this identifier, never a pattern, and it applies
+# ONLY while a bundle carrying the identifier actually ships inside the
+# installed app. If the downloader is ever dropped or renamed, the exception
+# must die with it rather than silently permit a rule for a bundle that no
+# longer exists, so `helper_ships` is asked every time and "could not tell" is
+# treated as "does not ship".
+HELPER_ID = "com.frolikov.afflow.models"
+
+# Where a bundled helper can live inside the app. An XPC service is the decided
+# design (open item 4D); the app-bundle helper paths are the 4A fallback. This
+# list is the ONE place that says where to look.
+HELPER_HOMES = (
+    "Contents/XPCServices",
+    "Contents/Helpers",
+    "Contents/Library/LoginItems",
+)
+
+
+def is_test_database():
+    """True when the rules path was overridden away from the real database.
+
+    Compared by FILE IDENTITY, not by spelling. `/System/Volumes/Data/Library/...`
+    is the same inode as `/Library/...` on this Mac, and a lexical compare
+    called that alias a test database, which would have let the staged-app
+    override excuse a real rule. Codex, 2026-09-06.
+    """
+    try:
+        if os.path.exists(RULES_PATH) and os.path.exists(REAL_RULES_PATH):
+            return not os.path.samefile(RULES_PATH, REAL_RULES_PATH)
+    except OSError:
+        pass
+    return os.path.realpath(RULES_PATH) != os.path.realpath(REAL_RULES_PATH)
+
+
+def installed_app(repo):
+    """Path of the one live AF Flow.app, or None with a reason.
+
+    In a self-test, and ONLY when the rules database itself is already a staged
+    file, `AF_FLOW_LULU_APP_PATH` names a staged app bundle instead. Against the
+    real database that variable is ignored, so it cannot be used to excuse a
+    real rule.
+    """
+    if is_test_database():
+        staged = os.environ.get("AF_FLOW_LULU_APP_PATH")
+        if staged:
+            return staged, "staged for a self-test"
+    import importlib.util  # local: only this path needs it
+    where = os.path.join(repo, "scripts", "af_installed_app.py")
+    try:
+        spec = importlib.util.spec_from_file_location("af_installed_app", where)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        answer = module.decide(module.read_registry(repo), repo)
+    except Exception as error:  # noqa: BLE001
+        return None, f"the installed app could not be located: {error}"
+    if answer[0] == "ONE":
+        return answer[1], "the one live AF Flow.app"
+    return None, f"the installed app is {answer[0]}"
+
+
+def helper_ships(repo):
+    """(True | False, reason). Never a third value: unknown counts as False.
+
+    True only when a bundle under one of HELPER_HOMES inside the installed app
+    declares CFBundleIdentifier == HELPER_ID.
+    """
+    app, why = installed_app(repo)
+    if app is None:
+        return False, why
+    # A bundle that "ships inside the app" is one whose bytes are inside the
+    # app, not one a link points at, at ANY level: the home, the bundle, its
+    # Contents, or the plist. So the plist's real path must sit under the
+    # app's real path; the per-level `islink` checks are only the cheap early
+    # exits. And every way of failing to read is "does not ship", never a
+    # traceback.
+    app_real = os.path.realpath(app)
+    for home in HELPER_HOMES:
+        folder = os.path.join(app, home)
+        if os.path.islink(folder) or not os.path.isdir(folder):
+            continue
+        try:
+            entries = sorted(os.listdir(folder))
+        except OSError:
+            continue
+        for entry in entries:
+            bundle = os.path.join(folder, entry)
+            info = os.path.join(bundle, "Contents", "Info.plist")
+            if os.path.islink(bundle) or os.path.islink(info):
+                continue
+            if not os.path.realpath(info).startswith(app_real + os.sep):
+                continue
+            try:
+                with open(info, "rb") as handle:
+                    plist = plistlib.load(handle)
+            except (OSError, plistlib.InvalidFileException, ValueError):
+                continue
+            if isinstance(plist, dict) and plist.get("CFBundleIdentifier") == HELPER_ID:
+                return True, bundle
+    return False, f"no bundle under {app} declares {HELPER_ID}"
+
+
 def wild(value):
     return value in ("*", "any", None, "$null")
 
