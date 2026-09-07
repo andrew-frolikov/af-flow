@@ -989,25 +989,40 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
             return
         }
 
-        guard let url = URL(string: urlString) else {
+        guard URL(string: urlString) != nil else {
             throw URLError(.badURL)
         }
 
         state = .downloading(kind: kind, progress: 0)
 
-        let delegate = DownloadProgressDelegate { [weak self] progress in
-            Task { @MainActor in
-                self?.state = .downloading(kind: kind, progress: progress)
+        // THROUGH THE SERVICE, because this app has no socket of its own.
+        // `com.apple.security.network.client` was removed on 2026-08-29 and
+        // never comes back, so the `URLSession` that used to be here had been
+        // dying in the kernel ever since: this button looked like it worked and
+        // did nothing. The bytes now come through `AF Flow Models.xpc`, which
+        // holds that entitlement, into a descriptor this side opens, and are
+        // verified by hash and size WHERE THEY LAND before they are visible.
+        //
+        // `pinnedFile.destination` is the same path this method was handed;
+        // `PinnedFileTests` pins that, because a downloader writing somewhere
+        // other than where the app looks would "succeed" forever.
+        let pin = descriptor.pinnedFile
+        do {
+            try await ModelDownloader(fetcher: XPCFetcher()).download(pin) { [weak self] done, total in
+                guard total > 0 else { return }
+                let fraction = Double(done) / Double(total)
+                Task { @MainActor in
+                    self?.state = .downloading(kind: kind, progress: fraction)
+                }
             }
+        } catch {
+            debugLogger?(.model, "Cleanup model \(kind.rawValue) did not install: \(error)")
+            throw error
         }
-
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        let (tempURL, _) = try await session.download(from: url)
-        guard Self.isVerifiedModelFile(tempURL, descriptor: descriptor) else {
-            try? FileManager.default.removeItem(at: tempURL)
+        guard Self.isVerifiedModelFile(destination, descriptor: descriptor) else {
+            try? FileManager.default.removeItem(at: destination)
             throw URLError(.cannotDecodeContentData)
         }
-        try FileManager.default.moveItem(at: tempURL, to: destination)
     }
 
     private func model(for modelKind: LocalCleanupModelKind) -> LLM? {

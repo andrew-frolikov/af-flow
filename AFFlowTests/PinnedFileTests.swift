@@ -25,6 +25,21 @@ final class PinnedFileTests: XCTestCase {
         }
     }
 
+    /// **The two halves must name the SAME file.** `TextCleanupManager` decides
+    /// where a cleanup model lives and the downloader writes where the pin
+    /// says; if those ever disagree the download "succeeds" and the app still
+    /// reports the model missing, then tries again forever. That is the 24-day
+    /// 2026-08-02 failure in a new place, so it is pinned rather than assumed.
+    @MainActor
+    func testAPinnedCleanupModelLandsExactlyWhereTheManagerLooksForIt() {
+        for descriptor in TextCleanupManager.cleanupModels {
+            XCTAssertEqual(descriptor.pinnedFile.destination.standardizedFileURL,
+                           TextCleanupManager.modelsDirectory
+                               .appendingPathComponent(descriptor.fileName).standardizedFileURL,
+                           descriptor.fileName)
+        }
+    }
+
     /// The same relative path the installer uses, resolved against the one
     /// folder that names itself.
     func testDestinationIsUnderAppSupport() {
