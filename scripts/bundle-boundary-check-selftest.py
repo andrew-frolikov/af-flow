@@ -101,6 +101,59 @@ def make_bundle(root, name, entitlements, hardened, sign=True):
     return app
 
 
+def add_service(app, entitlements, hardened=True, sign=True):
+    """Put a stub XPC service inside an app bundle and sign it as asked.
+
+    The real service is built by Xcode; what this stages is the SIGNATURE
+    question the checker asks about it, which is the part that can go wrong
+    silently: a service that gained an entitlement, lost one, or was never
+    embedded at all.
+    """
+    root = os.path.dirname(app)
+    service = os.path.join(app, "Contents", "XPCServices", "AF Flow Models.xpc")
+    macos = os.path.join(service, "Contents", "MacOS")
+    os.makedirs(macos, exist_ok=True)
+    with open(os.path.join(service, "Contents", "Info.plist"), "wb") as handle:
+        plistlib.dump({
+            "CFBundleExecutable": "AF Flow Models",
+            "CFBundleIdentifier": "com.frolikov.afflow.models",
+            "CFBundleName": "AF Flow Models",
+            "CFBundlePackageType": "XPC!",
+            "XPCService": {"ServiceType": "Application"},
+        }, handle)
+    source = os.path.join(root, "service-stub.c")
+    with open(source, "w", encoding="utf-8") as handle:
+        handle.write("int main(void){return 0;}\n")
+    compiled = subprocess.run(["cc", "-o", os.path.join(macos, "AF Flow Models"), source],
+                              capture_output=True, text=True)
+    if compiled.returncode != 0:
+        raise RuntimeError("could not compile the service stub: " + compiled.stderr)
+    if not sign:
+        subprocess.run(["codesign", "--remove-signature", service], capture_output=True)
+        return service
+    argv = ["codesign", "--force", "--sign", "-"]
+    if hardened:
+        argv += ["--options", "runtime"]
+    if entitlements is not None:
+        ents = os.path.join(root, "service.entitlements")
+        with open(ents, "wb") as handle:
+            plistlib.dump(entitlements, handle)
+        argv += ["--entitlements", ents]
+    argv.append(service)
+    signed = subprocess.run(argv, capture_output=True, text=True)
+    if signed.returncode != 0:
+        raise RuntimeError("could not sign the service stub: " + signed.stderr)
+    return service
+
+
+# What AFFlowModels/AFFlowModels.entitlements declares. Read from the file
+# rather than repeated, so the selftest cannot drift from the thing it checks.
+def service_declared():
+    path = os.path.join(REPO, "AFFlowModels", "AFFlowModels.entitlements")
+    with open(path, "rb") as handle:
+        return dict(plistlib.load(handle))
+
+
 def run(app, configuration, *extra):
     return subprocess.run(
         [sys.executable, CHECK, app, "--configuration", configuration, *extra],
@@ -203,6 +256,85 @@ def main():
               got.returncode == FINDINGS, got.stdout + got.stderr)
         check("the hardened-runtime refusal says notarization needs it",
               "notariz" in (got.stdout + got.stderr).lower(), got.stdout)
+
+        # ---- the embedded downloader, Phase 4 ------------------------------
+        #
+        # The app's "no network" guarantee now depends on a SECOND signature.
+        # These states are the ones that look fine from the app's own
+        # entitlements and are not: a service that gained something, lost
+        # something, or was never embedded at all.
+        declared_service = service_declared()
+
+        app = make_bundle(root, "WithService", SHIPPING, hardened=True)
+        with open(os.path.join(app, "Contents", "Info.plist"), "rb") as handle:
+            info = plistlib.load(handle)
+        info["CFBundleIdentifier"] = "com.frolikov.afflow"
+        with open(os.path.join(app, "Contents", "Info.plist"), "wb") as handle:
+            plistlib.dump(info, handle)
+        add_service(app, declared_service)
+        # The app is re-signed AFTER the service goes in: adding to a bundle
+        # breaks its seal, which is the same order release-build.sh uses.
+        subprocess.run(["codesign", "--force", "--sign", "-", "--options", "runtime",
+                        "--entitlements", os.path.join(root, "WithService.entitlements"), app],
+                       capture_output=True)
+        got = run(app, "debug")
+        check("an app carrying a correct downloader is clean",
+              got.returncode == CLEAN, got.stdout + got.stderr)
+
+        app = make_bundle(root, "NoService", SHIPPING, hardened=True)
+        with open(os.path.join(app, "Contents", "Info.plist"), "rb") as handle:
+            info = plistlib.load(handle)
+        info["CFBundleIdentifier"] = "com.frolikov.afflow"
+        with open(os.path.join(app, "Contents", "Info.plist"), "wb") as handle:
+            plistlib.dump(info, handle)
+        got = run(app, "debug")
+        check("THIS app with no downloader embedded is refused",
+              got.returncode == FINDINGS, got.stdout + got.stderr)
+        check("and the refusal says the Full tier could never install",
+              "Full tier" in (got.stdout + got.stderr), got.stdout)
+
+        app = make_bundle(root, "ServiceExtra", SHIPPING, hardened=True)
+        widened = dict(declared_service)
+        widened["com.apple.security.files.user-selected.read-write"] = True
+        add_service(app, widened)
+        got = run(app, "debug")
+        check("a downloader that gained an entitlement is refused",
+              got.returncode == FINDINGS, got.stdout + got.stderr)
+
+        app = make_bundle(root, "ServiceNoNetwork", SHIPPING, hardened=True)
+        narrowed = dict(declared_service)
+        narrowed.pop("com.apple.security.network.client", None)
+        add_service(app, narrowed)
+        got = run(app, "debug")
+        check("a downloader that LOST network.client is refused",
+              got.returncode == FINDINGS, got.stdout + got.stderr)
+        check("and that refusal says the app silently stays on Starter",
+              "Starter" in (got.stdout + got.stderr), got.stdout)
+
+        app = make_bundle(root, "ServiceUnsandboxed", SHIPPING, hardened=True)
+        unsandboxed = dict(declared_service)
+        unsandboxed.pop("com.apple.security.app-sandbox", None)
+        add_service(app, unsandboxed)
+        got = run(app, "debug")
+        check("a downloader that lost the SANDBOX is refused",
+              got.returncode == FINDINGS, got.stdout + got.stderr)
+
+        app = make_bundle(root, "ServiceDebuggable", SHIPPING, hardened=True)
+        debuggable = dict(declared_service)
+        debuggable["com.apple.security.get-task-allow"] = True
+        add_service(app, debuggable)
+        got = run(app, "release", ADHOC)
+        check("a debuggable downloader in a RELEASE build is refused",
+              got.returncode == FINDINGS, got.stdout + got.stderr)
+        got = run(app, "debug")
+        check("and the same service is fine in Debug, where Xcode injects it",
+              got.returncode == CLEAN, got.stdout + got.stderr)
+
+        app = make_bundle(root, "ServiceUnsigned", SHIPPING, hardened=True)
+        add_service(app, declared_service, sign=False)
+        got = run(app, "debug")
+        check("a downloader whose signature cannot be read is NOT reported clean",
+              got.returncode == FINDINGS, got.stdout + got.stderr)
 
         # ---- an ALLOWLIST, not a denylist. Review, 2026-08-30 -------------
         # The check used to enumerate two feared keys, so every entitlement

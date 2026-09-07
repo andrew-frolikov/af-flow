@@ -107,6 +107,25 @@ REQUIRED_ALWAYS = {
 # allowed one key the entitlements file does not list.
 DEBUG_EXTRA = {"com.apple.security.get-task-allow"}
 
+# THE ONE NESTED BUNDLE, and the only place in this app allowed a socket.
+#
+# Phase 4 gives the model downloader `com.apple.security.network.client` inside
+# `Contents/XPCServices`, because `launchd` starts an XPC service under its OWN
+# entitlements rather than its host's (proved by `scripts/xpc-smoke.sh`). That
+# makes the app's own "no network" guarantee depend on a SECOND signature this
+# script did not read: a service that quietly gained file access, or an app
+# whose service went missing, both looked clean here. So the service is checked
+# exactly the way the app is, both directions, against its own entitlements
+# file, and its ABSENCE is a finding too, because a downloader that is not in
+# the bundle is a Full tier that can never install.
+NESTED_SERVICE = "Contents/XPCServices/AF Flow Models.xpc"
+NESTED_DECLARED = os.path.join("AFFlowModels", "AFFlowModels.entitlements")
+# The service is REQUIRED only of this project's own app, identified by the id
+# it ships under. A staged or scratch bundle is a different question, and
+# demanding a downloader of it would turn every other state in the selftest
+# red. A service that IS present is checked whatever the bundle is called.
+APP_IDENTIFIER = "com.frolikov.afflow"
+
 FORBIDDEN_RELEASE = {
     "com.apple.security.get-task-allow":
         "A debuggable distribution build lets any process attach to the app "
@@ -145,6 +164,69 @@ def codesign_flags(app):
             return {name.strip() for name in inside.split(",") if name.strip()}, None
         return set(), None
     return None, "codesign printed no CodeDirectory flags line"
+
+
+def bundle_identifier(app):
+    """The bundle's own id, or None when it cannot be read.
+
+    None means "not this project's app" for the purpose below, which is the
+    safe direction: a bundle whose Info.plist cannot be read has bigger
+    problems than a missing downloader, and every other check still runs.
+    """
+    try:
+        with open(os.path.join(app, "Contents", "Info.plist"), "rb") as handle:
+            return plistlib.load(handle).get("CFBundleIdentifier")
+    except Exception:                                  # noqa: BLE001
+        return None
+
+
+def nested_service_findings(app, configuration, declared_override):
+    """The embedded downloader, checked as strictly as its host.
+
+    Skipped only when the caller pointed `--declared` somewhere else, which is
+    how the selftest stages a bare app: in that mode this script is being asked
+    about one bundle's entitlements, not about this project's layout.
+    """
+    if declared_override:
+        return []
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    service = os.path.join(app, NESTED_SERVICE)
+    if not os.path.isdir(service):
+        if bundle_identifier(app) != APP_IDENTIFIER:
+            return []
+        return [f"MISSING {NESTED_SERVICE}. The model downloader is not in the "
+                f"bundle, so the Full tier can never install: the app has no "
+                f"network of its own and nothing else may fetch for it."]
+    entitlements, problem = codesign_entitlements(service)
+    if entitlements is None:
+        return [f"UNREADABLE {NESTED_SERVICE}: {problem}. A service whose "
+                f"signature cannot be read has not been checked; what it "
+                f"carries is unknown, not absent."]
+    try:
+        with open(os.path.join(repo, NESTED_DECLARED), "rb") as handle:
+            declared = set(plistlib.load(handle))
+    except Exception as problem:                       # noqa: BLE001
+        return [f"UNREADABLE {NESTED_DECLARED}: {problem}. The service cannot "
+                f"be compared against what it is supposed to carry."]
+
+    findings = []
+    allowed = declared | (DEBUG_EXTRA if configuration == "debug" else set())
+    for key in sorted(set(entitlements) - allowed):
+        findings.append(
+            f"{NESTED_SERVICE} CARRIES {key}, which {NESTED_DECLARED} does not "
+            f"declare. This is the one process in the bundle with a socket; "
+            f"anything extra widens the only hole there is.")
+    for key in sorted(declared - set(entitlements)):
+        findings.append(
+            f"{NESTED_SERVICE} is MISSING {key}, which {NESTED_DECLARED} "
+            f"declares. Without it the downloader fails at runtime with no "
+            f"build error, and the app silently stays on Starter.")
+    if configuration == "release" and entitlements.get("com.apple.security.get-task-allow"):
+        findings.append(
+            f"{NESTED_SERVICE} CARRIES com.apple.security.get-task-allow. A "
+            f"debuggable network-capable service inside a shipping app is "
+            f"worse than the app being debuggable, and notarization rejects it.")
+    return findings
 
 
 def main():
@@ -268,9 +350,14 @@ def main():
             "ENABLE_HARDENED_RUNTIME in the Release configuration, or sign "
             "with --options runtime.")
 
+    findings += nested_service_findings(app, configuration, args.declared)
+
     if not findings:
         print(f"ok    entitlements are exactly what "
               f"{os.path.basename(declared_path)} declares")
+        if os.path.isdir(os.path.join(app, NESTED_SERVICE)):
+            print(f"ok    {os.path.basename(NESTED_SERVICE)} carries exactly its own "
+                  f"entitlements, including the network client the app must not have")
         if configuration == "release":
             print("ok    hardened runtime on, get-task-allow absent")
             if args.allow_adhoc_signature and "adhoc" in flags:

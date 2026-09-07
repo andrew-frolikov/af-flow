@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		67BB74603C6F4EFE885A036A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EB2BD0CF31742E3A186C32E /* main.swift */; };
+		50DF745FC2B84FA485298876 /* ModelDownloadProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946A9821D8BC42AFAF56199C /* ModelDownloadProtocol.swift */; };
+		67FD12D66824460E849044C4 /* ModelDownloadProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946A9821D8BC42AFAF56199C /* ModelDownloadProtocol.swift */; };
+		B1B455F2AB7F4494863E2120 /* AF Flow Models.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = F09CE2DFB72B4FADBA8FB8F2 /* AF Flow Models.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		00A17B847D4D401A8E89F14A /* AirtableImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A17B837D4D401A8E89F14A /* AirtableImporter.swift */; };
 		00B000000000000000000020 /* LLMLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000020 /* LLMLease.swift */; };
 		00B000000000000000000021 /* LLMLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A000000000000000000021 /* LLMLease.swift */; };
@@ -271,6 +275,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		FDD479939C284D89A3BBE9E4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1302485C4CA6C8B09F7839D9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4BBD93AE13A846A698D26105;
+			remoteInfo = AFFlowModels;
+		};
 		2547F5EDD29749EB47A61BB7 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 1302485C4CA6C8B09F7839D9 /* Project object */;
@@ -280,7 +291,26 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		95082D9BFA704A45B3EB4662 /* Embed XPC Services */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+				B1B455F2AB7F4494863E2120 /* AF Flow Models.xpc in Embed XPC Services */,
+			);
+			name = "Embed XPC Services";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		0EB2BD0CF31742E3A186C32E /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		946A9821D8BC42AFAF56199C /* ModelDownloadProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ModelDownloadProtocol.swift; path = AFFlow/ModelDownload/ModelDownloadProtocol.swift; sourceTree = SOURCE_ROOT; };
+		BDDB36CB6BC946F9A3B33EEB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		46117EBCA8BB42AFB47031D8 /* AFFlowModels.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AFFlowModels.entitlements; sourceTree = "<group>"; };
+		F09CE2DFB72B4FADBA8FB8F2 /* AF Flow Models.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = "AF Flow Models.xpc"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0065F99395EEC3EB77997C2C /* CleanupSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupSettings.swift; sourceTree = "<group>"; };
 		00A000000000000000000020 /* LLMLease.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMLease.swift; sourceTree = "<group>"; };
 		00A000000000000000000021 /* LLMLease.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMLease.swift; sourceTree = "<group>"; };
@@ -568,6 +598,16 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		6C19E76088714F13B592B446 /* AFFlowModels */ = {
+			isa = PBXGroup;
+			children = (
+				0EB2BD0CF31742E3A186C32E /* main.swift */,
+				BDDB36CB6BC946F9A3B33EEB /* Info.plist */,
+				46117EBCA8BB42AFB47031D8 /* AFFlowModels.entitlements */,
+			);
+			path = AFFlowModels;
+			sourceTree = "<group>";
+		};
 		00C000000000000000000001 /* Wiki */ = {
 			isa = PBXGroup;
 			children = (
@@ -699,6 +739,7 @@
 				5D68EDD354F149B2EF3963B7 /* CleanupModelProbe */,
 				52BCF852883B9E469B61B56B /* AFFlow.app */,
 				338FDBA950D81CE2B3AC4EA0 /* AFFlowTests.xctest */,
+				F09CE2DFB72B4FADBA8FB8F2 /* AF Flow Models.xpc */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -890,6 +931,7 @@
 				452F90746F13934A1E6E515E /* Config */,
 				1E7F0C5D7440C7594FBB5FB3 /* AFFlow */,
 				FD52C5E171D3EF7591022762 /* AFFlowTests */,
+				6C19E76088714F13B592B446 /* AFFlowModels */,
 				3705D6F7BCD01CB7D37DF812 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -1064,6 +1106,21 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		4BBD93AE13A846A698D26105 /* AFFlowModels */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 57DF145C5C314A28B42D00F3 /* Build configuration list for PBXNativeTarget "AFFlowModels" */;
+			buildPhases = (
+				9253EC0E83764B6DA20A24A7 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AFFlowModels;
+			productName = "AF Flow Models";
+			productReference = F09CE2DFB72B4FADBA8FB8F2 /* AF Flow Models.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
 		5EBC085BD56A3725D371FB1A /* AFFlow */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0B62CC6358D7DB2D8265F051 /* Build configuration list for PBXNativeTarget "AFFlow" */;
@@ -1071,10 +1128,12 @@
 				24067D7D335818724D4D6FCF /* Sources */,
 				F218DCE315BF83F3FF5D0C15 /* Resources */,
 				AFF40C97B06ADBEECEB999B8 /* Frameworks */,
+				95082D9BFA704A45B3EB4662 /* Embed XPC Services */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				4678225327F549E086B6E580 /* PBXTargetDependency */,
 			);
 			name = AFFlow;
 			packageProductDependencies = (
@@ -1156,6 +1215,7 @@
 			projectRoot = "";
 			targets = (
 				B4F32C29F16FC66F8900D9F4 /* CleanupModelProbe */,
+				4BBD93AE13A846A698D26105 /* AFFlowModels */,
 				5EBC085BD56A3725D371FB1A /* AFFlow */,
 				7EC925A714005FEB57488230 /* AFFlowTests */,
 			);
@@ -1181,10 +1241,20 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		9253EC0E83764B6DA20A24A7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				67BB74603C6F4EFE885A036A /* main.swift in Sources */,
+				50DF745FC2B84FA485298876 /* ModelDownloadProtocol.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		24067D7D335818724D4D6FCF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				67FD12D66824460E849044C4 /* ModelDownloadProtocol.swift in Sources */,
 				00B000000000000000000030 /* MeetingEchoFilter.swift in Sources */,
 				00B000000000000000000020 /* LLMLease.swift in Sources */,
 				9702D125E2DECC58D973E80F /* AccessibilityWindowTitles.swift in Sources */,
@@ -1454,6 +1524,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		4678225327F549E086B6E580 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4BBD93AE13A846A698D26105 /* AFFlowModels */;
+			targetProxy = FDD479939C284D89A3BBE9E4 /* PBXContainerItemProxy */;
+		};
 		616A71515F589305BD1F6EC4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 5EBC085BD56A3725D371FB1A /* AFFlow */;
@@ -1462,6 +1537,57 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		3DB4A3830A564DFFB051BA8C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AFFlowModels/AFFlowModels.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = AFFlowModels/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.frolikov.afflow.models";
+				PRODUCT_NAME = "AF Flow Models";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		A547141182814D2B858E8A87 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_ENTITLEMENTS = AFFlowModels/AFFlowModels.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = AFFlowModels/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.frolikov.afflow.models";
+				PRODUCT_NAME = "AF Flow Models";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
 		1E4BC3C9A2D9995B5339A1F0 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 112E1B08BAA94CE3D91F2E00 /* Signing.xcconfig */;
@@ -1719,6 +1845,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		57DF145C5C314A28B42D00F3 /* Build configuration list for PBXNativeTarget "AFFlowModels" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3DB4A3830A564DFFB051BA8C /* Debug */,
+				A547141182814D2B858E8A87 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		0B62CC6358D7DB2D8265F051 /* Build configuration list for PBXNativeTarget "AFFlow" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

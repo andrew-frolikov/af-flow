@@ -58,12 +58,45 @@ targets:
       - package: FluidAudio
       - package: LLM.swift
         product: LLM
+      - target: AFFlowModels
+        embed: true
     entitlements:
       path: AFFlow/AFFlow.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.device.audio-input: true
         com.apple.security.files.user-selected.read-write: true
+
+  # The model downloader: the one process in this bundle allowed a socket.
+  # `launchd` starts an XPC service under its OWN entitlements rather than its
+  # host's, which is what lets the app keep none; proved on this machine by
+  # `scripts/xpc-smoke.sh`, not assumed from documentation.
+  #
+  # There is no xcodegen here, so this DESCRIBES what `project.pbxproj` already
+  # contains and `scripts/build-config-check.py` refuses the two to disagree.
+  AFFlowModels:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - AFFlowModels
+      - path: AFFlow/ModelDownload/ModelDownloadProtocol.swift
+    settings:
+      base:
+        PRODUCT_NAME: AF Flow Models
+        PRODUCT_BUNDLE_IDENTIFIER: com.frolikov.afflow.models
+        INFOPLIST_FILE: AFFlowModels/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AFFlowModels/AFFlowModels.entitlements
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
+      configs:
+        Release:
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+    entitlements:
+      path: AFFlowModels/AFFlowModels.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
 
   AFFlowTests:
     type: bundle.unit-test
