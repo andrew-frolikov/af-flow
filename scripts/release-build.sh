@@ -582,9 +582,11 @@ fi
 # LLM.swift frameworks that xcodebuild already signed correctly and re-signs
 # them with the APP's entitlements, including the App Sandbox. The failure that
 # buys is a notarization rejection, or Gatekeeper refusing on a friend's Mac,
-# which is the outcome this whole script exists to prevent. And
-# `bundle-boundary-check.py` reads only the top-level signature, so nothing
-# below would have caught it. Found by review, 2026-08-30.
+# which is the outcome this whole script exists to prevent. Found by review,
+# 2026-08-30, when `bundle-boundary-check.py` read only the top-level
+# signature and nothing below would have caught it. It reads the embedded
+# downloader now as well, which closes that gap for the one nested bundle this
+# project owns and leaves it open for the three frameworks it does not.
 #
 # Re-signing only the top level is also all that is needed: adding files under
 # Contents/Resources breaks the app bundle's own seal and leaves every nested
@@ -597,6 +599,26 @@ fi
 # timestamp, --options runtime because it refuses one without the hardened
 # runtime, and the entitlements are passed explicitly so the shipped bundle
 # carries the file in this repo rather than whatever the archive kept.
+# THE SERVICE FIRST, and with its OWN entitlements. Signing a bundle seals what
+# is inside it, so a nested bundle must be signed BEFORE its host or the host's
+# seal is broken the moment the nested one changes. The downloader is also the
+# one thing here that carries `network.client`, and passing the app's
+# entitlements to it by accident would silently take that away: the app would
+# ship, install, and never be able to fetch a model, which is a failure nobody
+# sees until a friend clicks Download.
+SERVICE="$APP/Contents/XPCServices/AF Flow Models.xpc"
+if [ ! -d "$SERVICE" ]; then
+    fail "the model downloader is not in the bundle at
+    Contents/XPCServices/AF Flow Models.xpc
+The AFFlowModels target did not embed. Without it the app has no way to fetch a
+model at all: it holds no network entitlement of its own and never will." 1
+fi
+codesign --force --timestamp --options runtime \
+    --entitlements "$REPO_ROOT/AFFlowModels/AFFlowModels.entitlements" \
+    --sign "$IDENTITY" "$SERVICE" \
+    || fail "could not sign the model downloader service." 1
+echo "ok    model downloader signed with its own entitlements"
+
 codesign --force --timestamp --options runtime \
     --entitlements "$REPO_ROOT/AFFlow/AFFlow.entitlements" \
     --sign "$IDENTITY" "$APP" \
