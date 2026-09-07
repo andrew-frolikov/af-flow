@@ -273,9 +273,53 @@ final class StarterModelInstallerTests: XCTestCase {
 
         let outcome = install()
         XCTAssertEqual(outcome.installed, 0, "bytes were written through a dangling symlink")
-        XCTAssertFalse(outcome.failures.isEmpty, "the dangling symlink was not reported")
+        // The REFUSAL branch, not a kernel error dressed as one. The first
+        // version of this test went green on "couldn't be saved": mkdir does
+        // not traverse a dangling link, so the escape failed by accident and
+        // the containment check had passed it. The independent third-pass
+        // review caught that on 2026-09-06; a dangling ancestor is now
+        // refused outright.
+        XCTAssertTrue(outcome.failures.contains { $0.contains("escapes the models folder") },
+                      "the dangling ancestor was not refused by containment: \(outcome.failures)")
         XCTAssertFalse(FileManager.default.fileExists(atPath: gone.path),
                        "the dangling link's target was created outside the models root")
+    }
+
+    /// **A hidden file in the payload is refused and reported**, not installed.
+    /// The comment in the installer said skipping one silently would hide a
+    /// problem; the code then installed it, which hides it better. A Finder
+    /// `.DS_Store` or a WhisperKit `.cache` in the staging folder is a staging
+    /// mistake, and `release-build.sh` refuses it at build time too.
+    func testAHiddenFileInThePayloadIsRefusedNotInstalled() throws {
+        try stageBundled("models/.DS_Store", contents: "finder litter")
+        try stageBundled("models/a.gguf", contents: "weights")
+
+        let outcome = install()
+        XCTAssertEqual(outcome.installed, 1, "outcome was \(outcome)")
+        XCTAssertNil(existingAtDestination("models/.DS_Store"), "a hidden file was installed")
+        XCTAssertTrue(outcome.failures.contains { $0.contains(".DS_Store") },
+                      "the hidden file was not reported: \(outcome.failures)")
+    }
+
+    /// A symlink sitting at a pinned destination path is named as one, not
+    /// measured as a wrong-sized file.
+    func testASymlinkAtAPinnedDestinationIsReportedAsASymlink() throws {
+        try stageBundled("models/pinned.gguf", contents: "the real bytes")
+        let elsewhere = root.appendingPathComponent("elsewhere.gguf")
+        try "x".write(to: elsewhere, atomically: true, encoding: .utf8)
+        let models = destination.appendingPathComponent("models", isDirectory: true)
+        try FileManager.default.createDirectory(at: models, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: models.appendingPathComponent("pinned.gguf"), withDestinationURL: elsewhere)
+
+        let outcome = StarterModelInstaller.install(
+            from: bundled, into: destination,
+            expected: ["models/pinned.gguf": StarterModelInstaller.Expectation(
+                sha256: String(repeating: "0", count: 64), byteCount: 14)])
+        XCTAssertEqual(outcome.installed, 0)
+        XCTAssertTrue(outcome.failures.contains { $0.contains("symbolic link") },
+                      "a symlink at the destination was not named as one: \(outcome.failures)")
+        XCTAssertEqual(try String(contentsOf: elsewhere, encoding: .utf8), "x", "the link's target was touched")
     }
 
     /// The payload ROOT itself is never enumerated, so a symlinked root was the

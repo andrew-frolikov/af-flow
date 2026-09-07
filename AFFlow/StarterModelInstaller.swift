@@ -108,10 +108,27 @@ enum StarterModelInstaller {
                 walker.skipDescendants()
                 continue
             }
+            // A HIDDEN entry is a staging mistake (Finder's .DS_Store, a
+            // WhisperKit .cache) and is refused and reported, never installed
+            // and never skipped in silence. `release-build.sh` refuses the
+            // same thing at build time, so a shipped DMG never trips this.
+            if source.lastPathComponent.hasPrefix(".") {
+                outcome.failures.append("refused a hidden entry in the bundled payload: \(source.lastPathComponent)")
+                walker.skipDescendants()
+                continue
+            }
             guard values?.isRegularFile == true else { continue }
 
-            let relative = source.standardizedFileURL.path
-                .replacingOccurrences(of: bundledRoot.standardizedFileURL.path + "/", with: "")
+            // The path RELATIVE to the payload root: a prefix strip, not a
+            // replace-all, which would also fold a recurrence of the root
+            // string deeper in the path.
+            let rootPrefix = bundledRoot.standardizedFileURL.path + "/"
+            let sourcePath = source.standardizedFileURL.path
+            guard sourcePath.hasPrefix(rootPrefix) else {
+                outcome.failures.append("refused a bundled entry outside the payload root: \(source.lastPathComponent)")
+                continue
+            }
+            let relative = String(sourcePath.dropFirst(rootPrefix.count))
             let target = destinationBase.appendingPathComponent(relative).standardizedFileURL
 
             // CONTAINMENT, on the deepest ancestor that EXISTS. The parent may
@@ -121,12 +138,30 @@ enum StarterModelInstaller {
             // payload path straight through a symlinked `models` folder. Codex
             // reproduced that against Foundation on 2026-09-06. Walking up to
             // the existing ancestor and resolving THAT is what decides where
-            // `createDirectory` would actually put the missing levels.
-            let existingAncestorReal = Self.deepestExistingAncestor(of: target.deletingLastPathComponent())
-                .resolvingSymlinksInPath()
-            guard existingAncestorReal.path == destinationReal.path
+            // `createDirectory` would put the missing levels.
+            //
+            // A DANGLING link is the one case resolving cannot answer: Foundation
+            // returns a dangling link unchanged too, so it would read as
+            // contained. The kernel happens to refuse to mkdir through one, but
+            // an escape that fails by accident is not a refusal. Refused
+            // outright. Independent third-pass review, 2026-09-06.
+            let existingAncestor = Self.deepestExistingAncestor(of: target.deletingLastPathComponent())
+            let ancestorIsDanglingLink =
+                (try? existingAncestor.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
+                && !manager.fileExists(atPath: existingAncestor.path)
+            let existingAncestorReal = existingAncestor.resolvingSymlinksInPath()
+            guard !ancestorIsDanglingLink,
+                  existingAncestorReal.path == destinationReal.path
                     || existingAncestorReal.path.hasPrefix(destinationReal.path + "/") else {
                 outcome.failures.append("refused a bundled path that escapes the models folder: \(relative)")
+                continue
+            }
+
+            // A symlink AT the destination path is named as one and left
+            // alone; measuring it as a wrong-sized file would report the
+            // link's own length.
+            if (try? target.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true {
+                outcome.failures.append("\(relative) is a symbolic link at the destination; left untouched")
                 continue
             }
 
@@ -198,7 +233,8 @@ enum StarterModelInstaller {
     /// Never climbs above the filesystem root; "/" always exists.
     static func deepestExistingAncestor(of url: URL) -> URL {
         var candidate = url.standardizedFileURL
-        // A symlink "exists" for this purpose: it is the thing to resolve.
+        // A symlink "exists" for this purpose, dangling or not: the caller
+        // resolves a live one and refuses a dangling one.
         while !FileManager.default.fileExists(atPath: candidate.path)
                 && (try? candidate.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink != true
                 && candidate.path != "/" {

@@ -96,7 +96,24 @@ def run(quiet=False):
         if ships:
             say(f"ok    {L.HELPER_ID} ships in the build: {where}")
             for _key, rule in helper_rules:
+                # An ALLOW is the downloader's own rule, printed in full so a
+                # widened one is seen. A BLOCK is not "its own rule": it is
+                # every download failing silently on this Mac, and it is
+                # reported as such. A rule recorded at a path that is gone
+                # cannot match and prompts fresh, helper or not.
+                if rule["action"] != L.ACTION_ALLOW:
+                    helper_findings.append(
+                        f"a BLOCK for the downloader, so every model download fails "
+                        f"on this Mac: {L.describe(rule)}"
+                    )
+                    continue
                 say(f"ok    expected, the downloader's own rule: {L.describe(rule)}")
+                recorded = rule.get("path")
+                if isinstance(recorded, str) and recorded and not os.path.exists(recorded):
+                    helper_findings.append(
+                        f"{rule['id']} records a path that is gone, so LuLu cannot match "
+                        f"its own rule and every attempt prompts fresh: {recorded}"
+                    )
         else:
             for _key, rule in helper_rules:
                 helper_findings.append(
@@ -324,9 +341,12 @@ def selftest():
              {f"{L.HELPER_ID}:auth": [helper_rule]},
              EXIT_FINDINGS, app=app_without_helper)
 
-        # 11. Could not tell whether it ships (no staged app, real registry
-        #     will not name a staged path): unknown counts as does-not-ship.
-        case("11. downloader rule, cannot tell if it ships -> finding",
+        # 11. The staged app path does not exist at all. (The genuine
+        #     "could not tell" branch, `installed_app` returning None because
+        #     the registry is UNREADABLE or AMBIGUOUS, cannot be staged from
+        #     here; it returns False by construction and the third-pass review
+        #     confirmed the wrapping `except Exception`.)
+        case("11. downloader rule, staged app path absent -> finding",
              {f"{L.HELPER_ID}:auth": [helper_rule]},
              EXIT_FINDINGS, app=os.path.join(workspace, "absent-app"))
 
@@ -403,12 +423,40 @@ def selftest():
                    os.path.join(inner, "Contents", "XPCServices", "AF Flow Models.xpc", "Contents"))
         case("16c. downloader whose Contents is a symlink out of the app -> finding",
              {f"{L.HELPER_ID}:auth": [helper_rule]}, EXIT_FINDINGS, app=inner)
+        # 16d. Truncated XML: ExpatError, which the first except clause did
+        #      not name, so this was a traceback. Third-pass review.
+        trunc = staged_app("truncated-plist", True)
+        with open(os.path.join(trunc, "Contents", "XPCServices", "AF Flow Models.xpc",
+                               "Contents", "Info.plist"), "wb") as handle:
+            handle.write(b'<?xml version="1.0"?><plist><dict><key>CFBundleIdentifier')
+        proc = case("16d. downloader Info.plist that is truncated XML -> finding, not a traceback",
+                    {f"{L.HELPER_ID}:auth": [helper_rule]}, EXIT_FINDINGS, app=trunc)
+        # Exit 1 alone cannot tell a finding from a crash: an uncaught
+        # exception also exits 1. The absence of a traceback is the claim.
+        quiet = "Traceback" not in proc.stderr
+        ok.append(quiet)
+        print(f"{'PASS' if quiet else 'FAIL'}  16d. and it was a finding, not a traceback")
+
+        # 17. A BLOCK for the downloader is not "its own rule": it is every
+        #     download failing silently. Finding, even while it ships.
+        case("17. a Block for the downloader while it ships -> finding",
+             {f"{L.HELPER_ID}:auth": [dict(helper_rule, action=0)]},
+             EXIT_FINDINGS, app=app_with_helper)
+
+        # 18. The downloader's rule recorded at a path that is gone -> finding,
+        #     the same rule the rest of the family gets.
+        case("18. downloader rule recorded at a gone path -> finding",
+             {f"{L.HELPER_ID}:auth": [dict(helper_rule, path=os.path.join(workspace, "gone.app"))]},
+             EXIT_FINDINGS, app=app_with_helper)
         odd = staged_app("odd-plist", True)
         with open(os.path.join(odd, "Contents", "XPCServices", "AF Flow Models.xpc",
                                "Contents", "Info.plist"), "wb") as handle:
             plistlib.dump(["not", "a", "dict"], handle)
-        case("16b. downloader Info.plist that is not a dictionary -> finding, not a traceback",
-             {f"{L.HELPER_ID}:auth": [helper_rule]}, EXIT_FINDINGS, app=odd)
+        proc = case("16b. downloader Info.plist that is not a dictionary -> finding, not a traceback",
+                    {f"{L.HELPER_ID}:auth": [helper_rule]}, EXIT_FINDINGS, app=odd)
+        quiet = "Traceback" not in proc.stderr
+        ok.append(quiet)
+        print(f"{'PASS' if quiet else 'FAIL'}  16b. and it was a finding, not a traceback")
 
         print()
         print("ALL STATES DISTINGUISHED" if all(ok) else "SOME STATES NOT DISTINGUISHED")

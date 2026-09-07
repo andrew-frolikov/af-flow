@@ -369,17 +369,27 @@ if [ -n "$STARTER_MODELS" ]; then
     # installs cleanly and dictates nothing, and finding that out after four
     # minutes of building is four minutes worse than finding it now.
     #
-    # THE WHOLE Starter tier, by name, as the app reads it. A first version
-    # accepted either directory, so a cleanup-only payload would have produced
-    # a signed, notarized DMG whose missing speech model triggers a download
-    # the kernel denies; a second version checked the Core ML folder but not
-    # the tokenizer folder, which is the one `ModelManager.modelIsCached`
-    # actually tests, so the app would STILL have tried to download. Codex,
-    # 2026-09-06, twice.
+    # THE WHOLE Starter tier, as the app reads it. A first version accepted
+    # either directory, so a cleanup-only payload would have produced a
+    # signed, notarized DMG whose missing speech model triggers a download
+    # the kernel denies; a second checked the Core ML folder but not the
+    # tokenizer folder WhisperKit also needs, so the app would STILL have
+    # tried to download. Codex, 2026-09-06, twice.
     #
-    # Every name below is READ from the code that defines the tier, never
-    # copied here: `QualityTier.swift` names the Starter rungs by symbol, and
-    # the two catalogues resolve the symbols to file and folder names.
+    # WHAT IS READ FROM CODE AND WHAT IS NOT, stated so nobody upgrades it.
+    # Read: the Starter rungs by symbol from `QualityTier.swift`, the cleanup
+    # file name from `TextCleanupManager.swift`, the speech variant and its
+    # `cachePathComponents` from `SpeechModelCatalog.swift`. Spelled here,
+    # because the app spells them too and there is no single constant to
+    # read: `models/`, `whisper-models/models/`, and WhisperKit's own two
+    # homes, `argmaxinc/whisperkit-coreml/<variant>` for the Core ML files
+    # and `openai/<repo>` for the tokenizer. The tokenizer repo name is
+    # WhisperKit's mapping, not the app's (small -> whisper-small, turbo ->
+    # whisper-large-v3), and `cachePathComponents` is NOT it: for turbo that
+    # field names the Core ML folder. So the tokenizer check is "some
+    # openai/<repo>/tokenizer.json is present", which fails closed on the
+    # failure that matters and cannot name the repo it does not know.
+    # Independent review, 2026-09-06.
     STARTER_CLEANUP_KIND=$(sed -n 's/.*starterCleanupModel: LocalCleanupModelKind = \.\([A-Za-z0-9_]*\).*/\1/p' AFFlow/QualityTier.swift | head -1)
     STARTER_SPEECH_SYMBOL=$(sed -n 's/.*starterSpeechModelID = SpeechModelCatalog\.\([A-Za-z0-9_]*\)\.id.*/\1/p' AFFlow/QualityTier.swift | head -1)
     [ -n "$STARTER_CLEANUP_KIND" ] || fail "could not read starterCleanupModel from AFFlow/QualityTier.swift." 4
@@ -387,30 +397,42 @@ if [ -n "$STARTER_MODELS" ]; then
     STARTER_CLEANUP_FILE=$(awk "/kind: \.$STARTER_CLEANUP_KIND,/,/fileName:/" AFFlow/Cleanup/TextCleanupManager.swift \
         | sed -n 's/.*fileName: *"\([^"]*\)".*/\1/p' | head -1)
     SPEECH_BLOCK=$(awk "/static let $STARTER_SPEECH_SYMBOL = /,/fluidAudioVariant:/" AFFlow/Transcription/SpeechModelCatalog.swift)
-    STARTER_SPEECH_VARIANT=$(printf '%s\n' "$SPEECH_BLOCK" | sed -n 's/.*name: *"\([^"]*\)".*/\1/p' | head -1)
+    # `^ *name:` so `variantName:` and `pickerTitle:` can never match.
+    STARTER_SPEECH_VARIANT=$(printf '%s\n' "$SPEECH_BLOCK" | sed -n 's/^ *name: *"\([^"]*\)".*/\1/p' | head -1)
     STARTER_SPEECH_CACHE=$(printf '%s\n' "$SPEECH_BLOCK" | sed -n 's/.*cachePathComponents: *\[\(.*\)\].*/\1/p' | head -1 | tr -d '" ' | tr ',' '/')
     [ -n "$STARTER_CLEANUP_FILE" ] || fail "could not resolve .$STARTER_CLEANUP_KIND to a file name in TextCleanupManager.swift." 4
     [ -n "$STARTER_SPEECH_VARIANT" ] && [ -n "$STARTER_SPEECH_CACHE" ] \
         || fail "could not resolve $STARTER_SPEECH_SYMBOL to a variant and cache path in SpeechModelCatalog.swift." 4
     CLEANUP_PATH="$STARTER_MODELS/models/$STARTER_CLEANUP_FILE"
     COREML_DIR="$STARTER_MODELS/whisper-models/models/argmaxinc/whisperkit-coreml/$STARTER_SPEECH_VARIANT"
-    TOKENIZER_DIR="$STARTER_MODELS/whisper-models/models/$STARTER_SPEECH_CACHE"
+    CACHE_TEST_DIR="$STARTER_MODELS/whisper-models/models/$STARTER_SPEECH_CACHE"
+    TOKENIZER_HOME="$STARTER_MODELS/whisper-models/models/openai"
     # Regular files only: `-f` follows a symlink, and the installer refuses one.
     has_regular_file() { [ -d "$1" ] && [ ! -L "$1" ] && [ -n "$(find "$1" -type f ! -name '.*' -print -quit 2>/dev/null)" ]; }
     MISSING=""
     { [ -f "$CLEANUP_PATH" ] && [ ! -L "$CLEANUP_PATH" ]; } || MISSING="$MISSING cleanup(models/$STARTER_CLEANUP_FILE)"
     has_regular_file "$COREML_DIR" || MISSING="$MISSING coreml(whisper-models/models/argmaxinc/whisperkit-coreml/$STARTER_SPEECH_VARIANT)"
-    has_regular_file "$TOKENIZER_DIR" || MISSING="$MISSING tokenizer(whisper-models/models/$STARTER_SPEECH_CACHE)"
+    has_regular_file "$CACHE_TEST_DIR" || MISSING="$MISSING cache-test-folder(whisper-models/models/$STARTER_SPEECH_CACHE, what modelIsCached looks at)"
+    [ -n "$(find "$TOKENIZER_HOME" -mindepth 2 -maxdepth 2 -type f -name tokenizer.json -print -quit 2>/dev/null)" ] \
+        || MISSING="$MISSING tokenizer(whisper-models/models/openai/<repo>/tokenizer.json)"
     if [ -n "$MISSING" ]; then
         fail "--starter-models '$STARTER_MODELS' does not hold the whole Starter tier.
 StarterModelInstaller copies this tree VERBATIM into Application Support, so it
-must mirror the destination and hold all three parts, as regular files:
+must mirror the destination and hold every part, as regular files:
     models/$STARTER_CLEANUP_FILE
     whisper-models/models/argmaxinc/whisperkit-coreml/$STARTER_SPEECH_VARIANT/<Core ML files>
-    whisper-models/models/$STARTER_SPEECH_CACHE/<tokenizer files>
+    whisper-models/models/$STARTER_SPEECH_CACHE/<files>
+    whisper-models/models/openai/<repo>/tokenizer.json
 Missing:$MISSING" 4
     fi
-    echo "ok    starter tier present: $STARTER_CLEANUP_FILE, $STARTER_SPEECH_VARIANT, tokenizer $STARTER_SPEECH_CACHE"
+    # NOTHING HIDDEN, NOTHING LINKED, anywhere in the payload. The installer
+    # refuses both and reports them on every launch forever; `rsync -a` would
+    # carry a Finder .DS_Store or a WhisperKit .cache straight into the DMG.
+    LITTER=$(find "$STARTER_MODELS" \( -name '.*' -o -type l \) -print 2>/dev/null | head -5)
+    [ -z "$LITTER" ] || fail "--starter-models '$STARTER_MODELS' holds hidden entries or symlinks, which the installer refuses:
+$LITTER
+Stage a clean tree: no .DS_Store, no .cache, no links." 4
+    echo "ok    starter tier present: $STARTER_CLEANUP_FILE, $STARTER_SPEECH_VARIANT, cache folder $STARTER_SPEECH_CACHE, a tokenizer"
     MODEL_BYTES=$(du -sk "$STARTER_MODELS" | cut -f1)
     echo "ok    starter models: $STARTER_MODELS ($(( MODEL_BYTES / 1024 )) MB)"
 fi

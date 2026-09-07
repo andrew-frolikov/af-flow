@@ -283,7 +283,11 @@ def helper_ships(repo):
             try:
                 with open(info, "rb") as handle:
                     plist = plistlib.load(handle)
-            except (OSError, plistlib.InvalidFileException, ValueError):
+            except Exception:  # noqa: BLE001
+                # Truncated XML raises ExpatError, which is none of OSError,
+                # ValueError or InvalidFileException, and the docstring's
+                # "never a traceback" was false for it. Third-pass review,
+                # 2026-09-06. Any failure to read is "does not ship".
                 continue
             if isinstance(plist, dict) and plist.get("CFBundleIdentifier") == HELPER_ID:
                 return True, bundle
