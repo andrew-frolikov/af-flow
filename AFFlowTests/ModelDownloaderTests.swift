@@ -134,6 +134,129 @@ final class ModelDownloaderTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("models/a.gguf")), body)
     }
 
+    // MARK: - A partial that is already big enough
+
+    /// **A finished partial must never be asked to resume past its own end.**
+    /// If the last byte arrives and the connection drops before the reply
+    /// does, the partial is exactly the pinned size. Asking for
+    /// `Range: bytes=<size>-` is unsatisfiable, the server answers 416, the
+    /// partial is kept for a retry that asks the same impossible question, and
+    /// a 2.8 GB model can never install again. Independent review, 2026-09-07.
+    func testAPartialAlreadyAtTheFullSizeIsVerifiedRatherThanResumed() async throws {
+        let body = Data("the whole model, already fetched".utf8)
+        let partial = root.appendingPathComponent("models/a.gguf.partial")
+        try FileManager.default.createDirectory(at: partial.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try body.write(to: partial)
+
+        let fetcher = FakeFetcher(body)
+        try await ModelDownloader(fetcher: fetcher, root: root).download(pin(body)) { _, _ in }
+        XCTAssertEqual(fetcher.calls.count, 0, "it asked for bytes past the end of a finished partial")
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("models/a.gguf")), body)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: partial.path))
+    }
+
+    /// The same trap from the other side: a partial LONGER than the pin, which
+    /// a regenerated catalogue or a server that ignored a Range can produce.
+    /// It is junk, not a resume point, and must be discarded rather than
+    /// extended.
+    func testAPartialLongerThanThePinIsDiscardedAndFetchedAgain() async throws {
+        let body = Data("the real model".utf8)
+        let partial = root.appendingPathComponent("models/a.gguf.partial")
+        try FileManager.default.createDirectory(at: partial.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data(repeating: 9, count: body.count + 500).write(to: partial)
+
+        let fetcher = FakeFetcher(body)
+        try await ModelDownloader(fetcher: fetcher, root: root).download(pin(body)) { _, _ in }
+        XCTAssertEqual(fetcher.calls.first?.1, 0, "it resumed from inside a partial that was already too long")
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("models/a.gguf")), body)
+    }
+
+    /// A full-size partial whose BYTES are wrong is discarded, and the retry
+    /// after it succeeds. Without this the wrong bytes would be verified,
+    /// rejected, and left in place to be verified and rejected forever.
+    func testAFullSizePartialWithWrongBytesIsDiscardedAndTheRetryWorks() async throws {
+        let body = Data("the real model".utf8)
+        let partial = root.appendingPathComponent("models/a.gguf.partial")
+        try FileManager.default.createDirectory(at: partial.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data(repeating: 3, count: body.count).write(to: partial)
+
+        let fetcher = FakeFetcher(body)
+        let downloader = ModelDownloader(fetcher: fetcher, root: root)
+        do {
+            try await downloader.download(pin(body)) { _, _ in }
+            XCTFail("accepted a full-size partial whose bytes are wrong")
+        } catch let error as ModelDownloadError {
+            guard case .hashMismatch = error else { return XCTFail("wrong error: \(error)") }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: partial.path),
+                       "the bad partial was kept, so every retry will reject it again")
+        try await downloader.download(pin(body)) { _, _ in }
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("models/a.gguf")), body)
+    }
+
+    /// A server that IGNORES `Range` sends the whole body, which lands after
+    /// the bytes already there. Verified against `python3 -m http.server`,
+    /// which does exactly this. The app must not install that, and must not
+    /// keep it either, or the next attempt resumes from junk.
+    func testAFetcherThatIgnoresTheResumeOffsetLeavesNothingToResumeFrom() async throws {
+        final class IgnoresOffset: Fetching {
+            let body: Data
+            init(_ body: Data) { self.body = body }
+            func fetch(_ url: URL, into handle: FileHandle, resumingFrom offset: Int64,
+                       progress: @escaping (Int64) -> Void) async throws -> Int64 {
+                try handle.write(contentsOf: body)      // the WHOLE body, ignoring offset
+                return Int64(body.count)
+            }
+        }
+        let body = Data("the real model".utf8)
+        let partial = root.appendingPathComponent("models/a.gguf.partial")
+        try FileManager.default.createDirectory(at: partial.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 4).write(to: partial)
+
+        do {
+            try await ModelDownloader(fetcher: IgnoresOffset(body), root: root)
+                .download(pin(body)) { _, _ in }
+            XCTFail("installed a file built from a body appended after a partial")
+        } catch let error as ModelDownloadError {
+            guard case .sizeMismatch = error else { return XCTFail("wrong error: \(error)") }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: partial.path),
+                       "an oversized partial was kept, so the next attempt resumes from junk")
+    }
+
+    // MARK: - Cancellation
+
+    /// **Cancellation must survive the trip.** `TextCleanupManager` decides
+    /// between "cancelled, go quiet" and "failed, show an error" by asking
+    /// whether the error is a `CancellationError`. Wrapping it in a transport
+    /// error turns a user pressing Cancel into a red failure message, and the
+    /// partial has to stay so the retry resumes.
+    func testCancellationIsNotDisguisedAsATransportFailure() async throws {
+        final class Cancels: Fetching {
+            func fetch(_ url: URL, into handle: FileHandle, resumingFrom offset: Int64,
+                       progress: @escaping (Int64) -> Void) async throws -> Int64 {
+                try handle.write(contentsOf: Data("some".utf8))
+                throw CancellationError()
+            }
+        }
+        let body = Data("the real model".utf8)
+        do {
+            try await ModelDownloader(fetcher: Cancels(), root: root).download(pin(body)) { _, _ in }
+            XCTFail("a cancelled download reported success")
+        } catch is CancellationError {
+            // what the caller has to be able to recognise
+        } catch {
+            XCTFail("cancellation arrived as \(error), so the UI would show a red error")
+        }
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("models/a.gguf.partial").path),
+                      "the partial was discarded, so cancelling costs the whole download")
+    }
+
     // MARK: - His 6.8 GB
 
     func testAnExistingMatchingFileIsNotFetchedAgain() async throws {

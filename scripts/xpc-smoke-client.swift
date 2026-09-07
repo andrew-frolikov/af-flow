@@ -16,6 +16,11 @@ guard arguments.count >= 2 else {
     exit(2)
 }
 let urlString = arguments[1]
+/// Optional: bytes of junk to put in the destination first, so the fetch is a
+/// RESUME. `python3 -m http.server` ignores `Range` and answers 200 with the
+/// whole body, which is exactly the case the service has to notice and
+/// truncate for; without this argument that path was never run.
+let prefillBytes = arguments.count > 2 ? Int(arguments[2]) ?? 0 : 0
 
 func say(_ message: String) {
     FileHandle.standardOutput.write(Data((message + "\n").utf8))
@@ -44,11 +49,14 @@ _ = controlDone.wait(timeout: .now() + 20)
 say("control \(controlResult)")
 
 // --- The experiment: the service writes into a descriptor we opened.
-FileManager.default.createFile(atPath: destination.path, contents: nil)
+FileManager.default.createFile(atPath: destination.path,
+                               contents: prefillBytes > 0 ? Data(repeating: 0xAB, count: prefillBytes) : nil)
 guard let handle = try? FileHandle(forWritingTo: destination) else {
     say("service could not open the destination")
     exit(3)
 }
+let resumeFrom = Int64((try? handle.seekToEnd()) ?? 0)
+say("resuming from \(resumeFrom)")
 
 final class Progress: NSObject, ModelDownloadProgressProtocol {
     var last: Int64 = 0
@@ -69,7 +77,7 @@ let proxy = connection.remoteObjectProxyWithErrorHandler { error in
     finished.signal()
 } as? ModelDownloadServiceProtocol
 
-proxy?.fetch(urlString, into: handle, resumingFrom: 0) { written, error in
+proxy?.fetch(urlString, into: handle, resumingFrom: resumeFrom) { written, error in
     if let error {
         say("service error \(error)")
     } else {

@@ -36,6 +36,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 HUB = "https://huggingface.co"
@@ -63,6 +64,7 @@ TOKENIZER_REPO = {
 TOKENIZER_FILES = ("config.json", "tokenizer.json", "tokenizer_config.json")
 
 TIMEOUT = 120
+DEFAULT_OUT = os.path.join(REPO_ROOT, "AFFlow/Transcription/SpeechModelPins.swift")
 
 
 class Refused(Exception):
@@ -111,8 +113,23 @@ def ladder_variants():
     return found
 
 
+# What may appear in a path this script turns into a URL and into a Swift string
+# literal. Everything else is REFUSED rather than escaped, because the set of
+# characters a model file legitimately uses is small and known: a `#` or `?`
+# would silently truncate the fetched path (a 404 at install time, not here),
+# and a quote or backslash would produce a Swift file that does not compile.
+# Independent review, 2026-09-07.
+SAFE_PATH = re.compile(r"^[A-Za-z0-9._/-]+$")
+
+
 def pinned(repo, revision, hub_path, entry, relative):
-    url = f"{HUB}/{repo}/resolve/{revision}/{hub_path}"
+    for label, value in (("hub path", hub_path), ("destination", relative)):
+        if not SAFE_PATH.match(value):
+            raise Refused(
+                f"{label} {value!r} holds a character this generator will not "
+                f"put in a URL or a Swift literal. Widen SAFE_PATH deliberately "
+                f"if the Hub has started using it.")
+    url = f"{HUB}/{repo}/resolve/{revision}/{urllib.parse.quote(hub_path)}"
     lfs = entry.get("lfs") or {}
     digest = lfs.get("oid")
     if not digest:
@@ -152,6 +169,12 @@ def collect(variants):
         covered = f"whisper-models/models/{cache_folder}/"
         if not any(pin["relativePath"].startswith(covered) for pin in pins):
             raise Refused(f"{variant}: nothing lands in {covered}, which is what modelIsCached tests")
+        # Two files landing at one path would silently drop one of them.
+        seen = {}
+        for pin in pins:
+            if pin["relativePath"] in seen:
+                raise Refused(f"two files both land at {pin['relativePath']}")
+            seen[pin["relativePath"]] = True
         files[variant] = pins
         total = sum(pin["byteCount"] for pin in pins)
         print(f"  {variant}: {len(pins)} files, {total / 1e6:.0f} MB", file=sys.stderr)
@@ -187,14 +210,20 @@ def render(revisions, files):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--out", default=os.path.join(REPO_ROOT, "AFFlow/Transcription/SpeechModelPins.swift"))
+    parser.add_argument("--out", default=DEFAULT_OUT)
     parser.add_argument("--variant", action="append",
                         help="pin this variant instead of the ladder's (repeatable, for testing)")
     args = parser.parse_args()
     try:
         if args.variant:
             # Testing path: no cache-test folder is known, so the coverage
-            # assertion is satisfied by the Core ML folder itself.
+            # assertion is satisfied by the Core ML folder itself. It REFUSES
+            # to write the real file, because a one-variant run replacing the
+            # ladder's pins is a half-pinned catalogue that only the Swift
+            # tests would catch. Independent review, 2026-09-07.
+            if os.path.abspath(args.out) == os.path.abspath(DEFAULT_OUT):
+                raise Refused("--variant is for testing and will not overwrite "
+                              f"{DEFAULT_OUT}. Pass --out somewhere else.")
             variants = [(name, f"argmaxinc/whisperkit-coreml/{name}") for name in args.variant]
         else:
             variants = ladder_variants()

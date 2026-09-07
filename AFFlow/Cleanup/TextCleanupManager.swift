@@ -849,8 +849,13 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
     }
 
     /// Cancels whatever the manager is currently downloading or loading.
-    /// `URLSession.download(from:)` is cancellation-aware, so the in-flight
-    /// transfer aborts at the next suspension point.
+    ///
+    /// Cancelling a DOWNLOAD has to cross a process boundary now: the bytes
+    /// come from `AF Flow Models.xpc`, and `Task.cancel()` cannot reach
+    /// another process. `XPCFetcher` handles that by asking the service to
+    /// stop and then invalidating the connection. Between 2026-09-07 and that
+    /// fix, pressing Cancel stopped nothing and left the manager stuck in
+    /// `.downloading`, refusing to start any other model.
     func cancelActiveLoad() {
         activeLoadTask?.cancel()
         activeLoadTask = nil
@@ -1019,7 +1024,15 @@ final class TextCleanupManager: ObservableObject, TextCleaningManaging {
             debugLogger?(.model, "Cleanup model \(kind.rawValue) did not install: \(error)")
             throw error
         }
-        guard Self.isVerifiedModelFile(destination, descriptor: descriptor) else {
+        // SIZE ONLY, on purpose. `ModelDownloader` has just hashed these exact
+        // bytes at this exact path against this same pin and refused to move
+        // anything that did not match, so hashing again proves nothing new and
+        // costs a full read of up to 2.8 GB ON THE MAIN THREAD, which is the
+        // defect this project fixed in the first-launch installer a day
+        // earlier. Independent review, 2026-09-07. The check remains, because
+        // "the downloader said it was there" is not the same as "it is there".
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int64) ?? nil,
+              size == descriptor.expectedByteCount else {
             try? FileManager.default.removeItem(at: destination)
             throw URLError(.cannotDecodeContentData)
         }

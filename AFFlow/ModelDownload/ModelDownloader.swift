@@ -78,31 +78,60 @@ final class ModelDownloader {
 
         try manager.createDirectory(at: destination.deletingLastPathComponent(),
                                     withIntermediateDirectories: true)
+
+        // WHAT IS ALREADY IN THE PARTIAL DECIDES WHETHER TO FETCH AT ALL.
+        //
+        // A partial the size of the pin is a FINISHED download whose reply
+        // never arrived: the last byte lands, the connection drops, and the
+        // app throws. Asking to resume from there means `Range: bytes=<size>-`,
+        // which is unsatisfiable and answered 416, and since the partial is
+        // kept for the retry, the retry asks the same impossible question
+        // forever. A 2.8 GB model would never install again and 2.8 GB would
+        // sit in a file nobody can see. Independent review, 2026-09-07.
+        //
+        // A partial LONGER than the pin is junk, not a resume point: a
+        // regenerated catalogue, or a server that ignored a Range and sent the
+        // whole body after what was there. Discarded rather than extended.
+        let existingPartial = (try? manager.attributesOfItem(atPath: partial.path)[.size] as? Int64) ?? nil
+        if let existing = existingPartial, existing > pin.byteCount {
+            try? manager.removeItem(at: partial)
+        }
+        let alreadyComplete = existingPartial == pin.byteCount
+
         if !manager.fileExists(atPath: partial.path) {
             manager.createFile(atPath: partial.path, contents: nil)
         }
-        let handle = try FileHandle(forWritingTo: partial)
-        // Resume from whatever survived the last attempt. On a 4 GB model over
-        // a hotel connection this is the difference between a retry and a
-        // reason to give up.
-        let offset = Int64(try handle.seekToEnd())
 
-        do {
-            _ = try await fetcher.fetch(pin.url, into: handle, resumingFrom: offset) { written in
-                progress(offset + written, pin.byteCount)
+        if !alreadyComplete {
+            let handle = try FileHandle(forWritingTo: partial)
+            // Resume from whatever survived the last attempt. On a 4 GB model
+            // over a hotel connection this is the difference between a retry
+            // and a reason to give up.
+            let offset = Int64(try handle.seekToEnd())
+            do {
+                _ = try await fetcher.fetch(pin.url, into: handle, resumingFrom: offset) { written in
+                    progress(offset + written, pin.byteCount)
+                }
+                try handle.synchronize()
+                try handle.close()
+            } catch {
+                // The partial STAYS: it is what the next attempt resumes from.
+                try? handle.close()
+                // CANCELLATION TRAVELS AS ITSELF. The caller decides between
+                // "the user pressed Cancel, go quiet" and "it failed, show an
+                // error" by asking whether this is a `CancellationError`, so
+                // wrapping it turns a deliberate stop into a red message.
+                if error is CancellationError { throw error }
+                throw (error as? ModelDownloadError) ?? .transport(String(describing: error))
             }
-            try handle.synchronize()
-            try handle.close()
-        } catch {
-            // The partial STAYS: it is what the next attempt resumes from.
-            try? handle.close()
-            throw (error as? ModelDownloadError) ?? .transport(String(describing: error))
         }
 
         let got = (try? manager.attributesOfItem(atPath: partial.path)[.size] as? Int64) ?? -1
         guard got == pin.byteCount else {
             // Wrong length is not resumable: something served a different file,
-            // or an error page. Start clean rather than append to nonsense.
+            // or an error page, or ignored the Range and sent the whole body
+            // after what was already there. Start clean rather than append to
+            // nonsense, and never leave the nonsense to be resumed from.
             try? manager.removeItem(at: partial)
             throw ModelDownloadError.sizeMismatch(expected: pin.byteCount, got: got)
         }
@@ -155,35 +184,56 @@ final class XPCFetcher: NSObject, Fetching, ModelDownloadProgressProtocol {
         connection.resume()
         defer { connection.invalidate() }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            // Resumed exactly once: an error handler and a reply can both
-            // arrive when a service dies mid-call.
-            let answered = NSLock()
-            var done = false
-            func answer(_ result: Result<Int64, Error>) {
-                answered.lock()
-                let first = !done
-                done = true
-                answered.unlock()
-                guard first else { return }
-                continuation.resume(with: result)
-            }
+        // Resumed exactly once: an error handler, an invalidation and a reply
+        // can all arrive when a service dies mid-call.
+        let answered = NSLock()
+        var done = false
+        func answer(_ continuation: CheckedContinuation<Int64, Error>, _ result: Result<Int64, Error>) {
+            answered.lock()
+            let first = !done
+            done = true
+            answered.unlock()
+            guard first else { return }
+            continuation.resume(with: result)
+        }
 
-            guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
-                answer(.failure(ModelDownloadError.transport(
-                    "the model downloader is unavailable: \(error.localizedDescription)")))
-            }) as? ModelDownloadServiceProtocol else {
-                answer(.failure(ModelDownloadError.transport(
-                    "the model downloader did not offer the expected interface")))
-                return
-            }
-            proxy.fetch(url.absoluteString, into: handle, resumingFrom: offset) { written, error in
-                if let error {
-                    answer(.failure(ModelDownloadError.transport(error)))
-                } else {
-                    answer(.success(written))
+        // CANCELLATION HAS TO CROSS THE BOUNDARY. `Task.cancel()` cannot reach
+        // another process, so without this the bytes kept flowing to
+        // completion while the UI said the download had stopped, and the
+        // manager would not start another because its state was still
+        // `.downloading`. Independent review, 2026-09-07.
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int64, Error>) in
+                connection.invalidationHandler = {
+                    answer(continuation, .failure(ModelDownloadError.transport(
+                        "the model downloader stopped before the download finished")))
+                }
+                guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
+                    answer(continuation, .failure(ModelDownloadError.transport(
+                        "the model downloader is unavailable: \(error.localizedDescription)")))
+                }) as? ModelDownloadServiceProtocol else {
+                    answer(continuation, .failure(ModelDownloadError.transport(
+                        "the model downloader did not offer the expected interface")))
+                    return
+                }
+                if Task.isCancelled {
+                    answer(continuation, .failure(CancellationError()))
+                    return
+                }
+                proxy.fetch(url.absoluteString, into: handle, resumingFrom: offset) { written, error in
+                    if let error {
+                        answer(continuation, .failure(ModelDownloadError.transport(error)))
+                    } else {
+                        answer(continuation, .success(written))
+                    }
                 }
             }
+        } onCancel: {
+            // Ask the service to stop, then tear the connection down. The
+            // invalidation handler above resumes the continuation if the reply
+            // has not already.
+            (connection.remoteObjectProxy as? ModelDownloadServiceProtocol)?.cancelActiveDownload()
+            connection.invalidate()
         }
     }
 }

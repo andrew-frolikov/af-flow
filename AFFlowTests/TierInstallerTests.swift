@@ -70,6 +70,19 @@ final class TierInstallerTests: XCTestCase {
         XCTAssertTrue(pins.contains { $0.relativePath.hasSuffix(".gguf") })
     }
 
+    /// A speech model with NO pins cannot be installed, and saying nothing
+    /// about it would report a tier as installed while its speech half is
+    /// missing. Independent review, 2026-09-07.
+    @MainActor
+    func testATierWhoseSpeechModelHasNoPinsIsNotSilentlyPartial() {
+        // Every ladder rung must be pinnable; if one stops being so, this is
+        // the test that says so rather than a friend finding out.
+        for tier in [QualityTier.starter, QualityTier.full] {
+            XCTAssertNotNil(SpeechModelCatalog.model(named: tier.speechModelID)?.pinnedFiles,
+                            "\(tier) speech model has no pins, so its tier can never fully install")
+        }
+    }
+
     // MARK: - What happens when it cannot
 
     /// A failure stops the tier, names the file, and leaves the caller able to

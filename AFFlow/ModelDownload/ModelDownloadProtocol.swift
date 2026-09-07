@@ -28,6 +28,14 @@ let modelDownloadServiceName = "com.frolikov.afflow.models"
                into handle: FileHandle,
                resumingFrom offset: Int64,
                reply: @escaping (Int64, String?) -> Void)
+
+    /// Stops an in-flight transfer and replies to the outstanding `fetch`.
+    ///
+    /// Without this, cancelling was a lie: the host's `Task.cancel()` cannot
+    /// reach across XPC, so the bytes kept flowing to completion while the UI
+    /// said the download had stopped, and the manager refused to start another
+    /// one because its state was still `.downloading`.
+    func cancelActiveDownload()
 }
 
 /// Exported by the APP so the service can report progress while it streams.

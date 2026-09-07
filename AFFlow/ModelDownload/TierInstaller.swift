@@ -43,13 +43,33 @@ final class TierInstaller {
     /// on the main thread is the defect the first-launch installer had.
     @MainActor
     static func pins(for tier: QualityTier, physicalMemory: UInt64) -> [PinnedFile] {
+        (try? pinsOrThrow(for: tier, physicalMemory: physicalMemory)) ?? []
+    }
+
+    /// The same list, but saying WHY it is short.
+    ///
+    /// A tier whose speech model has no pins cannot be installed, and the
+    /// first version returned the cleanup model alone: `install` would then
+    /// report success having fetched half a tier, and the app would sit on a
+    /// speech model that is not there. Independent review, 2026-09-07.
+    @MainActor
+    static func pinsOrThrow(for tier: QualityTier, physicalMemory: UInt64) throws -> [PinnedFile] {
         var pins: [PinnedFile] = []
-        if let speech = SpeechModelCatalog.model(named: tier.speechModelID)?.pinnedFiles {
-            pins += speech
+        guard let model = SpeechModelCatalog.model(named: tier.speechModelID) else {
+            throw ModelDownloadError.transport(
+                "the catalogue has no speech model called \(tier.speechModelID)")
         }
-        if let cleanup = TextCleanupManager.descriptor(for: tier.cleanupModel(physicalMemory: physicalMemory)) {
-            pins.append(cleanup.pinnedFile)
+        guard let speech = model.pinnedFiles, !speech.isEmpty else {
+            throw ModelDownloadError.transport(
+                "\(model.name) has no pinned files, so it cannot be downloaded")
         }
+        pins += speech
+        let kind = tier.cleanupModel(physicalMemory: physicalMemory)
+        guard let cleanup = TextCleanupManager.descriptor(for: kind) else {
+            throw ModelDownloadError.transport(
+                "the catalogue has no cleanup model for \(kind.rawValue)")
+        }
+        pins.append(cleanup.pinnedFile)
         return pins
     }
 
@@ -64,7 +84,13 @@ final class TierInstaller {
                  physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory,
                  progress: @escaping (String, Int64, Int64) -> Void) async -> TierInstallReport {
         var report = TierInstallReport()
-        let pins = await MainActor.run { Self.pins(for: tier, physicalMemory: physicalMemory) }
+        let pins: [PinnedFile]
+        do {
+            pins = try await MainActor.run { try Self.pinsOrThrow(for: tier, physicalMemory: physicalMemory) }
+        } catch {
+            report.failure = Self.explain(error, file: "the \(tier) tier")
+            return report
+        }
         for pin in pins {
             let destination = root.appendingPathComponent(pin.relativePath)
             let size = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int64) ?? nil

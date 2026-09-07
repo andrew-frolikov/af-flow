@@ -1,6 +1,12 @@
 #!/bin/bash
 # Does a REAL pinned file arrive from the REAL internet through the REAL
-# service, and does the hash check actually reject a bad one?
+# service, and do its bytes match the hash the catalogue pins?
+#
+# WHAT THIS DOES NOT DO, said plainly because the first version of this header
+# claimed it: there is no negative case here. That the hash check REJECTS bad
+# bytes is proved in `ModelDownloaderTests`, where a tampered body is staged
+# and the mismatch is seen. This script proves the positive path over the real
+# network, which no unit test can.
 #
 # `xpc-smoke.sh` proves the mechanism against localhost. This proves the whole
 # path once: HTTPS to huggingface.co, the pinned URL from

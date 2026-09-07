@@ -136,6 +136,31 @@ else
     bad "no destination file was produced"
 fi
 
+# ---- and again as a RESUME, which is the case nothing else exercises --------
+#
+# `python3 -m http.server` IGNORES `Range` and answers 200 with the whole body.
+# Verified, not assumed, on 2026-09-07. That is precisely the server the service
+# has to notice: appending a whole body after bytes already in the file
+# produces a corrupt, oversized partial. The service truncates instead, so the
+# destination must end up byte-identical to the served file even though it
+# started with 64 bytes of junk in it.
+OUT2="$WORK/client-resume.out"
+"$APP/Contents/MacOS/$MAIN_EXECUTABLE" "http://127.0.0.1:$PORT/payload.bin" 64 >"$OUT2" 2>&1
+sed 's/^/      /' "$OUT2"
+DEST2=$(sed -n 's/^destination //p' "$OUT2" | head -1)
+grep -q "^resuming from 64$" "$OUT2" \
+    || bad "the resume case did not start from the 64 bytes staged in the file"
+grep -q "^service wrote 1048576$" "$OUT2" \
+    || bad "the service did not report writing the whole body after truncating"
+if [ -n "$DEST2" ] && [ -f "$DEST2" ]; then
+    GOT2=$(shasum -a 256 "$DEST2" | cut -d' ' -f1)
+    [ "$GOT2" = "$EXPECTED_HASH" ] \
+        && say "ok    a server that IGNORES Range still produces the right bytes" \
+        || bad "resuming against a Range-ignoring server corrupted the file (got $GOT2)"
+else
+    bad "the resume case produced no file"
+fi
+
 # THE BUILD THIS RAN AGAINST IS A SECOND CLAIMANT. `build/app-derived` holds a
 # bundle carrying `com.frolikov.afflow`, and while it exists his Input
 # Monitoring grant can attach to it instead of to the app he launches: the
