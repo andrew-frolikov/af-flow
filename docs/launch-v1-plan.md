@@ -106,7 +106,7 @@ EN + RU, bundled, native Help section. Fable's draft list (Andrew edits): what i
 - The app **never** gets the network back. No exception for onboarding convenience.
 - Everything visual follows `Context/brand-visual.md`; the language statement is on-brand, "provocative in a smart way."
 - Claims never overstate: Ukrainian is not on the hero until verified. ("Report at the layer of the claim.")
-- Questions to Andrew as labelled options, recommended first. Codex reviews every phase. Tests before code; every guarantee seen failing.
+- Questions to Andrew as labelled options, recommended first. **Every phase gets one review, by a separate Claude agent running `/code-review`** (changed 2026-09-08; it was Codex). Tests before code; every guarantee seen failing.
 
 ## Open (named, with owners)
 
