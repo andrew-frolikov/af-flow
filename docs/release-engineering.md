@@ -114,7 +114,8 @@ every step past the archive.
 
 ## The version number is not read from the project, on purpose
 
-`AFFlow/Info.plist` still carries `CFBundleShortVersionString = 2.4.2`,
+`AFFlow/Info.plist` carried `CFBundleShortVersionString = 2.4.2` until
+2026-09-08, when the membership was bought and it became `1.0.0`. Historically,
 inherited from the fork this app grew out of. Shipping that number is a claim
 about a history AF Flow does not have. `release-build.sh` requires `--version`
 and refuses to run when Info.plist disagrees with it, so the mismatch is loud
