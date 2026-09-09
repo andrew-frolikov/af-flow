@@ -1,43 +1,76 @@
 # AF Flow
 
-A personal, fully local macOS dictation app for Andrew Frolikov. Hold a key, speak (English, Russian, Ukrainian, including mixed EN/RU), release, and cleaned-up text lands at the cursor in whatever app is frontmost.
+A fully local macOS dictation app. Hold a key, speak, release, and cleaned-up
+text is on your clipboard. Press Cmd-V wherever you want it.
 
-Built on a fork of an MIT licensed Swift project. The upstream author's copyright travels with the code: see [LICENSE](LICENSE) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). There is no download link and no prebuilt binary. Build it yourself from this source.
+English and Russian, including the two mixed in one sentence, which is what it
+was actually built for.
 
-## What runs locally
+**Nothing leaves your Mac.** The app has no network entitlement at all, so the
+kernel refuses every outbound connection it could attempt. That is not a policy
+in a settings pane, it is a property of the signed binary, and you can check it
+yourself:
 
-- Speech-to-text: WhisperKit, on-device.
-- Cleanup: a local LLM via LLM.swift, on-device.
-- No stored credentials, no cloud accounts, no telemetry. Nothing leaves the Mac.
-- The only network activity is a one-time, hash-verified model download from Hugging Face the first time a model is selected.
+```
+codesign -d --entitlements :- "/Applications/AF Flow.app"
+```
+
+## Install
+
+Download `AF Flow 1.0.0.dmg` from
+[Releases](../../releases), open it, and drag the app to Applications.
+
+The disk image is signed with a Developer ID certificate and notarized by
+Apple, so macOS opens it without warnings.
+
+Speech and cleanup models for the Starter tier ship inside the download, so
+dictation works the first time you open it, offline.
+
+## How it works
+
+- **Speech to text:** WhisperKit, on device.
+- **Cleanup:** a small local language model, on device, which fixes dictation
+  artefacts without rewriting how you speak.
+- **Delivery:** the clipboard. The app never types into other applications and
+  never asks for Accessibility permission, so you decide where the text lands.
+- **Bigger models:** an embedded helper service downloads them from Hugging
+  Face with pinned SHA-256 hashes. It is the only part of the bundle allowed a
+  network connection, and it writes into a file the app opens for it.
 
 ## Requirements
 
-- macOS 14.0 or later, Apple Silicon.
-- Xcode 16 or later.
+- macOS 14 or later, Apple Silicon.
+- Microphone and Input Monitoring permission, both requested on first launch.
+
+## What it does not do
+
+- **No Ukrainian yet.** It is not claimed until it has been tested against real
+  ground truth, and it has not been.
+- **No meeting transcription in 1.0.** The code is present and tested but
+  switched off; it returns in a later release.
+- **No automatic updates, no telemetry, no accounts.** Check
+  [Releases](../../releases) yourself when you want a newer version.
 
 ## Build from source
-
-This repo ships a checked-in `AFFlow.xcodeproj` (the app's internal name; branding to "AF Flow" is tracked as a later chunk). To build and run:
 
 ```
 open AFFlow.xcodeproj
 ```
 
-Then press Cmd+R in Xcode, or from the terminal:
+Then Cmd-R, or from the terminal:
 
 ```
 xcodebuild -project AFFlow.xcodeproj -scheme AFFlow build
 ```
 
-On first launch, macOS will ask for Microphone and Accessibility permissions (needed for the hotkey and for pasting text). Grant both.
+Tests need the app closed, and the wrapper enforces that:
 
-## The rules for this fork
+```
+./scripts/run-tests.sh
+```
 
-- [CLAUDE.md](CLAUDE.md) is the build contract: hard rules, the de-risk checklist, and the product spec.
-- [LOOP.md](LOOP.md) is the loop protocol used to verify each change before it lands.
-- `scripts/banned-symbol-sweep.sh` is the machine-checkable version of the hard rules. It should always exit 0.
+## Licence and attribution
 
-## License
-
-MIT. AF Flow began as a fork, and the upstream author's copyright is retained in [LICENSE](LICENSE), which is a condition of that licence, not a leftover.
+Built on a fork of an MIT licensed Swift project. The upstream author's
+copyright travels with the code: see [LICENSE](LICENSE) and
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
