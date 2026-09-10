@@ -11,7 +11,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # that cost Andrew five hours of dead hotkey (ledger 20 and 21), and the cheapest
 # way never to reason about it again is to put no bundle there at all.
 OUT="${TMPDIR:-/tmp}/afflow-audiotap-probe"
-IDENTITY="Apple Development: andriy.frolikov@gmail.com (A75XPSV5W4)"
+# Set AF_FLOW_SIGN_IDENTITY to your own signing identity.
+# `security find-identity -v -p codesigning` lists what this Mac has.
+IDENTITY="${AF_FLOW_SIGN_IDENTITY:-Apple Development}"
 
 build_variant() {
     local variant="$1"        # sandboxed | unsandboxed

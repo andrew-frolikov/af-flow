@@ -8,7 +8,7 @@ import SwiftUI
 /// already paid for their absence:
 ///
 /// 1. Every brand token is pinned to the exact value in
-///    `AndrewFrolikov OS/Context/brand-visual.md`. A colour nudged in a view
+///    the author's private brand canon. A colour nudged in a view
 ///    file is a divergence; a colour nudged here fails a test.
 /// 2. Every pair in section 7 of `docs/design/af-flow-visual-system.md` is
 ///    re-derived with the WCAG relative-luminance formula and asserted against

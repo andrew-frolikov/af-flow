@@ -303,7 +303,7 @@ Markdown into the vault plus the in-app window, per his answer.
 
 - Transcripts continue to be written by `MeetingMarkdownWriter` into date
   folders.
-- The save directory is set to a folder inside `AndrewFrolikov OS` so Claude
+- The save directory is set to a folder inside the notes vault so Claude
   sessions can read them. Exact path proposed at implementation time; the
   Settings picker already exists, so this is configuration rather than code.
 - The in-app transcript window stays as the live view during a call.

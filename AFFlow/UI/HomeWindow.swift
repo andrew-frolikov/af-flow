@@ -18,7 +18,7 @@ import SwiftUI
 ///
 /// **The look is his, not invented here.** As of 2026-08-25 it is the canonical
 /// brand: pine on warm paper, Fraunces for the app's own words and Inter for
-/// everything else, from `AndrewFrolikov OS/Context/brand-visual.md` by way of
+/// everything else, from the author's private brand canon by way of
 /// `docs/design/af-flow-visual-system.md`. It was a Georgia-against-ink lift
 /// from his report style before that, which is what this paragraph used to
 /// describe. Committing to the paper look rather than following the system

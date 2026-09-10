@@ -175,7 +175,7 @@ def main():
                     "com.frolikov.afflow.axprobe:Apple Development": [
                         {"id": "com.frolikov.afflow.axprobe"}
                     ],
-                    "/Users/andriifrolikov/.local/bin/uv": [{"id": "/Users/andriifrolikov/.local/bin/uv"}],
+                    "$HOME/.local/bin/uv": [{"id": "$HOME/.local/bin/uv"}],
                     "com.apple.Safari:auth": [{"id": "com.apple.Safari"}],
                 },
                 )

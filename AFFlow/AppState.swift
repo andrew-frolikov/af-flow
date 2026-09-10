@@ -37,7 +37,7 @@ enum AppThemeID: String, CaseIterable, Identifiable {
 }
 
 /// The brand's exact token values, from the canonical visual identity at
-/// `AndrewFrolikov OS/Context/brand-visual.md`. These are the source values;
+/// the author's private brand canon. These are the source values;
 /// nothing in the app may hardcode a colour that belongs here.
 /// Applied to this app by `docs/design/af-flow-visual-system.md`.
 enum Brand {

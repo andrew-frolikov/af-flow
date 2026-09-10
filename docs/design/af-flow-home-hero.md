@@ -1,6 +1,6 @@
 # AF Flow Home: the dark fog hero, and the first-run walkthrough that lives on it
 
-Decision document, 2026-08-25, superseding the same-day first draft in place. Written by the visual designer role; implemented by a separate agent. Companion to `af-flow-visual-system.md`, which stays authoritative for everything this document does not touch; section 12 lists exactly what it amends. The canon is `/Users/andriifrolikov/Claude/AndrewFrolikov OS/Context/brand-visual.md`.
+Decision document, 2026-08-25, superseding the same-day first draft in place. Written by the visual designer role; implemented by a separate agent. Companion to `af-flow-visual-system.md`, which stays authoritative for everything this document does not touch; section 12 lists exactly what it amends. The canon is the author's private brand canon, which is not part of this repository.
 
 Andrew saw four treatments live and chose D, the dark fog hero that looks like his website. Shown the measurement that centred text over the website's scrim can fall to 1.76:1, he chose to keep the centred composition and fix it with a soft plate. He then expanded the surface: on first run, Home itself walks a new user through setup, over the fog, in his style, and collapses into the compact Home when setup completes, with the shortcut chosen by the user as a step of that walkthrough. Those four decisions are his and are not reopened here; this document makes them excellent.
 

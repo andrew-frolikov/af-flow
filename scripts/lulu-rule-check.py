@@ -294,15 +294,15 @@ def selftest():
                   "port": "443", "path": here}]},
              EXIT_FINDINGS)
 
-        # 5. THE SUBSTRING TRAP. His home directory is /Users/andriifrolikov,
+        # 5. THE SUBSTRING TRAP. His home directory is $HOME,
         #    so ten of the 228 keys in his real database contain "frolikov"
         #    and only three are his app. A checker matching a substring calls
         #    uv and dota2 findings and trains him to ignore it.
         proc = case("5. 'frolikov' in a home path -> clean, it is not the family",
-                    {"/Users/andriifrolikov/.local/bin/uv": [
-                        {"id": "/Users/andriifrolikov/.local/bin/uv", "path": here}],
-                     "/Users/andriifrolikov/Library/Application Support/Steam/dota2.app": [
-                        {"id": "/Users/andriifrolikov/.../dota2.app", "path": here}]},
+                    {"$HOME/.local/bin/uv": [
+                        {"id": "$HOME/.local/bin/uv", "path": here}],
+                     "$HOME/Library/Application Support/Steam/dota2.app": [
+                        {"id": "$HOME/.../dota2.app", "path": here}]},
                     EXIT_CLEAN)
 
         # 6. A bundle id that merely STARTS with the family string but is a

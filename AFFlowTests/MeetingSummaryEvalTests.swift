@@ -18,7 +18,7 @@ import XCTest
 ///
 /// Run it:
 ///     AF_FLOW_SUMMARY_EVALS=1 \
-///     AF_FLOW_MEETING_NOTES="$HOME/Claude/AndrewFrolikov OS/Meetings" \
+///     AF_FLOW_MEETING_NOTES="$HOME/Notes/Meetings" \
 ///     ./scripts/run-tests.sh -only-testing:AFFlowTests/MeetingSummaryEvalTests
 final class MeetingSummaryEvalTests: XCTestCase {
 

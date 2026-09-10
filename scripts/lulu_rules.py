@@ -9,7 +9,7 @@ matched a substring. So both import this, and neither spells the rule itself.
 
 THE SUBSTRING TRAP, which cost a wrong answer on 2026-08-29. Ten of the 228
 keys in his database contain the string "frolikov", because his home directory
-is `/Users/andriifrolikov`: uv, a git-remote-http under the Codex cache, the
+is `$HOME`: uv, a git-remote-http under the Codex cache, the
 Victoria 3 crash reporter, dota2, a Claude version. Exactly three are his app.
 Matching is therefore on the SIGNING IDENTIFIER, with an exact boundary, never
 on a substring of the key.
