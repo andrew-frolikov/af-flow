@@ -4,7 +4,7 @@ Andrew reads the scripts aloud via AF Flow into the target app. Read naturally, 
 
 **Provenance, recorded 2026-07-20.** Every script below was written by an agent in commit `bf50e10`, the initial workspace-setup pass on 2026-07-18. Andrew did not author or dictate any of them. They are usable for measuring raw transcription accuracy, because scoring needs a fixed reference text and any fixed text provides one. They are NOT samples of his register and must never be described as such. LOOP.md previously claimed they were "written in Andrew's own voice"; that claim was false and has been corrected there.
 
-Scope, amended 2026-07-18 on measured usage data and applied here 2026-07-19: v1 is English plus Russian plus mixed RU/EN. Ukrainian is out of v1, so T3 and T4 have moved to the post-v1 section at the bottom and neither gates any chunk. The v1 set is T1, T2, T5, T6, T7, T8, T9, T10.
+Scope, set 2026-07-18 and applied here 2026-07-19: v1's AUTO-DETECT is tuned and tested for English, Russian and the two mixed. Any other language is dictated by choosing it explicitly in Settings, which the language control already offers. T3 and T4 test auto-detect beyond that pair, so they sit in the later section at the bottom and neither gates any chunk. The v1 set is T1, T2, T5, T6, T7, T8, T9, T10.
 
 ## T1 English brain-dump (60s, core loop)
 Read into Claude desktop:
@@ -55,15 +55,15 @@ PENDING CALIBRATION. Both reference points were chosen before any usage data exi
 ## T10 Stability
 Reboot: app auto-starts, hotkey works without re-granting permissions. Wi-Fi OFF: everything still works (proves local). Full day of normal use: no crash, no leaked clipboard content, history shows entries and they are local files only.
 
-## Post-v1: Ukrainian
+## Later: widening auto-detect
 
-Moved out of v1 on 2026-07-18 by Andrew, on measured evidence: 874 English, 332 Russian and zero Ukrainian. Neither test below gates any v1 chunk, and T4 is explicitly no longer a binding condition on the C1 tripwire.
+Auto-detect ships tuned for one pair, so these two tests do not gate any v1 chunk and T4 is not a binding condition on the C1 tripwire. Explicit selection is unaffected and works today.
 
-**Caveat, 2026-07-19, awaiting Andrew's ratification.** The completed extraction showed that count covers a 28-day window rather than his full history, and Wispr's `config.json` lists `uk` among his used languages. The zero is windowed, not lifetime. The removal stands until he decides otherwise, but if he restores Ukrainian these two tests come back with it, T4 as a binding condition.
+**Note, 2026-07-19.** The usage figures behind the original scoping covered a 28-day window rather than a full history, so they were never a lifetime measure and should not be quoted as one. Widening auto-detect is a testing question, not a settled exclusion: when a language is verified against real ground truth these two tests come back with it, T4 as a binding condition.
 
-These are kept verbatim rather than deleted because Ukrainian is a wanted later capability and the force-language control still ships in v1, which is what makes adding it cheap. When Ukrainian returns, both tests return with it, and T4 returns as a binding condition: the single Bulgarian misdetection in the real data says Slavic language confusion is a genuine risk, not a hypothetical one.
+These are kept verbatim rather than deleted because widening auto-detect is wanted, and the force-language control already ships, which is what makes it cheap. T4 returns as a binding condition when they do: a single Bulgarian misdetection in the real data says Slavic language confusion is a genuine risk rather than a hypothetical one.
 
-### T3 Ukrainian clip (~30s), post-v1
+### T3 Ukrainian clip (~30s), for widening auto-detect
 Read into TextEdit:
 "Отже, коротка думка щодо навчання. Хочу цього тижня пройти ще один модуль по агентних системах і зробити нотатки у вологому вигляді, тобто, ні, стривай, у робочому вигляді, начисто. І ще треба відповісти рекрутеру з Торонто."
 PASS: output is Ukrainian (NOT Russian), the self-correction resolved to the corrected version.

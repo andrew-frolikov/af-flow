@@ -400,11 +400,13 @@ final class ModelManager: ObservableObject {
         }
     }
 
-    /// The languages AF Flow's v1 supports, and the only ones he dictates in.
+    /// The languages AUTO-DETECT is tuned and tested for.
     ///
-    /// Ukrainian is deliberately absent: Andrew removed it from v1 on
-    /// 2026-07-18 on measured evidence, and adding it here would reopen the
-    /// three-way confusion this restriction exists to close.
+    /// This is not the list of languages the app can transcribe. It is the list
+    /// auto-detect will choose BETWEEN, kept to a verified pair because a wider
+    /// candidate set reopens the Slavic confusion this restriction exists to
+    /// close. Any other language, Ukrainian included, is dictated by selecting
+    /// it in Settings, and that path is unrestricted.
     static let supportedAutoDetectLanguages = ["en", "ru"]
 
     /// His measured prior, from 1220 real dictations in the Wispr archive:

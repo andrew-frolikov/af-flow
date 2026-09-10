@@ -36,10 +36,11 @@ final class HomeWindowLanguageSummaryTests: XCTestCase {
         XCTAssertEqual(parts.count, ModelManager.supportedAutoDetectLanguages.count)
     }
 
-    /// Ukrainian is out of v1 and must not appear. This pins the actual list
-    /// rather than only its length, so a wrong-but-same-sized allowlist fails.
-    func testUkrainianIsNotOffered() {
-        XCTAssertFalse(AFFlowHomeView.languageSummary.contains("Ukrainian"))
+    /// Pins the ACTUAL auto-detect list rather than only its length, so a
+    /// wrong-but-same-sized allowlist fails. Asserted positively: the summary
+    /// names exactly the two languages auto-detect is tuned for.
+    func testTheSummaryNamesExactlyTheTunedPair() {
+        XCTAssertEqual(AFFlowHomeView.languageSummary, "English, Russian")
         XCTAssertEqual(ModelManager.supportedAutoDetectLanguages, ["en", "ru"])
     }
 }

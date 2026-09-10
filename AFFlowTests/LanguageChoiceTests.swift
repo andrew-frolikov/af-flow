@@ -94,9 +94,10 @@ final class LanguageChoiceTests: XCTestCase {
         )
     }
 
-    /// Ukrainian is out of v1 by his decision, so it must not become selectable by
-    /// accident through the reported-language door either.
-    func testUkrainianIsNotSelectable() {
+    /// Auto-detect must not widen by accident through the reported-language
+    /// door: a language outside the tuned pair is answered from the pair, not
+    /// adopted because the model reported it.
+    func testAutoDetectDoesNotWidenThroughTheReportedLanguageDoor() {
         XCTAssertFalse(ModelManager.supportedAutoDetectLanguages.contains("uk"))
         XCTAssertEqual(
             ModelManager.restrictedLanguage(probabilities: ["uk": -0.01], reportedLanguage: "uk"),

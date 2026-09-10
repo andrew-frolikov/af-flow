@@ -1,44 +1,55 @@
-import Carbon.HIToolbox
 import Cocoa
 import ApplicationServices
-import CoreGraphics
 
 /// Represents a saved clipboard state, preserving all pasteboard items with all type representations.
 struct ClipboardState {
     let data: [[(NSPasteboard.PasteboardType, Data)]]
 }
 
+/// How delivery went. **Every case here is reachable.**
+///
+/// `.pasted` and `.blockedBySecureInput` were removed on 2026-09-09 with the
+/// insertion path that produced them. A case nothing can return is worse than
+/// no case at all: it survives exhaustiveness checking, so the compiler helps
+/// hide it, and every reader has to work out for themselves that the arm is
+/// unreachable before they can trust the ones that are not.
 enum PasteResult: Equatable {
-    case pasted
     case copiedToClipboard
     /// The clipboard write itself failed, so his words did not arrive anywhere.
     /// Its own case because reporting it as success is the one outcome worse
     /// than failing: the clipboard is now the only copy there is.
     case deliveryFailed
-    /// Secure Input is active, so no keystroke this app posts can reach the
-    /// focused field. The text is on the clipboard and he can paste it himself.
-    case blockedBySecureInput
 
     /// What the log says. Each case names the consequence rather than the state,
     /// because the reader of that line is trying to explain something he just saw
     /// happen on screen.
     var logDescription: String {
         switch self {
-        case .pasted:
-            return "landed in the focused field"
         case .copiedToClipboard:
             return "is on the clipboard, ready for Cmd-V"
         case .deliveryFailed:
             return "COULD NOT BE PUT ON THE CLIPBOARD. The words are lost"
-        case .blockedBySecureInput:
-            return "was blocked by Secure Input, so the text is on the clipboard only"
         }
     }
 }
 
-/// Pastes transcribed text into the focused text field by simulating Cmd+V.
-/// Saves and restores the clipboard around the paste operation to avoid clobbering user data.
-/// Requires Accessibility permission for CGEvent posting.
+/// Puts the transcript on the clipboard.
+///
+/// **DELIVERY needs no permission: it does not simulate Cmd-V.** Writing to
+/// `NSPasteboard` is unprivileged. The name is older than the behaviour, which
+/// changed on 2026-08-05 when Andrew asked to press Cmd-V himself so he could
+/// choose the destination field; the machinery was deleted on 2026-09-09.
+///
+/// **The CLASS is not permission-free, and saying so was an overstatement an
+/// independent review caught the same day.** `paste` also calls
+/// `pasteSessionProvider`, which by default is
+/// `FocusedElementLocator.capturePasteSession` and reaches for
+/// `AXUIElementCreateApplication`. That is post-paste learning, not delivery:
+/// under the sandbox it returns nothing and degrades silently, and the words
+/// still land on the clipboard either way. The distinction matters because
+/// "requires Accessibility" was the false claim that made the App Store look
+/// closed when it was not, and replacing it with "needs no permission at all"
+/// was the same error pointing the other way.
 final class TextPaster {
     typealias PasteSessionProvider = @Sendable (String, Date) -> PasteSession?
     typealias PasteScheduler = (TimeInterval, @escaping () -> Void) -> Void
@@ -85,60 +96,28 @@ final class TextPaster {
 
     // MARK: - Timing Constants
 
-    /// Delay after writing text to clipboard before simulating Cmd+V.
-    static let preKeystrokeDelay: TimeInterval = 0.05
-
-    /// Delay after simulating Cmd+V before restoring the original clipboard.
-    static let postKeystrokeDelay: TimeInterval = 0.1
-
     // MARK: - Virtual Key Codes
 
-    private static let vKeyCode: CGKeyCode = 0x09
     var onPaste: ((PasteSession) -> Void)?
     var onPasteStart: (() -> Void)?
     var onPasteEnd: (() -> Void)?
 
     private let pasteSessionProvider: PasteSessionProvider
     private let pasteboard: NSPasteboard
-    private let pastePreflight: () -> PastePreflight
-    private let prepareCommandV: () -> (() -> Void)?
     private let schedule: PasteScheduler
-    /// Whether the system is in Secure Input mode. Injected like every other
-    /// seam in this class rather than being a mutable property set afterwards.
-    private let isSecureInputEnabled: () -> Bool
 
-    /// - Parameter canPasteIntoFocusedElement: Overrides the Accessibility preflight with a
-    ///   definite answer. `nil` uses the real preflight, which can also report that it could not
-    ///   tell.
-    /// - Parameter pastePreflightOverride: Overrides the preflight with any of its three answers,
-    ///   including `.focusUnknown`. `canPasteIntoFocusedElement` cannot express that third state,
-    ///   and `.focusUnknown` is the one the 2026-08-05 outage lived in, so it needs a seam of its
-    ///   own. Takes precedence over `canPasteIntoFocusedElement` when both are given.
     init(
         pasteboard: NSPasteboard = .general,
-        canPasteIntoFocusedElement: (() -> Bool)? = nil,
-        pastePreflightOverride: (() -> PastePreflight)? = nil,
-        prepareCommandV: @escaping () -> (() -> Void)? = { TextPaster.defaultCommandVPasteAction() },
         pasteSessionProvider: @escaping PasteSessionProvider = { text, date in
             FocusedElementLocator().capturePasteSession(for: text, at: date)
         },
         schedule: @escaping PasteScheduler = { delay, action in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
-        },
-        isSecureInputEnabled: @escaping () -> Bool = { IsSecureEventInputEnabled() }
+        }
     ) {
         self.pasteboard = pasteboard
-        if let pastePreflightOverride {
-            self.pastePreflight = pastePreflightOverride
-        } else if let canPasteIntoFocusedElement {
-            self.pastePreflight = { canPasteIntoFocusedElement() ? .focusedInputAvailable : .noFocusedInput }
-        } else {
-            self.pastePreflight = { FocusedElementLocator().pastePreflight() }
-        }
-        self.prepareCommandV = prepareCommandV
         self.pasteSessionProvider = pasteSessionProvider
         self.schedule = schedule
-        self.isSecureInputEnabled = isSecureInputEnabled
     }
 
     // MARK: - Clipboard Operations
@@ -237,11 +216,15 @@ final class TextPaster {
     /// undo an insertion that no longer happens, and it would now overwrite the
     /// one copy of what he just said.
     ///
-    /// The preflight, the Cmd-V event, and the Secure Input branch are all
-    /// deliberately still here and are deliberately no longer consulted for the
-    /// insertion decision. Deleting them is the next commit, after he has used
-    /// this for a day and confirmed he wants it. Reversing a behaviour is cheap;
-    /// reversing a deletion of the code that implemented it is not.
+    /// The preflight, the Cmd-V event and the Secure Input branch were kept
+    /// here unconsulted for a month so the behaviour could be reversed cheaply.
+    /// He shipped v1.0.0 on this behaviour, so they were DELETED on 2026-09-09.
+    /// That also removes the app's only `CGEvent.post`, which matters beyond
+    /// tidiness: posting synthetic events is the `PostEvent` privilege, and it
+    /// is what App Review has cited Guideline 2.4.5 against. DELIVERY is now
+    /// the pasteboard and nothing else; the class still captures a paste
+    /// session for post-paste learning, which is an Accessibility read and is
+    /// inert under the sandbox.
     ///
     /// - Parameter text: The transcript to make available.
     func paste(text: String) -> PasteResult {
@@ -632,21 +615,4 @@ final class TextPaster {
         return true
     }
 
-    // MARK: - Key Simulation
-
-    private static func defaultCommandVPasteAction() -> (() -> Void)? {
-        let source = CGEventSource(stateID: .hidSystemState)
-        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: Self.vKeyCode, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: Self.vKeyCode, keyDown: false) else {
-            return nil
-        }
-
-        keyDown.flags = .maskCommand
-        keyUp.flags = .maskCommand
-
-        return {
-            keyDown.post(tap: .cghidEventTap)
-            keyUp.post(tap: .cghidEventTap)
-        }
-    }
 }

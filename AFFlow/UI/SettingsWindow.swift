@@ -1464,11 +1464,11 @@ struct SettingsView: View {
                             SpeechModelCatalog.model(named: appState.speechModel)?.automaticLanguageLabel
                                 ?? "Auto-detect"
                         ).tag("auto")
-                        // Andrew's own languages first, ordered by measured use:
-                        // English 72 percent, Russian 27 percent. Ukrainian is
-                        // not in v1's test set but the control offers it, since
-                        // the plumbing already exists and it is what makes
-                        // adding Ukrainian later cheap.
+                        // The two auto-detect is tuned for come first, then
+                        // everything else. Every entry here works when picked
+                        // explicitly; the restriction in
+                        // `supportedAutoDetectLanguages` governs only what
+                        // auto-detect chooses between.
                         Text("English").tag("en")
                         Text("Russian").tag("ru")
                         Text("Ukrainian").tag("uk")

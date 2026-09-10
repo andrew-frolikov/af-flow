@@ -100,6 +100,21 @@ case "$BUILD_CONFIG_STATUS" in
 esac
 
 echo
+echo "### Does anything type for him, or listen with a tap that could modify?"
+# Added 2026-09-09. Two properties no compiler or test notices being broken:
+# nothing posts a synthetic event, and every tap is .listenOnly. The first is
+# his product decision of 2026-08-05 and the second is what keeps the app
+# inside the sandbox, which is what keeps the Mac App Store reachable.
+SYNTHETIC_OUT=$(python3 scripts/no-synthetic-events-check.py 2>&1)
+SYNTHETIC_STATUS=$?
+printf '%s\n' "$SYNTHETIC_OUT"
+case "$SYNTHETIC_STATUS" in
+    0) : ;;
+    2) echo ">>> COULD NOT CHECK. Source that cannot be read is not source that is clean." ;;
+    *) echo ">>> ACT ON THIS. This decides both his paste behaviour and App Store eligibility." ;;
+esac
+
+echo
 echo "### Does every spec line say who decided it"
 python3 scripts/spec-provenance-check.py 2>&1
 

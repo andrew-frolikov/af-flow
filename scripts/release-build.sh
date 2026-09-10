@@ -290,11 +290,19 @@ python3 scripts/build-config-check-selftest.py >/dev/null 2>&1 \
 python3 scripts/af_installed_app_selftest.py >/dev/null 2>&1 \
     || fail "scripts/af_installed_app_selftest.py does not pass. The cleanup
 below decides which bundle keeps his microphone grant." 2
-echo "ok    all three selftests pass"
+python3 scripts/no-synthetic-events-check-selftest.py >/dev/null 2>&1 \
+    || fail "scripts/no-synthetic-events-check-selftest.py does not pass. The
+gate below is only worth running if it can still fail." 2
+echo "ok    all four selftests pass"
 
 say "step 0b: the build settings a release depends on"
 python3 scripts/build-config-check.py || fail "the build configuration is not
 release-ready. Nothing below would fix it." 1
+
+say "step 0b2: nothing types for him, and every tap is listen-only"
+python3 scripts/no-synthetic-events-check.py || fail "this build would either
+type for him, which he asked us to stop doing on 2026-08-05, or listen with a
+tap that can modify events, which takes the app out of the App Sandbox." 1
 
 say "step 0c: is there a Developer ID Application certificate"
 SHIPPABLE=1

@@ -1764,8 +1764,9 @@ class AppState: ObservableObject {
             // without anyone noticing it reached no message at all: an `==`
             // gives no exhaustiveness warning, so the new case silently fell
             // through and the text still vanished without explanation, which is
-            // the exact failure the case was added to end. A switch makes the
-            // next result impossible to add silently.
+            // the exact failure the case was added to end. That case is gone
+            // with the insertion path (2026-09-09) but the switch stays: it is
+            // what makes the NEXT result impossible to add silently.
             // LOGGED, because until 2026-08-02 this path said nothing at all.
             //
             // He reported "it pasted the text two times" and the paste path could not
@@ -1779,8 +1780,6 @@ class AppState: ObservableObject {
                 message: "Paste \(pasteResult.logDescription) for \(finalText.count) characters."
             )
             switch pasteResult {
-            case .pasted:
-                break
             case .copiedToClipboard:
                 // The normal, successful outcome since 2026-08-05. The overlay
                 // is his READY SIGNAL, not a fallback notice: it is how he knows
@@ -1794,8 +1793,6 @@ class AppState: ObservableObject {
                     category: .hotkey,
                     message: "RAW clipboard write FAILED. His dictation did not reach the clipboard."
                 )
-            case .blockedBySecureInput:
-                showSecureInputBlockedMessage()
             }
         }
 
@@ -1895,20 +1892,6 @@ class AppState: ObservableObject {
     func cleanedTranscription(_ text: String) async -> String {
         let result = await cleanedTranscriptionResult(text, windowContext: nil)
         return result.text
-    }
-
-    /// Shown longer than the ordinary clipboard fallback: Secure Input is held
-    /// by another app, usually Terminal's sticky "Secure Keyboard Entry", and he
-    /// needs time to read a cause he cannot otherwise see.
-    private func showSecureInputBlockedMessage() {
-        overlay.show(message: .secureInputBlocked)
-        debugLogStore.record(
-            category: .cleanup,
-            message: "Paste refused: Secure Input is active somewhere on the system, so no synthetic keystroke can land. Text left on the clipboard."
-        )
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { [weak self] in
-            self?.overlay.dismiss(ifShowing: .secureInputBlocked)
-        }
     }
 
     private func showClipboardFallbackMessage() {

@@ -169,40 +169,22 @@ final class TextPasterTests: XCTestCase {
         pasteboard.releaseGlobally()
     }
 
-    func testPasteLeavesTranscriptOnClipboardWhenFocusedInputIsUnavailable() {
-        let pasteboard = NSPasteboard.withUniqueName()
-        pasteboard.clearContents()
-        pasteboard.setString("original content", forType: .string)
-
-        var scheduledActions = 0
-        let paster = TextPaster(
-            pasteboard: pasteboard,
-            canPasteIntoFocusedElement: { false },
-            prepareCommandV: {
-                XCTFail("prepareCommandV should not be called when no focused input is available")
-                return nil
-            },
-            schedule: { _, _ in
-                scheduledActions += 1
-            }
-        )
-
-        let result = paster.paste(text: "new content")
-
-        XCTAssertEqual(result, .copiedToClipboard)
-        XCTAssertEqual(pasteboard.string(forType: .string), "new content")
-        XCTAssertEqual(scheduledActions, 0)
-
-        pasteboard.releaseGlobally()
-    }
-
     // MARK: - Clipboard only, Andrew's decision of 2026-08-05
 
     /// THE CONTRACT CHANGED. Auto-insertion was in the spec from 2026-07-18;
     /// asked directly after three days of the paste refusing, he said he wants
-    /// to press Cmd-V himself so that HE chooses the field. So no keystroke is
-    /// posted, ever, even when a focused text input is sitting right there.
-    func testNoKeystrokeIsPostedEvenWithAConfirmedFocusedInput() {
+    /// to press Cmd-V himself so that HE chooses the field.
+    ///
+    /// **This test no longer proves the "no keystroke" half**, and says so
+    /// rather than keeping a name that implies it does. It used to inject a
+    /// `prepareCommandV` closure that failed if called; the closure, and the
+    /// code behind it, were deleted on 2026-09-09, so there is nothing left to
+    /// spy on. What it still proves is the positive half: delivery IS the
+    /// clipboard write, and nothing is deferred to a later keystroke. The
+    /// absence half is enforced at build time instead, by
+    /// `scripts/no-synthetic-events-check.py`, which is a stronger guarantee
+    /// because it also fails on a reintroduction this file would never see.
+    func testDeliveryIsTheClipboardWriteAndNothingIsDeferred() {
         let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
         pasteboard.setString("original content", forType: .string)
@@ -210,11 +192,6 @@ final class TextPasterTests: XCTestCase {
         var scheduledActions = 0
         let paster = TextPaster(
             pasteboard: pasteboard,
-            canPasteIntoFocusedElement: { true },
-            prepareCommandV: {
-                XCTFail("AF Flow no longer types for him. He presses Cmd-V himself.")
-                return nil
-            },
             schedule: { _, _ in scheduledActions += 1 }
         )
 
@@ -238,8 +215,6 @@ final class TextPasterTests: XCTestCase {
 
         let paster = TextPaster(
             pasteboard: pasteboard,
-            canPasteIntoFocusedElement: { true },
-            prepareCommandV: { {} },
             schedule: { _, action in action() }
         )
 
@@ -260,8 +235,6 @@ final class TextPasterTests: XCTestCase {
         var captured: PasteSession?
         let paster = TextPaster(
             pasteboard: pasteboard,
-            canPasteIntoFocusedElement: { true },
-            prepareCommandV: { {} },
             pasteSessionProvider: { text, date in
                 PasteSession(
                     pastedText: text,
@@ -294,7 +267,7 @@ final class TextPasterTests: XCTestCase {
         let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
 
-        let paster = TextPaster(pasteboard: pasteboard, canPasteIntoFocusedElement: { true })
+        let paster = TextPaster(pasteboard: pasteboard)
         _ = paster.paste(text: "the previous dictation")
         XCTAssertEqual(pasteboard.string(forType: .string), "the previous dictation")
 
@@ -311,7 +284,7 @@ final class TextPasterTests: XCTestCase {
         let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
 
-        let paster = TextPaster(pasteboard: pasteboard, canPasteIntoFocusedElement: { true })
+        let paster = TextPaster(pasteboard: pasteboard)
         _ = paster.paste(text: "the previous dictation")
 
         pasteboard.clearContents()
@@ -329,7 +302,7 @@ final class TextPasterTests: XCTestCase {
         let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
 
-        let paster = TextPaster(pasteboard: pasteboard, canPasteIntoFocusedElement: { true })
+        let paster = TextPaster(pasteboard: pasteboard)
         _ = paster.paste(text: "the previous dictation")
         XCTAssertTrue(paster.clearStaleDictationFromClipboard())
 
@@ -347,7 +320,7 @@ final class TextPasterTests: XCTestCase {
         pasteboard.clearContents()
         pasteboard.setString("his existing clipboard", forType: .string)
 
-        let paster = TextPaster(pasteboard: pasteboard, canPasteIntoFocusedElement: { true })
+        let paster = TextPaster(pasteboard: pasteboard)
 
         XCTAssertFalse(paster.clearStaleDictationFromClipboard())
         XCTAssertEqual(pasteboard.string(forType: .string), "his existing clipboard")
@@ -362,41 +335,6 @@ final class TextPasterTests: XCTestCase {
         // the method returns a Bool without crashing.
         _ = TextPaster.frontmostAppHasPasteMenuItem()
     }
-    // MARK: - Secure Input
-
-    /// While a password field anywhere on the system holds Secure Input, the
-    /// window server silently swallows every synthetic keystroke. Cmd-V is
-    /// posted, nothing happens, and his dictation disappears with no message
-    /// and no way to guess why. The product spec asked for this check by name
-    /// and it had never been written.
-    /// Secure Input blocks SYNTHETIC keystrokes, and there are no longer any.
-    /// His own Cmd-V is a real keypress and is unaffected, so the state that
-    /// used to be a blocking failure is now simply not this app's problem: the
-    /// transcript reaches the clipboard exactly as it always does.
-    func testSecureInputNoLongerBlocksAnythingBecauseNothingIsTyped() {
-        let pasteboard = NSPasteboard.withUniqueName()
-        pasteboard.clearContents()
-        pasteboard.setString("original content", forType: .string)
-
-        let paster = TextPaster(
-            pasteboard: pasteboard,
-            canPasteIntoFocusedElement: { true },
-            prepareCommandV: {
-                XCTFail("Nothing is ever typed, with or without Secure Input.")
-                return nil
-            },
-            schedule: { _, _ in },
-            isSecureInputEnabled: { true }
-        )
-
-        let result = paster.paste(text: "his dictated words")
-
-        XCTAssertEqual(result, .copiedToClipboard)
-        XCTAssertEqual(pasteboard.string(forType: .string), "his dictated words")
-
-        pasteboard.releaseGlobally()
-    }
-
     // MARK: - Clipboard preservation size limit
 
     /// Clipboard preservation runs between him releasing the key and his text
@@ -490,7 +428,7 @@ final class TextPasterTests: XCTestCase {
         let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
 
-        let paster = TextPaster(pasteboard: pasteboard, canPasteIntoFocusedElement: { true })
+        let paster = TextPaster(pasteboard: pasteboard)
         _ = paster.paste(text: "the same words")
 
         // He copies the very same string himself. Content matches; ownership does not.
@@ -510,7 +448,7 @@ final class TextPasterTests: XCTestCase {
         let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
 
-        let paster = TextPaster(pasteboard: pasteboard, canPasteIntoFocusedElement: { true })
+        let paster = TextPaster(pasteboard: pasteboard)
         _ = paster.paste(text: "the words he has not pasted yet")
         XCTAssertTrue(paster.clearStaleDictationFromClipboard())
         XCTAssertNil(pasteboard.string(forType: .string))
@@ -527,7 +465,7 @@ final class TextPasterTests: XCTestCase {
         let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
 
-        let paster = TextPaster(pasteboard: pasteboard, canPasteIntoFocusedElement: { true })
+        let paster = TextPaster(pasteboard: pasteboard)
         _ = paster.paste(text: "the previous dictation")
         XCTAssertTrue(paster.clearStaleDictationFromClipboard())
 
@@ -545,7 +483,7 @@ final class TextPasterTests: XCTestCase {
         let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
 
-        let paster = TextPaster(pasteboard: pasteboard, canPasteIntoFocusedElement: { true })
+        let paster = TextPaster(pasteboard: pasteboard)
         _ = paster.paste(text: "dictation one")
         XCTAssertTrue(paster.clearStaleDictationFromClipboard())
         _ = paster.paste(text: "dictation two")
@@ -563,7 +501,7 @@ final class TextPasterTests: XCTestCase {
         let pasteboard = RefusingPasteboard.withUniqueName() as! RefusingPasteboard
         pasteboard.clearContents()
 
-        let paster = TextPaster(pasteboard: pasteboard, canPasteIntoFocusedElement: { true })
+        let paster = TextPaster(pasteboard: pasteboard)
         let result = paster.paste(text: "his dictated words")
 
         XCTAssertEqual(result, .deliveryFailed, "A write that did not land must not report success.")

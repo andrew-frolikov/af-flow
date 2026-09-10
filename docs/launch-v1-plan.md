@@ -23,7 +23,7 @@
 | Copy-to-AI data | **Status only**: app + macOS versions, permission states, Globe-key state, hotkey config, models present with sizes, key settings, releases URL. Never a word of user text, never log content. Pinned by a redaction test seen failing. |
 | Home widget | **Status-aware card.** Healthy: one quiet line ("Everything working · Full tier · v1.0"). Broken: expands, names the problem in plain words, big "Copy for your AI" button + "Fix it myself" deep link to the exact System Settings pane. Onboarding is resumable from it. |
 | FAQ | **Native Help section in the sidebar, EN + RU**, content bundled in the app, on brand. Fix-something answers end with the copy-to-AI affordance. Short copy in the README. |
-| Language hero claim | **EN + RU + mixed now; Ukrainian gated.** UK ships behind the language restriction switch and joins the hero only when it passes real dictation tests against Andrew's ground truth. The hero never claims what is not verified. |
+| Language hero claim | **EN + RU + mixed now.** The hero names what auto-detect is verified for. Other languages ship selectable in Settings and join the hero as each passes real dictation tests against ground truth. The hero never claims what is not verified. |
 
 ## Inputs
 
@@ -73,7 +73,7 @@ Welcome → microphone → Input Monitoring → Globe key ("set it to Do Nothing
 2. The language statement — the niche claim, creative direction from Fable, Opus implements:
    - **Concept: one sentence that does the thing it claims.** A single dictated sentence rendered large, switching EN→RU mid-flow the way Andrew actually speaks, set in Inter (full Cyrillic), with the switch points marked by the pine `--signal` dot from the brand mark. Beneath it, one quiet line: *"English, Russian, and the way you actually mix them."*
    - Provocative-but-smart register: the provocation is the demonstration, not an insult to competitors. Candidate second line, RU surface: *«Код-свитчинг — это не баг».* Final copy chosen with Andrew at implementation.
-   - Ukrainian appears the day it passes verification, not before; leave the layout able to take a third language without redesign.
+   - A language joins the hero the day it passes verification, not before; leave the layout able to take a third without redesign.
 
 ### Phase 7 — The copy-to-AI composer
 
@@ -105,7 +105,7 @@ EN + RU, bundled, native Help section. Fable's draft list (Andrew edits): what i
 
 - The app **never** gets the network back. No exception for onboarding convenience.
 - Everything visual follows `Context/brand-visual.md`; the language statement is on-brand, "provocative in a smart way."
-- Claims never overstate: Ukrainian is not on the hero until verified. ("Report at the layer of the claim.")
+- Claims never overstate: a language reaches the hero only once verified. ("Report at the layer of the claim.")
 - Questions to Andrew as labelled options, recommended first. **Every phase gets one review, by a separate Claude agent running `/code-review`** (changed 2026-09-08; it was Codex). Tests before code; every guarantee seen failing.
 
 ## Open (named, with owners)
@@ -115,5 +115,5 @@ EN + RU, bundled, native Help section. Fable's draft list (Andrew edits): what i
 3. **Helper bundle id vs the LuLu family checker** — `lulu-rule-check.py` (2026-08-29) enforces *no rule for the family*. A family-id helper that legitimately uses the network will earn a LuLu rule on Andrew's Mac and trip the checker. Decide: helper id outside the family, or amend the checker to allow exactly one scoped rule for exactly the helper id. Andrew decides on Opus's written trade-off, Phase 4.
 4. **Helper write path** — app group container vs non-sandboxed helper. Opus decides and documents, Phase 4.
 5. **Apple Developer purchase** — Andrew, before Phase 1's signing steps. Build and everything else proceed without it.
-6. **Ukrainian verification data** — Andrew records ground truth; gates the UK claim, not the launch.
+6. **Verification data for a third language** — Andrew records ground truth; gates the hero claim, not the launch.
 7. **FAQ final copy** — Fable's list above; Andrew edits during Phase 8.
