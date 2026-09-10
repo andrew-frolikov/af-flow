@@ -44,8 +44,6 @@ dictation works the first time you open it, offline.
 
 ## What it does not do
 
-- **No Ukrainian yet.** It is not claimed until it has been tested against real
-  ground truth, and it has not been.
 - **No meeting transcription in 1.0.** The code is present and tested but
   switched off; it returns in a later release.
 - **No automatic updates, no telemetry, no accounts.** Check
