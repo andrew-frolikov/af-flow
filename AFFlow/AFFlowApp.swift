@@ -95,21 +95,25 @@ struct AFFlowApp: App {
                 // OFF THE MAIN THREAD. A first launch copies about a gigabyte
                 // and hashes 532 MB; doing that inside `.onAppear` froze the
                 // menu bar for the whole of it (independent review,
-                // 2026-09-06). The ordering this relies on: a fresh install has
-                // onboarding still to do, so nothing asks for a model until
-                // the copy is long finished; a machine with onboarding done
-                // already has its models and the walk is a handful of stats.
-                // The one gap, onboarding done but models deleted by hand, was
-                // a blocked download before this existed and is a blocked
-                // download followed by a working retry now.
-                Task.detached(priority: .utility) {
-                    let starter = StarterModelInstaller.installBundledModels()
+                // 2026-09-06). The ordering is ENFORCED, not assumed: every
+                // launch-type speech-model load awaits this task through
+                // `AppState.starterModelsInstall`. On a machine that already has
+                // its models the walk is a handful of stats, so the wait is too.
+                let starterInstall = Task.detached(priority: .utility) {
+                    StarterModelInstaller.installBundledModels()
+                }
+                // Kept on AppState so every launch-type speech-model load waits for
+                // the copy. Independent review, 2026-09-10: the copy and
+                // `initialize()` start together, so a load could look for files
+                // still arriving and settle on a model that could not load, with
+                // nothing checking again.
+                appState.starterModelsInstall = starterInstall
+                Task {
+                    let starter = await starterInstall.value
                     guard starter.installed > 0 || !starter.failures.isEmpty else { return }
-                    await MainActor.run {
-                        appState.debugLogStore.record(
-                            category: .model,
-                            message: "Starter models from the bundle: \(starter.description)")
-                    }
+                    appState.debugLogStore.record(
+                        category: .model,
+                        message: "Starter models from the bundle: \(starter.description)")
                 }
 
                 // All four of these used to open the fork's meeting window.

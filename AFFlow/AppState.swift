@@ -480,6 +480,12 @@ class AppState: ObservableObject {
     @AppStorage("cleanupPrompt") var cleanupPrompt: String = TextCleaner.defaultPrompt
     @AppStorage("speechModel") var speechModel: String = SpeechModelCatalog.defaultModelID
 
+    /// The bundled Starter models being copied into Application Support, set by the
+    /// app at launch and nil in the test host. A launch-type speech-model load waits
+    /// for it, because the copy and the load start together and the load must not
+    /// look for files that are still arriving.
+    var starterModelsInstall: Task<StarterModelInstaller.Outcome, Never>?
+
     /// Defaults key recording that the English-only speech-model migration has
     /// already run, so it can never fight a later deliberate choice.
     nonisolated static let englishOnlySpeechModelMigrationKey = "speechModelEnglishOnlyMigrationV1"
@@ -1191,9 +1197,7 @@ class AppState: ObservableObject {
             overlay.show(message: .modelLoading)
         }
         debugLogStore.record(category: .model, message: "App initialization started.")
-        if !modelManager.isReady || modelManager.modelName != speechModel {
-            await loadSpeechModel(name: speechModel)
-        }
+        await loadPreferredSpeechModel()
         if showOverlay {
             overlay.dismiss()
         }
@@ -4004,6 +4008,46 @@ class AppState: ObservableObject {
         await loadSpeechModel(name: preferredSpeechModelID)
     }
 
+    /// The ONE path a launch-type load takes: app start, the walkthrough, and its
+    /// Retry. Settings picks do not come through here, so an explicit choice is
+    /// loaded as chosen.
+    ///
+    /// **Two independent reviews shaped this, on 2026-09-10.** The first fallback
+    /// ran once inside `initialize()`, so the walkthrough and Retry loaded turbo
+    /// straight past it, it could run before the Starter copy had finished, and it
+    /// overwrote a saved choice. Now every launch-type load waits for the copy, and
+    /// `QualityTier.launchSpeechModelID` only fills in a choice never made.
+    func loadPreferredSpeechModel() async {
+        if let starterModelsInstall {
+            _ = await starterModelsInstall.value
+        }
+
+        let hasSavedChoice = UserDefaults.standard.object(forKey: "speechModel") != nil
+        let preferredIsLoadable = SpeechModelCatalog.model(named: speechModel)
+            .map { ModelManager.isCached($0) } ?? false
+        let starterIsInstalled = SpeechModelCatalog.model(named: QualityTier.starterSpeechModelID)
+            .map { ModelManager.isCached($0) } ?? false
+        let modelID = QualityTier.launchSpeechModelID(
+            preferred: speechModel,
+            hasSavedChoice: hasSavedChoice,
+            preferredIsLoadable: preferredIsLoadable,
+            starterIsInstalled: starterIsInstalled
+        )
+        if modelID != speechModel {
+            let fromTitle = SpeechModelCatalog.model(named: speechModel)?.statusName ?? speechModel
+            let toTitle = SpeechModelCatalog.model(named: modelID)?.statusName ?? modelID
+            debugLogStore.record(
+                category: .model,
+                message: "No speech model chosen yet, and \(fromTitle) is not on this Mac. Starting on the Starter model, \(toTitle)."
+            )
+            speechModel = modelID
+        }
+
+        if !modelManager.isReady || modelManager.modelName != speechModel {
+            await loadSpeechModel(name: speechModel)
+        }
+    }
+
     func loadSpeechModel(name: String) async {
         let language = preferredLanguage == "auto" ? nil : preferredLanguage
         await modelManager.loadModel(name: name, language: language)
@@ -4091,6 +4135,16 @@ class AppState: ObservableObject {
     ) -> (status: AppStatus, errorMessage: String?) {
         switch managerState {
         case .error:
+            // The app's OWN load reasons, on screen. Raw system errors stay out, as
+            // `testSpeechModelPresentationDoesNotExposeManagerLoadFailureInMenuErrorMessage`
+            // pins: "The request timed out." helps nobody. But a message AF Flow wrote
+            // for a person is the only thing that says why dictation is not working,
+            // and until 2026-09-10 it reached the debug log alone. The prefix is what
+            // the `.ready` branch clears.
+            if let loadError = managerError as? SpeechModelLoadError,
+               let reason = loadError.errorDescription {
+                return (.error, speechModelErrorPrefix + reason)
+            }
             let shouldClearSpeechModelError = currentErrorMessage?.hasPrefix(speechModelErrorPrefix) == true
             let preservedErrorMessage = shouldClearSpeechModelError ? nil : currentErrorMessage
             return (

@@ -62,6 +62,32 @@ enum QualityTier: String, CaseIterable, Identifiable {
     /// quarter of the dictation of anyone who speaks Russian.
     static let starterSpeechModelID = SpeechModelCatalog.whisperSmallMultilingual.id
 
+    /// Which speech model a launch-type load uses: app start, the walkthrough, and
+    /// its Retry.
+    ///
+    /// A fresh install asks for turbo, the catalog default, which the DMG does not
+    /// carry and the app cannot download. Until 2026-09-10 that failed on the first
+    /// launch of every friend's Mac with the one model that WAS installed sitting
+    /// unused. So when NO model has ever been chosen, the default cannot load, and
+    /// Starter is installed, the answer is Starter.
+    ///
+    /// **A saved choice is never overridden**, even one that cannot load. An
+    /// independent review found the first version replacing it permanently: one
+    /// launch with his turbo folder missing would have left him on whisper-small for
+    /// good, recorded only in a log line. A choice that cannot load now fails with
+    /// its reason on screen, and he decides.
+    ///
+    /// Pure over plain values on purpose: the caller asks the disk and the saved
+    /// settings, so this can be tested without either and holds no actor isolation.
+    static func launchSpeechModelID(
+        preferred: String,
+        hasSavedChoice: Bool,
+        preferredIsLoadable: Bool,
+        starterIsInstalled: Bool
+    ) -> String {
+        (hasSavedChoice || preferredIsLoadable || !starterIsInstalled) ? preferred : starterSpeechModelID
+    }
+
     /// **Open item 1 of the launch plan. RATIFIED by Andrew on 2026-08-30, on
     /// his own 26 days of dictation rather than on a fresh benchmark.**
     ///

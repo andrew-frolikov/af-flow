@@ -12,9 +12,9 @@ import XCTest
 final class SpeechModelPinsTests: XCTestCase {
     /// Both rungs of the ladder, complete. A model needs BOTH folders
     /// WhisperKit uses: the Core ML files under `argmaxinc/whisperkit-coreml/`
-    /// and the tokenizer under `openai/`, which is also the folder
-    /// `ModelManager.modelIsCached` tests. Pinning one and not the other
-    /// produces an install that looks finished and still downloads.
+    /// and the tokenizer under `openai/`. `ModelManager.modelIsCached` requires
+    /// both, so pinning one and not the other produces an install that looks
+    /// finished and cannot load.
     func testEveryLadderSpeechModelIsFullyPinned() throws {
         for id in [QualityTier.starterSpeechModelID, QualityTier.fullSpeechModelID] {
             let descriptor = try XCTUnwrap(SpeechModelCatalog.model(named: id))
@@ -33,18 +33,20 @@ final class SpeechModelPinsTests: XCTestCase {
             let coreML = "whisper-models/models/argmaxinc/whisperkit-coreml/\(descriptor.name)/"
             XCTAssertTrue(pins.contains { $0.relativePath.hasPrefix(coreML) }, "no Core ML files for \(id)")
             // The tokenizer lands under `openai/<repo>`, which is NOT
-            // `cachePathComponents`: that field names the Core ML folder for
-            // turbo and the tokenizer folder for small, and reading it as the
-            // tokenizer path is the bug the release gate had on 2026-09-06.
+            // `cachePathComponents`. Since 2026-09-10 that field names the Core
+            // ML folder for EVERY WhisperKit model. Before, it named the tokenizer
+            // folder for tiny, small and small.en, which sent the loader to the
+            // wrong folder, and the release gate misread it on 2026-09-06.
             XCTAssertTrue(pins.contains {
                 $0.relativePath.hasPrefix("whisper-models/models/openai/")
                     && $0.relativePath.hasSuffix("/tokenizer.json")
             }, "no tokenizer for \(id); WhisperKit needs one")
-            // And whatever `modelIsCached` tests must be covered, or a fully
-            // installed model reports missing and the app tries to download it.
-            let cacheTested = "whisper-models/models/" + descriptor.cachePathComponents.joined(separator: "/") + "/"
-            XCTAssertTrue(pins.contains { $0.relativePath.hasPrefix(cacheTested) },
-                          "nothing lands in \(cacheTested), which is what modelIsCached tests for \(id)")
+            // `cachePathComponents` must name exactly the Core ML folder, the one
+            // the loader hands WhisperKit. Equality, not a prefix check: the pins
+            // also fill the tokenizer folder, so a prefix check passes for the
+            // mixed meaning that broke the Starter load on 2026-09-10.
+            XCTAssertEqual(descriptor.cachePathComponents, ["argmaxinc", "whisperkit-coreml", descriptor.name],
+                           "\(id): cachePathComponents must name the Core ML folder")
         }
     }
 

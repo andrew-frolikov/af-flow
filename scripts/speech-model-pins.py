@@ -48,12 +48,12 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ORIGINAL OpenAI repo under `openai/<repo>`. The tokenizer lands at exactly the
 # repo's own path, which is what his live cache shows.
 #
-# THE TRAP, and it already cost a release-gate fix on 2026-09-06:
-# `cachePathComponents` is NOT the tokenizer folder. For whisper-small it
-# happens to be `openai/whisper-small`, and for turbo it is the Core ML folder.
-# It is what `ModelManager.modelIsCached` tests, which is a different question
-# from where the tokenizer goes. So the tokenizer destination is derived from
-# the repo name below, never from that field.
+# THE TRAP, and it cost a release-gate fix on 2026-09-06 and a broken Starter
+# load on 2026-09-10: `cachePathComponents` is NOT the tokenizer folder. It once
+# was, for tiny, small and small.en, while naming the Core ML folder for turbo,
+# and the loader handed that mixed field to WhisperKit. Since 2026-09-10 it
+# names the Core ML folder for every WhisperKit model. The tokenizer destination
+# is derived from the repo name below, never from that field.
 TOKENIZER_REPO = {
     "openai_whisper-small": "openai/whisper-small",
     "openai_whisper-small.en": "openai/whisper-small.en",
@@ -89,10 +89,10 @@ def tree(repo, revision, path=""):
 def ladder_variants():
     """The speech models the ladder ships, read from QualityTier.swift.
 
-    Returns [(variant name, cache-test folder)]. The second value is the
+    Returns [(variant name, Core ML folder)]. The second value is the
     catalogue's `cachePathComponents`, carried only so the generator can assert
-    the pins cover the folder `ModelManager.modelIsCached` looks at; it is NOT
-    the tokenizer destination. Same resolution `release-build.sh` does.
+    the pins fill the folder the app loads from; it is NOT the tokenizer
+    destination. Same resolution `release-build.sh` does.
     """
     quality = open(os.path.join(REPO_ROOT, "AFFlow/QualityTier.swift")).read()
     catalog = open(os.path.join(REPO_ROOT, "AFFlow/Transcription/SpeechModelCatalog.swift")).read()
@@ -164,11 +164,14 @@ def collect(variants):
             # `cachePathComponents`: see the note on TOKENIZER_REPO.
             pins.append(pinned(repo, revisions[repo], name, tokenizer_entries[name],
                                f"whisper-models/models/{repo}/{name}"))
-        # The folder `modelIsCached` tests must be covered, or the app will
-        # report a model missing that is fully installed, and download it.
-        covered = f"whisper-models/models/{cache_folder}/"
-        if not any(pin["relativePath"].startswith(covered) for pin in pins):
-            raise Refused(f"{variant}: nothing lands in {covered}, which is what modelIsCached tests")
+        # `cachePathComponents` must name exactly this variant's Core ML folder,
+        # the one the loader hands WhisperKit. Equality, not coverage: every
+        # Core ML pin is generated under that path, so a coverage check could
+        # never fail, and the tokenizer folder is covered too, which is the
+        # mixed meaning that broke the Starter load on 2026-09-10.
+        expected_folder = f"argmaxinc/whisperkit-coreml/{variant}"
+        if cache_folder != expected_folder:
+            raise Refused(f"{variant}: cachePathComponents is {cache_folder}, expected {expected_folder}")
         # Two files landing at one path would silently drop one of them.
         seen = {}
         for pin in pins:

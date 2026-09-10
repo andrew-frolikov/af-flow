@@ -11,9 +11,9 @@
 	<key>CFBundleName</key>
 	<string>$(AF_FLOW_DISPLAY_NAME)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.0.1</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>2</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>AF Flow records what other participants say so it can transcribe your meetings on this Mac. Audio only: this never captures your screen, and nothing leaves your Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>

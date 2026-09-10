@@ -1726,6 +1726,66 @@ final class AFFlowTests: XCTestCase {
         XCTAssertNil(next.errorMessage)
     }
 
+    /// The app's OWN reasons do reach the screen. Raw system errors stay out, per
+    /// the test above, but a message AF Flow wrote for a person ("not on this Mac",
+    /// "tokenizer files are damaged") is the one thing that tells a friend why
+    /// dictation is not working. Until 2026-09-10 it reached only the debug log.
+    func testSpeechModelPresentationShowsTheAppsOwnLoadReason() {
+        let loadError = SpeechModelLoadError.notOnDisk(modelTitle: "Whisper small (multilingual)")
+
+        let next = AppState.nextSpeechModelPresentation(
+            managerState: .error,
+            managerError: loadError,
+            currentStatus: .ready,
+            currentErrorMessage: nil
+        )
+
+        XCTAssertEqual(next.status, .error)
+        XCTAssertEqual(next.errorMessage, "Failed to load speech model: " + (loadError.errorDescription ?? ""))
+    }
+
+    /// **A friend's first launch, run for real.** No model ever chosen, turbo not
+    /// installed, the Starter model staged: the launch-type load must settle on
+    /// Starter and load it from disk in the network-less test host. Gated like the
+    /// Starter load test, because it needs the Starter files staged first.
+    func testAFriendsFirstLaunchSettlesOnTheStarterModelAndLoadsIt() async throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["AF_FLOW_STARTER_OFFLINE_LOAD"] == "1",
+            "stage Starter whisper-small into the test host container, then run AF_FLOW_STARTER_OFFLINE_LOAD=1 scripts/run-tests.sh"
+        )
+        let turbo = try XCTUnwrap(SpeechModelCatalog.model(named: SpeechModelCatalog.defaultModelID))
+        let starter = try XCTUnwrap(SpeechModelCatalog.model(named: QualityTier.starterSpeechModelID))
+        try XCTSkipIf(ModelManager.isCached(turbo), "turbo is fully installed in the test host, so this is not a first launch")
+        XCTAssertTrue(ModelManager.isCached(starter), "Starter is not staged in the test host")
+
+        let saved = UserDefaults.standard.object(forKey: "speechModel")
+        UserDefaults.standard.removeObject(forKey: "speechModel")
+        defer {
+            if let saved {
+                UserDefaults.standard.set(saved, forKey: "speechModel")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "speechModel")
+            }
+        }
+
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: #function))
+        defaults.removePersistentDomain(forName: #function)
+        let appState = AppState(
+            hotkeyMonitor: FakeHotkeyMonitor(),
+            chordBindingStore: ChordBindingStore(defaults: defaults),
+            cleanupSettingsDefaults: defaults
+        )
+
+        await appState.loadPreferredSpeechModel()
+
+        XCTAssertEqual(appState.speechModel, starter.name)
+        XCTAssertEqual(appState.modelManager.modelName, starter.name)
+        XCTAssertTrue(
+            appState.modelManager.isReady,
+            "load error: \(String(describing: appState.modelManager.error))"
+        )
+    }
+
     func testSpeechModelPresentationClearsStaleSpeechModelErrorAfterSuccessfulLoad() {
         let next = AppState.nextSpeechModelPresentation(
             managerState: .ready,

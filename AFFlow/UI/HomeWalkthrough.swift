@@ -274,13 +274,21 @@ struct HomeWalkthrough: View {
     }
 
     private var modelsSubtitle: String {
-        if modelsFailed { return "Download failed" }
+        // The app's own reason when it has one. This app does not download speech
+        // models, so "Download failed" named a step that never happened. Raw system
+        // errors stay out here, as they do in the menu.
+        if appState.modelManager.state == .error,
+           let loadError = appState.modelManager.error as? SpeechModelLoadError,
+           let reason = loadError.errorDescription {
+            return reason
+        }
+        if modelsFailed { return "The local models could not load" }
         if !appState.cleanupEnabled, appState.modelManager.isReady { return "Ready for voice-to-text" }
         if modelsReady { return "Ready for voice-to-text" }
         if let progress = appState.modelManager.downloadProgress, progress > 0, progress < 1 {
             return "Downloading \(Int(progress * 100))%"
         }
-        return "Downloading the local models AF Flow needs"
+        return "Preparing the local models AF Flow needs"
     }
 
     /// The sound check. Its own caption until the first sound arrives, so
@@ -315,7 +323,11 @@ struct HomeWalkthrough: View {
     /// unload, and `modelsReady` possibly never becoming true, so Continue
     /// never appeared and the walkthrough stalled.
     private func loadModels() async {
-        await appState.modelManager.loadModel(name: appState.speechModel)
+        // Through AppState's launch-type load, not straight to the model manager.
+        // That bypassed the Starter fallback and waited for nothing, so a friend
+        // who dismissed the microphone prompt got turbo, "Download failed", and a
+        // Retry that could never succeed. Independent review, 2026-09-10.
+        await appState.loadPreferredSpeechModel()
         await appState.refreshCleanupModelState()
     }
 

@@ -827,33 +827,68 @@ final class ModelManager: ObservableObject {
         return try diarizerManager.extractSpeakerEmbedding(from: audioBuffer)
     }
 
+    /// Loads a WhisperKit model from its files on this Mac.
+    ///
+    /// **Every cold start failed from 2026-08-29 to 2026-09-10: 14 failures and no
+    /// successes, after 84 successful loads of turbo before it.** The app gave up
+    /// its network entitlement on 2026-08-29 (762f11f) and this function still
+    /// built its config with `download: true` and no `modelFolder`. WhisperKit's
+    /// `setupModels` reads that as "fetch from Hugging Face", and
+    /// `WhisperKit.download` begins with a remote file listing before it looks at
+    /// the disk. A process started before that day kept dictating, and ledger 29
+    /// took that uptime as proof offline loading worked.
+    ///
+    /// **The first fix was half right, and an independent review caught it the
+    /// same day.** It handed WhisperKit `cachePathComponents`, which named the Core
+    /// ML folder for turbo but the TOKENIZER folder for tiny, small and small.en.
+    /// WhisperKit looks for `MelSpectrogram.mlmodelc` directly inside the folder it
+    /// is given, so the Starter model the DMG ships still could not load. That
+    /// field now names the Core ML folder for every WhisperKit model.
+    ///
+    /// So a model loads only when both of its folders hold what WhisperKit reads,
+    /// and WhisperKit is handed the Core ML folder with `download: false`. The
+    /// tokenizer resolves under `downloadBase`; with its required files present and
+    /// parseable, it loads before WhisperKit would consult the Hub. NOT covered:
+    /// files that parse as JSON but are not a valid tokenizer or config still make
+    /// WhisperKit fall back to the Hub, where the kernel refuses it. Downloads
+    /// belong to the XPC service, not yet wired for speech models (ledger 37).
     private func loadWhisperModel(named modelName: String) async throws {
         let modelsDir = Self.whisperModelsDirectory
         try? FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
 
-        let needsDownload = !Self.modelIsCached(SpeechModelCatalog.model(named: modelName)!)
-        if needsDownload {
-            _ = try await WhisperKit.download(
-                variant: modelName,
-                downloadBase: modelsDir
-            ) { progress in
-                Task { @MainActor [weak self] in
-                    self?.downloadProgress = progress.fractionCompleted
-                }
-            }
-            downloadProgress = nil
+        guard let descriptor = SpeechModelCatalog.model(named: modelName) else {
+            // Unreachable today: `loadModel` rejects an unknown id first. Kept so a
+            // new caller gets an error rather than a crash.
+            throw SpeechModelLoadError.notInCatalog(modelName: modelName)
+        }
+        guard Self.modelIsCached(descriptor) else {
+            throw SpeechModelLoadError.notOnDisk(modelTitle: descriptor.statusName)
+        }
+        if let tokenizer = Self.tokenizerFolder(for: descriptor),
+           !Self.tokenizerFilesParse(in: tokenizer) {
+            throw SpeechModelLoadError.damaged(modelTitle: descriptor.statusName)
         }
 
-        let config = WhisperKitConfig(
+        whisperKit = try await WhisperKit(Self.offlineWhisperKitConfig(
+            modelName: modelName,
+            modelFolder: Self.coreMLFolder(for: descriptor),
+            downloadBase: modelsDir
+        ))
+    }
+
+    /// The configuration for a model already on disk. Pure, so a test can hold
+    /// it to `download == false` without loading a model.
+    static func offlineWhisperKitConfig(modelName: String, modelFolder: URL, downloadBase: URL) -> WhisperKitConfig {
+        WhisperKitConfig(
             model: modelName,
-            downloadBase: modelsDir,
+            downloadBase: downloadBase,
+            modelFolder: modelFolder.path,
             verbose: false,
             logLevel: .error,
             prewarm: false,
             load: true,
-            download: true
+            download: false
         )
-        whisperKit = try await WhisperKit(config)
     }
 
     private func loadFluidAudioModel(_ model: SpeechModelDescriptor) async throws {
@@ -1084,10 +1119,10 @@ final class ModelManager: ObservableObject {
     private static func removeCachedModelFiles(for model: SpeechModelDescriptor) {
         switch model.backend {
         case .whisperKit:
-            let modelPath = model.cachePathComponents.reduce(whisperModelsRootDirectory) { partialURL, component in
-                partialURL.appendingPathComponent(component, isDirectory: true)
-            }
-            try? FileManager.default.removeItem(at: modelPath)
+            // The Core ML folder only. The tokenizer under openai/<repo> is shared
+            // (both turbo variants read whisper-large-v3), and removing the Core ML
+            // folder is what makes `whisperKitFilesPresent` false.
+            try? FileManager.default.removeItem(at: coreMLFolder(for: model))
         case .fluidAudio:
             guard let fluidAudioVariant = model.fluidAudioVariant else { return }
             switch fluidAudioVariant {
@@ -1109,10 +1144,7 @@ final class ModelManager: ObservableObject {
     private static func modelIsCached(_ model: SpeechModelDescriptor) -> Bool {
         switch model.backend {
         case .whisperKit:
-            let modelPath = model.cachePathComponents.reduce(whisperModelsRootDirectory) { partialURL, component in
-                partialURL.appendingPathComponent(component, isDirectory: true)
-            }
-            return FileManager.default.fileExists(atPath: modelPath.path)
+            return whisperKitFilesPresent(for: model)
         case .fluidAudio:
             guard let fluidAudioVariant = model.fluidAudioVariant else {
                 return false
@@ -1141,6 +1173,110 @@ final class ModelManager: ObservableObject {
 
     private static var whisperModelsRootDirectory: URL {
         whisperModelsDirectory.appendingPathComponent("models", isDirectory: true)
+    }
+
+    /// The three questions below, asked of this Mac's own models folder. Plain
+    /// overloads rather than default arguments, because a default argument is
+    /// evaluated outside the main actor and cannot read the root.
+    static func coreMLFolder(for model: SpeechModelDescriptor) -> URL {
+        coreMLFolder(for: model, underModelsRoot: whisperModelsRootDirectory)
+    }
+
+    static func tokenizerFolder(for model: SpeechModelDescriptor) -> URL? {
+        tokenizerFolder(for: model, underModelsRoot: whisperModelsRootDirectory)
+    }
+
+    static func whisperKitFilesPresent(for model: SpeechModelDescriptor) -> Bool {
+        whisperKitFilesPresent(for: model, underModelsRoot: whisperModelsRootDirectory)
+    }
+
+    /// The folder WhisperKit loads a model from, `argmaxinc/whisperkit-coreml/<variant>`,
+    /// read from the catalog's `cachePathComponents`. Load, the installed check and
+    /// delete all use this, so the folder that was checked is the folder that loads.
+    static func coreMLFolder(
+        for model: SpeechModelDescriptor,
+        underModelsRoot root: URL
+    ) -> URL {
+        model.cachePathComponents.reduce(root) { partialURL, component in
+            partialURL.appendingPathComponent(component, isDirectory: true)
+        }
+    }
+
+    /// The model's tokenizer folder, `openai/<repo>`, or nil when it has none.
+    static func tokenizerFolder(
+        for model: SpeechModelDescriptor,
+        underModelsRoot root: URL
+    ) -> URL? {
+        SpeechModelCatalog.tokenizerRepo(for: model).map { repo in
+            repo.split(separator: "/").reduce(root) { partialURL, component in
+                partialURL.appendingPathComponent(String(component), isDirectory: true)
+            }
+        }
+    }
+
+    /// The three files WhisperKit's tokenizer load reads from `openai/<repo>`
+    /// before it would consult the Hub. `config.json` carries the model type.
+    /// `tokenizer_config.json` is optional to swift-transformers in general, but it
+    /// bundles fallback configs only for gpt2 and t5, so for Whisper a missing one
+    /// comes back empty and WhisperKit falls through to the Hub. `tokenizer.json`
+    /// is the vocabulary.
+    static let requiredTokenizerFiles = ["config.json", "tokenizer.json", "tokenizer_config.json"]
+
+    /// Whether BOTH folders hold what WhisperKit reads: the three compiled Core ML
+    /// models it looks up by name, and the tokenizer files above. Checking one
+    /// folder is how a model that could never load offline reported itself
+    /// installed. Compiled `.mlmodelc` only: WhisperKit resolves an `.mlpackage`
+    /// through an inner path and does not compile it, so a package alone would
+    /// report installed and then fail to load.
+    static func whisperKitFilesPresent(
+        for model: SpeechModelDescriptor,
+        underModelsRoot root: URL
+    ) -> Bool {
+        let fileManager = FileManager.default
+        let coreML = coreMLFolder(for: model, underModelsRoot: root)
+        let modelsPresent = ["MelSpectrogram", "AudioEncoder", "TextDecoder"].allSatisfy { name in
+            fileManager.fileExists(atPath: coreML.appendingPathComponent("\(name).mlmodelc").path)
+        }
+        guard modelsPresent, let tokenizer = tokenizerFolder(for: model, underModelsRoot: root) else {
+            return false
+        }
+        return requiredTokenizerFiles.allSatisfy { name in
+            fileManager.fileExists(atPath: tokenizer.appendingPathComponent(name).path)
+        }
+    }
+
+    /// Whether every required tokenizer file parses as JSON. A truncated file makes
+    /// the local load throw, and WhisperKit then falls back to the Hub. Runs on the
+    /// main actor once per load, over two to three megabytes of JSON; the cost is
+    /// not measured (ledger 38).
+    static func tokenizerFilesParse(in folder: URL) -> Bool {
+        requiredTokenizerFiles.allSatisfy { name in
+            guard let data = try? Data(contentsOf: folder.appendingPathComponent(name)) else { return false }
+            return (try? JSONSerialization.jsonObject(with: data)) != nil
+        }
+    }
+}
+
+/// Why a speech model was refused before WhisperKit was ever asked.
+///
+/// Each case names the real problem on screen, using the model's display name.
+/// Until 2026-09-10 a model that was not on disk reached WhisperKit's own
+/// download, which a process with no network entitlement fails as a hostname
+/// lookup: true, and no help at all.
+enum SpeechModelLoadError: LocalizedError, Equatable {
+    case notInCatalog(modelName: String)
+    case notOnDisk(modelTitle: String)
+    case damaged(modelTitle: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notInCatalog(let modelName):
+            return "\(modelName) is not a speech model this version of AF Flow knows."
+        case .notOnDisk(let modelTitle):
+            return "\(modelTitle) is not on this Mac, and AF Flow does not download speech models itself. Choose a model that is already installed."
+        case .damaged(let modelTitle):
+            return "\(modelTitle) is on this Mac, but its tokenizer files are damaged, so it cannot load."
+        }
     }
 }
 

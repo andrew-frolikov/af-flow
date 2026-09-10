@@ -64,9 +64,9 @@ final class StarterModelInstallerTests: XCTestCase {
     func testItPutsBundledModelsWhereTheAppLooks() throws {
         // WhisperKit keeps a speech model in TWO places under the same root:
         // the Core ML files under argmaxinc/whisperkit-coreml/<variant>, and
-        // the tokenizer under openai/<short name>, which is ALSO the folder
-        // `ModelManager.modelIsCached` tests. A payload carrying only the
-        // first would install cleanly and still trigger a blocked download.
+        // the tokenizer under openai/<short name>. `ModelManager.modelIsCached`
+        // requires both, so a payload carrying only one installs cleanly and
+        // still cannot load.
         try stageBundled("models/Qwen3.5-0.8B-Q4_K_M.gguf", contents: "cleanup weights")
         try stageBundled("whisper-models/models/argmaxinc/whisperkit-coreml/openai_whisper-small/AudioEncoder.mlmodelc/x",
                          contents: "speech weights")

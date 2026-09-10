@@ -59,7 +59,7 @@ enum SpeechModelCatalog {
         variantName: "tiny.en",
         sizeDescription: "~75 MB",
         backend: .whisperKit,
-        cachePathComponents: ["openai", "whisper-tiny.en"],
+        cachePathComponents: ["argmaxinc", "whisperkit-coreml", "openai_whisper-tiny.en"],
         fluidAudioVariant: nil
     )
 
@@ -69,7 +69,7 @@ enum SpeechModelCatalog {
         variantName: "small.en",
         sizeDescription: "~466 MB",
         backend: .whisperKit,
-        cachePathComponents: ["openai", "whisper-small.en"],
+        cachePathComponents: ["argmaxinc", "whisperkit-coreml", "openai_whisper-small.en"],
         fluidAudioVariant: nil
     )
 
@@ -79,7 +79,7 @@ enum SpeechModelCatalog {
         variantName: "small",
         sizeDescription: "~466 MB",
         backend: .whisperKit,
-        cachePathComponents: ["openai", "whisper-small"],
+        cachePathComponents: ["argmaxinc", "whisperkit-coreml", "openai_whisper-small"],
         fluidAudioVariant: nil
     )
 
@@ -165,6 +165,22 @@ enum SpeechModelCatalog {
     /// English-only, so a fresh install silently failed roughly a quarter of
     /// Andrew's real dictation instead of reporting an error.
     static let defaultModelID = whisperLargeV3Turbo.id
+
+    /// Where a WhisperKit model's tokenizer lives under `whisper-models/models/`.
+    ///
+    /// WhisperKit's own mapping, `tokenizerNameForVariant`, is internal to the
+    /// package, so it is spelled here. `ModelManagerTests` holds it to the pinned
+    /// tokenizer paths, so it cannot drift from the files the app installs.
+    static func tokenizerRepo(for model: SpeechModelDescriptor) -> String? {
+        switch model.name {
+        case "openai_whisper-tiny.en": "openai/whisper-tiny.en"
+        case "openai_whisper-small.en": "openai/whisper-small.en"
+        case "openai_whisper-small": "openai/whisper-small"
+        case "openai_whisper-large-v3-v20240930_turbo_632MB", "openai_whisper-large-v3_turbo_954MB":
+            "openai/whisper-large-v3"
+        default: nil
+        }
+    }
 
     static var whisperModels: [SpeechModelDescriptor] {
         availableModels.filter { $0.backend == .whisperKit }

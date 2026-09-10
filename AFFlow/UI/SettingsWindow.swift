@@ -603,7 +603,8 @@ struct SettingsView: View {
                 Task { await appState.textCleanupManager.loadModel(kind: kind) }
             }
         } else {
-            // Select and load the requested model (triggers download if not cached)
+            // Select and load the requested model. It loads only if it is already on
+            // this Mac: the app cannot download speech models itself (ledger 37).
             appState.speechModel = row.id
             Task { await appState.loadSpeechModel(name: row.id) }
         }
